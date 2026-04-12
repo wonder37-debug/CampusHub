@@ -5,6 +5,10 @@ on:
   pull_request:
     branches: [ "main", "dev" ]
 
+permissions:
+  pull-requests: read  # 允许读取 PR 信息（paths-filter 核心依赖）
+  contents: read       # 允许读取仓库代码内容
+
 jobs:
   changes:
     runs-on: ubuntu-latest
