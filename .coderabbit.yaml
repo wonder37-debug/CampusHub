@@ -11,5 +11,10 @@ reviews:
     - "!README.md"
     - "!frontend/public/**"
     - "!backend/src/main/resources/static/**"
+  auto_review:
+    enabled: true
+    base_branches:
+      - "main"
+      - "dev"
 chat:
   auto_reply: true
