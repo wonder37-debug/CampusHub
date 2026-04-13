@@ -6,7 +6,7 @@
 		<groupId>org.springframework.boot</groupId>
 		<artifactId>spring-boot-starter-parent</artifactId>
 		<version>3.5.0</version>
-		<relativePath/> <!-- lookup parent from repository -->
+		<relativePath/>
 	</parent>
 	<groupId>com.campushub</groupId>
 	<artifactId>backend</artifactId>
@@ -14,17 +14,10 @@
 	<name>backend</name>
 	<description>CampusHub Backend</description>
 	<url/>
-	<licenses>
-		<license/>
-	</licenses>
-	<developers>
-		<developer/>
-	</developers>
+	<licenses><license/></licenses>
+	<developers><developer/></developers>
 	<scm>
-		<connection/>
-		<developerConnection/>
-		<tag/>
-		<url/>
+		<connection/><developerConnection/><tag/><url/>
 	</scm>
 	<properties>
 		<java.version>21</java.version>
@@ -39,7 +32,6 @@
 			<artifactId>mybatis-spring-boot-starter</artifactId>
 			<version>3.0.5</version>
 		</dependency>
-
 		<dependency>
 			<groupId>com.mysql</groupId>
 			<artifactId>mysql-connector-j</artifactId>
@@ -61,8 +53,12 @@
 			<version>3.0.5</version>
 			<scope>test</scope>
 		</dependency>
+		<dependency>
+			<groupId>com.h2database</groupId>
+			<artifactId>h2</artifactId>
+			<scope>test</scope>
+		</dependency>
 	</dependencies>
-
 	<build>
 		<plugins>
 			<plugin>
@@ -84,9 +80,7 @@
 					<execution>
 						<id>default-compile</id>
 						<phase>compile</phase>
-						<goals>
-							<goal>compile</goal>
-						</goals>
+						<goals><goal>compile</goal></goals>
 						<configuration>
 							<annotationProcessorPaths>
 								<path>
@@ -99,9 +93,7 @@
 					<execution>
 						<id>default-testCompile</id>
 						<phase>test-compile</phase>
-						<goals>
-							<goal>testCompile</goal>
-						</goals>
+						<goals><goal>testCompile</goal></goals>
 						<configuration>
 							<annotationProcessorPaths>
 								<path>
@@ -115,5 +107,4 @@
 			</plugin>
 		</plugins>
 	</build>
-
 </project>
