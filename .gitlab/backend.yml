@@ -7,3 +7,5 @@ backend-build:
   script:
     - cd backend
     - mvn clean package -DskipTests -B
+  rules:
+    - when: always
