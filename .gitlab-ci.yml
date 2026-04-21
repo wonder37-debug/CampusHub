@@ -1,7 +1,6 @@
 stages:
   - trigger
 
-# 触发后端 pipeline
 backend:
   stage: trigger
   trigger:
@@ -11,7 +10,6 @@ backend:
     - changes:
         - backend/**/*
 
-# 触发前端 pipeline
 frontend:
   stage: trigger
   trigger:
