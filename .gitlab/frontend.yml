@@ -1,11 +1,10 @@
-# 配置仅供参考！
 stages:
   - build
 
 frontend-build:
   stage: build
-  image: node:20
+  image: node:22
   script:
     - cd frontend
-    - npm install
+    - npm ci
     - npm run build
