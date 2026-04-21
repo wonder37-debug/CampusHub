@@ -3,7 +3,7 @@ stages:
 
 frontend-build:
   stage: build
-  image: node:22
+  image: node:20
   script:
     - cd frontend
     - npm ci
