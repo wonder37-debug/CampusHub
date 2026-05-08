@@ -1,0 +1,161 @@
+# P3 - 任务 2：API 设计（接口规范）
+
+说明：以下接口采用 RESTful 风格，基路径为 `/api/v1`。受保护的 API 采用 JWT Bearer Token（Authorization: Bearer <token>）。
+
+核心接口一览（必须覆盖）
+- 用户注册 / 登录
+- 发布需求
+- 浏览需求列表（含筛选）
+- 接单（发布者的需求被他人接单，生成订单）
+- 查看订单详情
+- 提交评价
+- 消息通知列表（站内消息）
+
+通用响应结构
+- 成功：
+  {
+  "code":0,
+  "message":"OK",
+  "data":...
+  }
+- 失败：
+  {
+  "code":<非0整数>,
+  "message":"错误描述",
+  "errors":{...}
+  }
+
+HTTP 状态码约定
+- 200：成功
+- 400：参数校验失败
+- 401：未认证或认证失败
+- 403：权限不足
+- 404：资源未找到
+- 409：业务冲突（例如重复注册、重复接单）
+- 500：服务器内部错误
+
+错误码（示例）
+- 1001：认证失败（Token 无效/过期）
+- 1002：参数校验失败
+- 1003：资源未找到
+- 1004：权限不足
+- 1005：操作冲突（例如重复接单）
+
+安全说明
+- 密码必须使用强散列（如 bcrypt/argon2）和加盐存储。
+- 所有写操作需鉴权并校验权限（例如只有服务方可接单，只有订单参与方可查看订单）。
+- 对敏感字段（手机号、身份证）视需要进行脱敏或加密存储。
+- 建议开启 HTTPS、登录限流和基础审计日志，避免暴力破解与接口滥用。
+
+接口详细说明
+
+1) 用户注册
+- URL：POST /api/v1/auth/register
+- 描述：新用户注册
+- 请求体（JSON）：
+  - studentId string 必填，长度 3-64，学号/账号标识
+  - password string 必填，最少 8 位，建议包含大小写字母与数字
+  - nickname string 可选，最长 64
+  - avatarUrl string 可选，URI 格式
+- 返回：
+  - 成功：code=0，data：用户概要（不包含密码）
+  - 失败：400 参数校验失败，409 学号已注册，500 服务器错误
+
+2) 用户登录
+- URL：POST /api/v1/auth/login
+- 描述：帐号密码登录，返回 JWT
+- 请求体（JSON）：
+  - studentId string 必填，长度 3-64
+  - password string 必填，最少 8 位
+- 返回：
+  - 成功：code=0，data：{"token":"<jwt>","expiresIn":3600,"user":{...}}
+  - 失败：400 参数校验失败，401 认证失败，500 服务器错误
+
+3) 发布需求
+- URL：POST /api/v1/demands
+- 权限：需登录（发布者）
+- 描述：创建一条互助需求
+- 请求体（JSON）：
+  - title string 必填，长度 3-200
+  - description string 可选，最长 2000
+  - category string 必填（枚举："取快递","学习辅导","二手交易","活动组队","其他"）
+  - location string 可选，最长 256
+  - startTime string 可选，ISO8601
+  - endTime string 可选，ISO8601
+  - reward number 可选，最小值 0
+  - tags string[] 可选，最多 20 项
+- 返回：
+  - 成功：code=0，data：新的需求对象（含 id）
+  - 失败：400 参数校验失败，401 未认证，500 服务器错误
+
+4) 浏览需求列表（含筛选、分页）
+- URL：GET /api/v1/demands
+- 描述：按条件查询需求、支持分页
+- 查询参数：
+  - q string 可选：全文/标题搜索
+  - category string 可选
+  - location string 可选
+  - startTimeFrom ISO8601 可选
+  - startTimeTo ISO8601 可选
+  - sort string 可选（time, distance, reward），默认 time
+  - page integer 可选，默认 1，最小值 1
+  - size integer 可选，默认 20，范围 1-100
+- 返回：
+  - 成功：code=0，data：{"items":[],"page":1,"size":20,"total":123}
+  - 失败：400 参数校验失败，500 服务器错误
+
+5) 需求详情
+- URL：GET /api/v1/demands/{demandId}
+- 描述：查看单条需求详情
+- 路径参数：demandId 必填
+- 返回：
+  - 成功：code=0，data：需求对象（含发布者概要）
+  - 失败：404 未找到，500 服务器错误
+
+6) 接单（创建订单）
+- URL：POST /api/v1/demands/{demandId}/accept
+- 权限：需登录（服务方）
+- 描述：服务方接受某条需求，系统创建订单并通知双方；如已被接单返回冲突
+- 路径参数：demandId
+- 请求体（JSON）：
+  - note string 可选，最长 500（给发布者的留言）
+- 返回：
+  - 成功：code=0，data：订单对象（含 orderId、status="accepted"）
+  - 失败：400 参数校验失败，401 未认证，403 权限不足，409 操作冲突，500 服务器错误
+
+7) 查看订单详情
+- URL：GET /api/v1/orders/{orderId}
+- 权限：需登录（订单参与方或管理员）
+- 返回：
+  - 成功：code=0，data：订单详情（含需求、双方用户概要、状态变更记录）
+  - 失败：401 未认证，403 权限不足，404 未找到，500 服务器错误
+
+8) 提交评价
+- URL：POST /api/v1/orders/{orderId}/reviews
+- 权限：需登录（只有订单双方在完成后可各自提交评价）
+- 请求体（JSON）：
+  - rating integer 必填，1-5
+  - comment string 可选，最长 1000
+- 返回：
+  - 成功：code=0，data：评价记录
+  - 失败：400 参数校验失败，401 未认证，403 权限不足，500 服务器错误
+
+9) 消息通知列表
+- URL：GET /api/v1/notifications
+- 权限：需登录
+- 描述：查询当前用户收到的站内消息，包括接单通知、状态变更通知、评价通知等
+- 查询参数：
+  - unreadOnly boolean 可选，默认 false，仅返回未读消息
+  - page integer 可选，默认 1，最小值 1
+  - size integer 可选，默认 20，范围 1-100
+- 返回：
+  - 成功：code=0，data：{"items":[],"page":1,"size":20,"total":123}
+  - 失败：401 认证失败，500 服务器错误
+
+附加建议
+- 列表接口建议添加缓存与分页，避免全表扫描。
+- 对可能并发修改的操作（接单、取消）使用乐观锁或行级锁保证一致性。
+- 日志与审核：管理员需要操作日志与申诉流程。
+- 如果后续要扩展大规模消息中心，可以增加 cursor 分页，但当前作业版本先保留 page/size 简洁模式。
+
+结束。
