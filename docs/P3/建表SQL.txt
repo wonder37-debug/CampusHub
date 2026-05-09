@@ -1,0 +1,142 @@
+-- =============================================
+-- 表：sys_user 用户基础表
+-- 索引说明：
+--   PRIMARY KEY (id)：主键，所有外键关联基础
+--   uk_student_id：唯一索引，防止并发注册重复学号
+--   idx_is_deleted：软删除过滤索引，加速全局查询
+-- 余额设计：
+--   balance 存可用余额，frozen_balance 存冻结金额
+--   查余额直接 SELECT balance，无需聚合计算
+--   所有余额变更必须在 @Transactional 内同步写 ast_ledger
+-- =============================================
+CREATE TABLE `sys_user` (
+  `id`             bigint       NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `student_id`     varchar(32)  NOT NULL                COMMENT '学号',
+  `password_hash`  varchar(255) NOT NULL                COMMENT 'BCrypt哈希密码',
+  `nickname`       varchar(64)  DEFAULT '匿名校友'      COMMENT '昵称',
+  `avatar_url`     varchar(255) DEFAULT NULL            COMMENT '头像地址',
+  `credit_score`   int          NOT NULL DEFAULT 100    COMMENT '信用分',
+  `balance`        decimal(10,2) NOT NULL DEFAULT '0.00' COMMENT '可用余额',
+  `frozen_balance` decimal(10,2) NOT NULL DEFAULT '0.00' COMMENT '冻结金额',
+  `created_at`     datetime     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at`     datetime     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `is_deleted`     tinyint(1)   NOT NULL DEFAULT 0      COMMENT '逻辑删除(0:正常,1:删除)',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_student_id` (`student_id`),
+  KEY `idx_is_deleted` (`is_deleted`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户基础表';
+
+
+-- =============================================
+-- 表：ord_demand 需求与订单主表
+-- 索引说明：
+--   PRIMARY KEY (id)：主键
+--   idx_status_created (status, created_at)：复合覆盖索引
+--     需求大厅核心查询为 WHERE status='PENDING' ORDER BY created_at DESC
+--     组合索引使数据库在索引树直接完成过滤+排序，避免 filesort 全表扫描
+--   idx_publisher (publisher_id)："我发布的需求"查询入口
+--   idx_receiver (receiver_id)："我接单的需求"查询入口
+-- =============================================
+CREATE TABLE `ord_demand` (
+  `id`           bigint        NOT NULL AUTO_INCREMENT  COMMENT '主键',
+  `publisher_id` bigint        NOT NULL                 COMMENT '发单人ID',
+  `receiver_id`  bigint        DEFAULT NULL             COMMENT '接单人ID(可空)',
+  `title`        varchar(200)  NOT NULL                 COMMENT '标题',
+  `description`  text          NOT NULL                 COMMENT '详细描述',
+  `category`     varchar(32)   NOT NULL                 COMMENT '分类',
+  `location`     varchar(256)  DEFAULT NULL             COMMENT '地点',
+  `start_time`   datetime      DEFAULT NULL             COMMENT '开始时间',
+  `end_time`     datetime      DEFAULT NULL             COMMENT '结束时间',
+  `reward`       decimal(10,2) NOT NULL DEFAULT '0.00'  COMMENT '悬赏金额',
+  `tags`         json          DEFAULT NULL             COMMENT '标签数组',
+  `status`       varchar(32)   NOT NULL DEFAULT 'PENDING' COMMENT '状态机',
+  `created_at`   datetime      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at`   datetime      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `is_deleted`   tinyint(1)    NOT NULL DEFAULT 0       COMMENT '逻辑删除标志',
+  PRIMARY KEY (`id`),
+  KEY `idx_status_created` (`status`, `created_at`),
+  KEY `idx_publisher` (`publisher_id`),
+  KEY `idx_receiver` (`receiver_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='需求与订单主表';
+
+
+-- =============================================
+-- 表：ord_review 订单双向评价表
+-- 索引说明：
+--   PRIMARY KEY (id)：主键
+--   uk_order_author (order_id, author_id)：联合唯一索引
+--     确保同一订单内一个用户只能提交一次评价，防止恶意刷分
+--   idx_target_id (target_id)：信用分聚合计算索引
+--     支持 SELECT AVG(rating) WHERE target_id=? 毫秒级响应
+-- CHECK 约束：
+--   chk_rating：数据库层强制 rating 在 1-5 范围内
+--     即使业务层校验被绕过，非法打分也无法写入
+-- 不可变策略：本表禁止 UPDATE/DELETE，评价提交后不可撤回
+-- =============================================
+CREATE TABLE `ord_review` (
+  `id`         bigint       NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `order_id`   bigint       NOT NULL               COMMENT '关联订单ID',
+  `author_id`  bigint       NOT NULL               COMMENT '评价人ID',
+  `target_id`  bigint       NOT NULL               COMMENT '被评价人ID',
+  `rating`     tinyint      NOT NULL               COMMENT '1-5星打分',
+  `comment`    varchar(1000) DEFAULT NULL          COMMENT '评价内容',
+  `created_at` datetime     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间(不可变)',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_order_author` (`order_id`, `author_id`),
+  KEY `idx_target_id` (`target_id`),
+  CONSTRAINT `chk_rating` CHECK (`rating` BETWEEN 1 AND 5)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单双向评价表';
+
+
+-- =============================================
+-- 表：ast_ledger 资产流水表
+-- 索引说明：
+--   PRIMARY KEY (id)：主键
+--   idx_user_time (user_id, created_at)：时序联合索引
+--     "我的账单"按用户+时间倒序查询，user_id 精准匹配
+--     后跟 created_at 排序，无需额外排序操作
+-- CHECK 约束：
+--   chk_direction：强制 direction 只允许 IN/OUT/FREEZE/UNFREEZE
+--     IN=充值/收款，OUT=支出，FREEZE=冻结，UNFREEZE=解冻
+--     防止非法资金方向写入，保证账单日志语义清晰
+-- 不可变策略：本表严禁 UPDATE/DELETE
+--   账目错误只能新增反向冲正流水，不得修改原记录
+-- 与 sys_user 的联动：
+--   所有写入必须在 @Transactional 内同步更新 sys_user.balance
+-- =============================================
+CREATE TABLE `ast_ledger` (
+  `id`           bigint        NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `user_id`      bigint        NOT NULL               COMMENT '资产归属人ID',
+  `amount`       decimal(10,2) NOT NULL               COMMENT '变动金额绝对值',
+  `direction`    varchar(10)   NOT NULL               COMMENT '方向(IN/OUT/FREEZE/UNFREEZE)',
+  `biz_order_id` bigint        NOT NULL               COMMENT '关联订单号',
+  `created_at`   datetime      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间(不可变)',
+  PRIMARY KEY (`id`),
+  KEY `idx_user_time` (`user_id`, `created_at`),
+  CONSTRAINT `chk_direction` CHECK (`direction` IN ('IN','OUT','FREEZE','UNFREEZE'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='资产流水表(不可变，禁止UPDATE/DELETE)';
+
+
+-- =============================================
+-- 表：sys_notification 系统通知表
+-- 索引说明：
+--   PRIMARY KEY (id)：主键
+--   idx_user_read_time (user_id, is_read, created_at)：三列联合索引
+--     典型查询为 WHERE user_id=? AND is_read=0 ORDER BY created_at DESC
+--     is_read 放中间而非末尾，因为未读消息是高频过滤条件
+--     三列联合使过滤、排序全部命中索引，无需回表
+-- 软删除策略：用户清除通知走 is_deleted=1，不物理删除
+-- =============================================
+CREATE TABLE `sys_notification` (
+  `id`         bigint       NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `user_id`    bigint       NOT NULL               COMMENT '接收人ID',
+  `type`       varchar(32)  NOT NULL               COMMENT '通知类型',
+  `title`      varchar(128) NOT NULL               COMMENT '标题',
+  `content`    varchar(500) NOT NULL               COMMENT '内容',
+  `is_read`    tinyint(1)   NOT NULL DEFAULT 0     COMMENT '是否已读(0:未读,1:已读)',
+  `related_id` bigint       DEFAULT NULL           COMMENT '关联业务ID',
+  `created_at` datetime     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `is_deleted` tinyint(1)   NOT NULL DEFAULT 0     COMMENT '逻辑删除标志',
+  PRIMARY KEY (`id`),
+  KEY `idx_user_read_time` (`user_id`, `is_read`, `created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='系统通知表';
