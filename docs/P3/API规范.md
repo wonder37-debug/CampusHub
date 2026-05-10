@@ -158,4 +158,36 @@ HTTP 状态码约定
 - 日志与审核：管理员需要操作日志与申诉流程。
 - 如果后续要扩展大规模消息中心，可以增加 cursor 分页，但当前作业版本先保留 page/size 简洁模式。
 
+10) 管理后台
+- 基础说明：管理后台接口需管理员角色（JWT 内包含 `role: admin` 或使用 RBAC 授权），所有 admin 接口返回 403 表示权限不足。
+- URL 示例与说明：
+  - GET /api/v1/admin/demands/pending — 查询待审核需求（分页、筛选）
+  - POST /api/v1/admin/demands/{demandId}/review — 审核需求，body: {action: "approve"|"reject", reason?: string}
+  - GET /api/v1/admin/users — 查询用户列表（分页、关键字 q）
+  - POST /api/v1/admin/users/{userId}/ban — 封禁用户，body 可选 reason
+  - POST /api/v1/admin/users/{userId}/unban — 解封用户
+  - GET /api/v1/admin/stats — 仪表盘统计（日活、订单数、分类别统计）
+- 返回与错误：成功返回通用结构 code=0，data 包含对应对象；错误返回 401/403/500 与 ErrorResponse。建议在 admin 操作记录操作人（operatorId）与原因。
+
+11) 智能匹配与推荐
+- 基础说明：推荐接口分为“为用户推荐需求列表”和“为需求匹配候选服务方”，支持在线反馈与触发重训练。推荐结果包含 `score`（0.0-1.0）、`rank` 与若干 explainability 标签 `reasonTags`。
+- URL 示例与说明：
+  - GET /api/v1/recommendations?userId={id}&page=&size= — 为用户返回推荐需求（分页，size <= 50）
+  - POST /api/v1/recommendations/feedback — 提交用户对推荐结果的反馈（action: click/accept/ignore），用于在线学习
+  - POST /api/v1/demands/{demandId}/matches — 为指定需求生成候选服务方（返回 `user` + `score` 列表）
+  - POST /api/v1/recommendations/retrain — 触发离线重训练（管理员或系统任务调用），返回 202 Accepted
+- 推荐响应示例：
+  {
+    "code":0,
+    "message":"OK",
+    "data":{
+      "items":[{"demandId":"...","score":0.92,"rank":1,"reasonTags":["近","同课程"]}],
+      "page":1,"size":10,"total":123
+    }
+  }
+- 建议：
+  - `score` 采用 0.0-1.0 标准化，便于阈值设定；`rank` 从 1 开始。
+  - 对反馈事件异步入队，做批量训练；关键事件（accept）权重更高。
+  - 对于隐私或位置信息，需明确用户授权与脱敏策略。
+
 结束。

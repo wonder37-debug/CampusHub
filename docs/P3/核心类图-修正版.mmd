@@ -1,0 +1,446 @@
+classDiagram
+direction LR
+
+namespace UserAuth {
+  class UserAccount {
+    +Long id
+    +String uid
+    +String passwordHash
+    +String email
+    +String phoneMasked
+    +String studentNoMasked
+    +String college
+    +UserRole role
+    +AccountStatus status
+    +Boolean canTrade()
+  }
+
+  class VerificationProfile {
+    +Long userId
+    +VerificationType type
+    +Boolean casVerified
+    +Boolean emailVerified
+    +LocalDateTime verifiedAt
+    +Boolean isFullyVerified()
+  }
+
+  class UserProfile {
+    +Long userId
+    +String nickname
+    +String avatarUrl
+    +String campusZone
+    +String majorTag
+    +String anonymousAlias
+    +String displayName(Boolean anonymousMode)
+  }
+
+  class UserIdentityGateway {
+    <<interface>>
+    +UserAccount requireVerifiedUser(Long userId)
+    +UserProfile getProfile(Long userId)
+    +String maskStudentNo(Long userId)
+  }
+
+  class UserRepository {
+    <<interface>>
+    +save(UserAccount user)
+    +findById(Long userId)
+    +findByUid(String uid)
+    +findByStudentNo(String studentNo)
+  }
+
+  class UserApplicationService {
+    +register(RegisterUserCommand cmd)
+    +login(LoginCommand cmd)
+    +updateProfile(UpdateProfileCommand cmd)
+  }
+
+  class AuthController {
+    +register()
+    +login()
+    +getProfile()
+    +updateProfile()
+  }
+
+  class PasswordEncoder {
+    <<interface>>
+    +encode(String rawPassword)
+    +matches(String rawPassword, String encodedPassword)
+  }
+}
+
+namespace OrderHub {
+  class TaskPost {
+    +Long id
+    +Long publisherId
+    +String title
+    +String description
+    +TaskCategory category
+    +String campusZone
+    +Boolean anonymous
+    +BigDecimal rewardCoins
+    +LocalDateTime expireTime
+    +TaskStatus status
+    +publish()
+    +expire()
+    +lockForOrder()
+  }
+
+  class DemandRepository {
+    <<interface>>
+    +save(TaskPost task)
+    +findById(Long taskId)
+    +findPage(DemandQuery query)
+    +findPublishedByPublisher(Long publisherId)
+  }
+
+  class DemandService {
+    +publish(PublishTaskCommand cmd)
+    +list(DemandQuery query)
+    +getDetail(Long taskId)
+    +updateTask(UpdateTaskCommand cmd)
+  }
+
+  class TaskTag {
+    +Long id
+    +Long taskId
+    +TagType tagType
+    +String tagValue
+  }
+
+  class ServiceOrder {
+    +Long id
+    +Long taskId
+    +Long publisherId
+    +Long accepterId
+    +OrderStatus status
+    +LocalDateTime acceptedAt
+    +LocalDateTime completedAt
+    +LocalDateTime confirmedAt
+    +accept()
+    +submitEvidence()
+    +confirm()
+    +openDispute()
+    +autoSettle()
+  }
+
+  class OrderRepository {
+    <<interface>>
+    +save(ServiceOrder order)
+    +findById(Long orderId)
+    +findByTaskId(Long taskId)
+    +findByUser(Long userId)
+  }
+
+  class EvidencePhoto {
+    +Long id
+    +Long orderId
+    +String fileUrl
+    +String checksum
+    +LocalDateTime uploadedAt
+    +Boolean isValid()
+  }
+
+  class Review {
+    +Long id
+    +Long orderId
+    +Long reviewerId
+    +Long revieweeId
+    +Integer score
+    +String comment
+    +LocalDateTime createdAt
+  }
+
+  class DisputeCase {
+    +Long id
+    +Long orderId
+    +Long applicantId
+    +String reason
+    +DisputeStatus status
+    +open()
+    +close()
+  }
+
+  class OrderState {
+    <<interface>>
+    +accept(ServiceOrder order)
+    +submitEvidence(ServiceOrder order)
+    +confirm(ServiceOrder order)
+    +autoSettle(ServiceOrder order)
+    +openDispute(ServiceOrder order)
+  }
+
+  class PendingAcceptanceState
+  class InProgressState
+  class PendingConfirmationState
+  class CompletedState
+  class DisputedState
+  class ExpiredState
+
+  class OrderApplicationService {
+    +publishTask(PublishTaskCommand cmd)
+    +acceptTask(AcceptTaskCommand cmd)
+    +completeOrder(CompleteOrderCommand cmd)
+    +confirmOrder(ConfirmOrderCommand cmd)
+    +submitReview(SubmitReviewCommand cmd)
+  }
+
+  class OrderController {
+    +publishTask()
+    +listDemand()
+    +getDemandDetail()
+    +acceptTask()
+    +getOrderDetail()
+    +submitReview()
+  }
+
+  class SettlementPolicy {
+    <<interface>>
+    +settle(ServiceOrder order)
+  }
+
+  class NormalSettlementPolicy
+  class AutoSettlementPolicy
+
+  class ModerationGateway {
+    <<interface>>
+    +validateTaskContent(String title, String description)
+  }
+
+  class AssetTransferService {
+    <<interface>>
+    +freezeReward(CoinTransferDTO dto)
+    +releaseReward(CoinTransferDTO dto)
+    +refundReward(CoinTransferDTO dto)
+    +applyReview(ReviewDTO dto)
+  }
+
+  class ReviewService {
+    +submitReview(SubmitReviewCommand cmd)
+    +recalculateCredit(Long orderId)
+  }
+
+  class ReviewRepository {
+    <<interface>>
+    +save(Review review)
+    +findByOrderId(Long orderId)
+    +findByRevieweeId(Long userId)
+  }
+
+  class DomainEventPublisher {
+    <<interface>>
+    +publish(Object event)
+  }
+}
+
+namespace AssetLedger {
+  class AssetLedgerService {
+    +freezeReward(CoinTransferDTO dto)
+    +releaseReward(CoinTransferDTO dto)
+    +refundReward(CoinTransferDTO dto)
+    +applyReview(ReviewDTO dto)
+  }
+
+  class WalletAccount {
+    +Long userId
+    +BigDecimal availableBalance
+    +BigDecimal frozenBalance
+    +freeze(BigDecimal amount)
+    +release(BigDecimal amount)
+    +refund(BigDecimal amount)
+  }
+
+  class LedgerEntry {
+    +Long id
+    +Long walletUserId
+    +LedgerType type
+    +BigDecimal amount
+    +String bizOrderNo
+    +String remark
+    +LocalDateTime createdAt
+  }
+
+  class ReputationProfile {
+    +Long userId
+    +Integer campusValue
+    +Double completionRate
+    +Integer reviewCount
+    +updateByReview(Integer score)
+  }
+
+  class ReputationCalculator {
+    <<interface>>
+    +recalculate(ReputationProfile profile, ReviewDTO dto)
+  }
+
+  class WalletRepository {
+    <<interface>>
+    +findByUserId(Long userId)
+    +save(WalletAccount wallet)
+  }
+
+  class LedgerRepository {
+    <<interface>>
+    +save(LedgerEntry entry)
+    +findByBizOrderNo(String bizOrderNo)
+  }
+}
+
+namespace RecFilter {
+  class SensitiveWordRule {
+    +Long id
+    +String keyword
+    +RiskLevel riskLevel
+    +Boolean active
+  }
+
+  class ContentModerationService {
+    +validateTaskContent(String title, String description)
+    +recordViolation(Long userId, String keyword)
+  }
+
+  class SensitiveWordRepository {
+    <<interface>>
+    +findActiveRules()
+    +save(SensitiveWordRule rule)
+  }
+
+  class RecommendationStrategy {
+    <<interface>>
+    +rankTasks(Long userId, List~TaskPost~ tasks)
+  }
+
+  class TagPreferenceStrategy
+  class CampusPriorityStrategy
+
+  class UserPreference {
+    +Long userId
+    +String preferredCategory
+    +String preferredCampusZone
+    +Integer acceptedCount
+    +Integer viewedCount
+  }
+
+  class UserPreferenceRepository {
+    <<interface>>
+    +findByUserId(Long userId)
+    +save(UserPreference preference)
+  }
+
+  class UserActionLog {
+    +Long id
+    +Long userId
+    +String actionType
+    +Long targetId
+    +LocalDateTime createdAt
+  }
+
+  class UserActionLogRepository {
+    <<interface>>
+    +save(UserActionLog log)
+    +countByUserAndCategory(Long userId)
+  }
+
+  class RecommendationService {
+    +recommend(Long userId)
+    +recordView(Long userId, Long demandId)
+    +recordAccept(Long userId, Long demandId)
+  }
+
+  class NotificationMessage {
+    +Long id
+    +Long receiverId
+    +String topic
+    +String content
+    +Boolean read
+    +LocalDateTime createdAt
+  }
+
+  class NotificationDispatcher {
+    +notifyTaskAccepted(Long orderId)
+    +notifyOrderCompleted(Long orderId)
+    +notifyReviewSubmitted(Long reviewId)
+  }
+
+  class NotificationRepository {
+    <<interface>>
+    +save(NotificationMessage notification)
+    +findUnreadByReceiver(Long receiverId)
+    +markAsRead(Long notificationId)
+  }
+
+  class AdminService {
+    +listUsers()
+    +disableUser(Long userId)
+    +approveDemand(Long demandId)
+    +getDashboardStats()
+  }
+}
+
+UserAuth.UserAccount "1" *-- "1" UserAuth.VerificationProfile
+UserAuth.UserAccount "1" *-- "1" UserAuth.UserProfile
+UserAuth.AuthController --> UserAuth.UserApplicationService
+UserAuth.UserApplicationService --> UserAuth.UserRepository
+UserAuth.UserApplicationService --> UserAuth.PasswordEncoder
+UserAuth.UserApplicationService --> UserAuth.UserIdentityGateway
+
+OrderHub.TaskPost "1" o-- "0..*" OrderHub.TaskTag
+OrderHub.TaskPost "1" --> "0..1" OrderHub.ServiceOrder : creates
+OrderHub.DemandService --> OrderHub.DemandRepository
+OrderHub.OrderController --> OrderHub.DemandService
+OrderHub.OrderController --> OrderHub.OrderRepository
+OrderHub.OrderController --> OrderHub.ReviewService
+OrderHub.OrderApplicationService --> OrderHub.DemandRepository
+OrderHub.OrderApplicationService --> OrderHub.OrderRepository
+OrderHub.OrderApplicationService --> OrderHub.ReviewService
+OrderHub.ServiceOrder "1" *-- "1..3" OrderHub.EvidencePhoto
+OrderHub.ServiceOrder "1" o-- "0..2" OrderHub.Review
+OrderHub.ServiceOrder "1" o-- "0..1" OrderHub.DisputeCase
+
+OrderHub.ServiceOrder --> OrderHub.OrderState : currentState
+OrderHub.OrderState <|.. OrderHub.PendingAcceptanceState
+OrderHub.OrderState <|.. OrderHub.InProgressState
+OrderHub.OrderState <|.. OrderHub.PendingConfirmationState
+OrderHub.OrderState <|.. OrderHub.CompletedState
+OrderHub.OrderState <|.. OrderHub.DisputedState
+OrderHub.OrderState <|.. OrderHub.ExpiredState
+
+OrderHub.SettlementPolicy <|.. OrderHub.NormalSettlementPolicy
+OrderHub.SettlementPolicy <|.. OrderHub.AutoSettlementPolicy
+
+OrderHub.OrderApplicationService --> UserAuth.UserIdentityGateway
+OrderHub.OrderApplicationService --> OrderHub.ModerationGateway
+OrderHub.OrderApplicationService --> OrderHub.AssetTransferService
+OrderHub.OrderApplicationService --> OrderHub.DomainEventPublisher
+OrderHub.OrderApplicationService --> OrderHub.SettlementPolicy
+OrderHub.ReviewService --> OrderHub.ReviewRepository
+OrderHub.ReviewService --> OrderHub.AssetTransferService
+
+OrderHub.AssetTransferService <|.. AssetLedger.AssetLedgerService
+AssetLedger.AssetLedgerService --> AssetLedger.WalletAccount
+AssetLedger.AssetLedgerService --> AssetLedger.ReputationCalculator
+AssetLedger.AssetLedgerService --> AssetLedger.WalletRepository
+AssetLedger.AssetLedgerService --> AssetLedger.LedgerRepository
+AssetLedger.WalletAccount "1" o-- "0..*" AssetLedger.LedgerEntry
+AssetLedger.ReputationCalculator ..> OrderHub.Review : input
+AssetLedger.ReputationProfile "1" --> "0..*" OrderHub.Review : derived from
+
+OrderHub.ModerationGateway <|.. RecFilter.ContentModerationService
+RecFilter.ContentModerationService --> RecFilter.SensitiveWordRepository
+RecFilter.ContentModerationService "1" o-- "0..*" RecFilter.SensitiveWordRule
+RecFilter.RecommendationStrategy <|.. RecFilter.TagPreferenceStrategy
+RecFilter.RecommendationStrategy <|.. RecFilter.CampusPriorityStrategy
+RecFilter.RecommendationService --> RecFilter.UserPreferenceRepository
+RecFilter.RecommendationService --> RecFilter.UserActionLogRepository
+RecFilter.RecommendationService --> OrderHub.DemandRepository
+RecFilter.NotificationDispatcher --> RecFilter.NotificationRepository
+RecFilter.NotificationDispatcher "1" o-- "0..*" RecFilter.NotificationMessage
+RecFilter.AdminService --> UserAuth.UserRepository
+RecFilter.AdminService --> OrderHub.DemandRepository
+RecFilter.AdminService --> RecFilter.NotificationRepository
+
+OrderHub.TaskPost --> UserAuth.UserAccount : publisher
+OrderHub.ServiceOrder --> UserAuth.UserAccount : publisher
+OrderHub.ServiceOrder --> UserAuth.UserAccount : accepter
+AssetLedger.WalletAccount --> UserAuth.UserAccount : owner
+AssetLedger.ReputationProfile --> UserAuth.UserAccount : owner

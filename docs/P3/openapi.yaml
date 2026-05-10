@@ -380,12 +380,275 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /recommendations:
+    get:
+      summary: 推荐需求（基于分类/位置/历史行为，返回排序列表）
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: userId
+          schema:
+            type: string
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - in: query
+          name: size
+          schema:
+            type: integer
+            default: 10
+            maximum: 50
+      responses:
+        '200':
+          description: 推荐列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecommendationResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /recommendations/feedback:
+    post:
+      summary: 提交推荐反馈（用于线上学习与评价）
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecommendationFeedback'
+      responses:
+        '200':
+          description: 反馈接收成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse'
+
+  /demands/{demandId}/matches:
+    post:
+      summary: 为指定需求生成候选匹配列表（智能匹配）
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: demandId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                algorithm:
+                  type: string
+                  description: 推荐算法标识（可选）
+                limit:
+                  type: integer
+                  default: 10
+      responses:
+        '200':
+          description: 候选匹配列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MatchListResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /recommendations/retrain:
+    post:
+      summary: 触发推荐模型重训练（管理员权限）
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+      responses:
+        '202':
+          description: 已接受重训练请求
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse'
+        '403':
+          description: 权限不足
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /admin/demands/{demandId}/review:
+    post:
+      summary: 管理员审核需求（通过/拒绝）
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: demandId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action:
+                  type: string
+                  enum: [approve,reject]
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: 审核完成
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DemandResponse'
+        '403':
+          description: 权限不足（需管理员）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /admin/users:
+    get:
+      summary: 管理员查询用户列表
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: q
+          schema:
+            type: string
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - in: query
+          name: size
+          schema:
+            type: integer
+            default: 20
+            maximum: 200
+      responses:
+        '200':
+          description: 用户列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserListResponse'
+
+  /admin/users/{userId}/ban:
+    post:
+      summary: 管理员封禁用户
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: 封禁成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse'
+        '403':
+          description: 权限不足
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /admin/users/{userId}/unban:
+    post:
+      summary: 管理员解封用户
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 解封成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse'
+        '403':
+          description: 权限不足
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /admin/stats:
+    get:
+      summary: 管理员仪表盘统计数据（日活、订单数、分类分布等）
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 统计数据
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminStatsResponse'
+
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
+      description: >-
+        使用 JWT Bearer Token。Token 应包含用户标识与权限信息（例如 `roles` 或 `role` 声明），管理员接口需包含 `admin` 角色。
   schemas:
     StandardResponse:
       type: object
@@ -633,3 +896,119 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/NotificationList'
+    RecommendationItem:
+      type: object
+      properties:
+        demandId:
+          type: string
+        score:
+          type: number
+          description: 推荐得分，范围 0.0-1.0
+        rank:
+          type: integer
+        reasonTags:
+          type: array
+          items:
+            type: string
+        distanceMeters:
+          type: number
+        etaMinutes:
+          type: integer
+        demand:
+          $ref: '#/components/schemas/Demand'
+    RecommendationResponse:
+      allOf:
+        - $ref: '#/components/schemas/StandardResponse'
+      properties:
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/RecommendationItem'
+            page:
+              type: integer
+            size:
+              type: integer
+            total:
+              type: integer
+    RecommendationFeedback:
+      type: object
+      required: [userId,demandId,action]
+      properties:
+        userId:
+          type: string
+        demandId:
+          type: string
+        action:
+          type: string
+          enum: [click,accept,ignore]
+        timestamp:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+    MatchItem:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/UserSummary'
+        score:
+          type: number
+        distanceMeters:
+          type: number
+        etaMinutes:
+          type: integer
+    MatchListResponse:
+      allOf:
+        - $ref: '#/components/schemas/StandardResponse'
+      properties:
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/MatchItem'
+            total:
+              type: integer
+            page:
+              type: integer
+            size:
+              type: integer
+    UserListResponse:
+      allOf:
+        - $ref: '#/components/schemas/StandardResponse'
+      properties:
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/UserSummary'
+            page:
+              type: integer
+            size:
+              type: integer
+            total:
+              type: integer
+    AdminStatsResponse:
+      allOf:
+        - $ref: '#/components/schemas/StandardResponse'
+      properties:
+        data:
+          type: object
+          properties:
+            dau:
+              type: integer
+              description: 日活跃用户数
+            ordersCount:
+              type: integer
+            demandsCount:
+              type: integer
+            categoryDistribution:
+              type: object
+              additionalProperties:
+                type: integer
