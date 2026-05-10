@@ -382,14 +382,10 @@ paths:
 
   /recommendations:
     get:
-      summary: 推荐需求（基于分类/位置/历史行为，返回排序列表）
+      summary: 简单推荐需求（基于分类/位置/历史行为的规则推荐）
       security:
         - bearerAuth: []
       parameters:
-        - in: query
-          name: userId
-          schema:
-            type: string
         - in: query
           name: page
           schema:
@@ -411,91 +407,6 @@ paths:
                 $ref: '#/components/schemas/RecommendationResponse'
         '401':
           description: 未认证
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-  /recommendations/feedback:
-    post:
-      summary: 提交推荐反馈（用于线上学习与评价）
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RecommendationFeedback'
-      responses:
-        '200':
-          description: 反馈接收成功
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/StandardResponse'
-
-  /demands/{demandId}/matches:
-    post:
-      summary: 为指定需求生成候选匹配列表（智能匹配）
-      security:
-        - bearerAuth: []
-      parameters:
-        - in: path
-          name: demandId
-          required: true
-          schema:
-            type: string
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                algorithm:
-                  type: string
-                  description: 推荐算法标识（可选）
-                limit:
-                  type: integer
-                  default: 10
-      responses:
-        '200':
-          description: 候选匹配列表
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MatchListResponse'
-        '401':
-          description: 未认证
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-  /recommendations/retrain:
-    post:
-      summary: 触发推荐模型重训练（管理员权限）
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                reason:
-                  type: string
-      responses:
-        '202':
-          description: 已接受重训练请求
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/StandardResponse'
-        '403':
-          description: 权限不足
           content:
             application/json:
               schema:
@@ -932,50 +843,6 @@ components:
             size:
               type: integer
             total:
-              type: integer
-    RecommendationFeedback:
-      type: object
-      required: [userId,demandId,action]
-      properties:
-        userId:
-          type: string
-        demandId:
-          type: string
-        action:
-          type: string
-          enum: [click,accept,ignore]
-        timestamp:
-          type: string
-          format: date-time
-        metadata:
-          type: object
-    MatchItem:
-      type: object
-      properties:
-        user:
-          $ref: '#/components/schemas/UserSummary'
-        score:
-          type: number
-        distanceMeters:
-          type: number
-        etaMinutes:
-          type: integer
-    MatchListResponse:
-      allOf:
-        - $ref: '#/components/schemas/StandardResponse'
-      properties:
-        data:
-          type: object
-          properties:
-            items:
-              type: array
-              items:
-                $ref: '#/components/schemas/MatchItem'
-            total:
-              type: integer
-            page:
-              type: integer
-            size:
               type: integer
     UserListResponse:
       allOf:

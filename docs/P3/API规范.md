@@ -169,25 +169,22 @@ HTTP 状态码约定
   - GET /api/v1/admin/stats — 仪表盘统计（日活、订单数、分类别统计）
 - 返回与错误：成功返回通用结构 code=0，data 包含对应对象；错误返回 401/403/500 与 ErrorResponse。建议在 admin 操作记录操作人（operatorId）与原因。
 
-11) 智能匹配与推荐
-- 基础说明：推荐接口分为“为用户推荐需求列表”和“为需求匹配候选服务方”，支持在线反馈与触发重训练。推荐结果包含 `score`（0.0-1.0）、`rank` 与若干 explainability 标签 `reasonTags`。
+11) 简单推荐算法
+- 基础说明：当前仅实现简单规则推荐，不做在线反馈、候选匹配或模型重训练。推荐结果基于当前用户的历史发布/接单/收藏、需求分类、位置与时间等规则计算。推荐结果包含 `score`（0.0-1.0）、`rank` 与解释标签 `reasonTags`。
 - URL 示例与说明：
-  - GET /api/v1/recommendations?userId={id}&page=&size= — 为用户返回推荐需求（分页，size <= 50）
-  - POST /api/v1/recommendations/feedback — 提交用户对推荐结果的反馈（action: click/accept/ignore），用于在线学习
-  - POST /api/v1/demands/{demandId}/matches — 为指定需求生成候选服务方（返回 `user` + `score` 列表）
-  - POST /api/v1/recommendations/retrain — 触发离线重训练（管理员或系统任务调用），返回 202 Accepted
+  - GET /api/v1/recommendations?page=&size= — 为当前登录用户返回推荐需求列表（分页，size <= 50）
 - 推荐响应示例：
   {
     "code":0,
     "message":"OK",
     "data":{
-      "items":[{"demandId":"...","score":0.92,"rank":1,"reasonTags":["近","同课程"]}],
+      "items":[{"demandId":"...","score":0.92,"rank":1,"reasonTags":["同分类","距离近"]}],
       "page":1,"size":10,"total":123
     }
   }
 - 建议：
   - `score` 采用 0.0-1.0 标准化，便于阈值设定；`rank` 从 1 开始。
-  - 对反馈事件异步入队，做批量训练；关键事件（accept）权重更高。
-  - 对于隐私或位置信息，需明确用户授权与脱敏策略。
+  - 规则优先级建议为：同分类 > 历史偏好 > 距离 > 时间匹配。
+  - 对于位置信息，需明确用户授权与脱敏策略。
 
 结束。
