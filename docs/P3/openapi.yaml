@@ -1,0 +1,881 @@
+openapi: 3.0.3
+info:
+  title: CampusHub API
+  version: 1.0.0
+  description: API for CampusHub campus mutual-aid platform (subset for P3 deliverable)
+servers:
+  - url: /api/v1
+paths:
+  /auth/register:
+    post:
+      summary: 用户注册
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '200':
+          description: 注册成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          description: 请求参数错误（校验失败）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: 冲突（例如学号已注册）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /auth/login:
+    post:
+      summary: 用户登录，返回 JWT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: 登录成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: 参数校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 认证失败（学号或密码错误）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /demands:
+    post:
+      summary: 发布需求
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DemandCreate'
+      responses:
+        '200':
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DemandResponse'
+        '400':
+          description: 参数校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    get:
+      summary: 浏览需求列表（分页/筛选）
+      parameters:
+        - in: query
+          name: q
+          schema:
+            type: string
+        - in: query
+          name: category
+          schema:
+            type: string
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - in: query
+          name: size
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+        - in: query
+          name: sort
+          schema:
+            type: string
+            enum: [time, distance, reward]
+            default: time
+      responses:
+        '200':
+          description: 列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DemandListResponse'
+        '400':
+          description: 参数校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /demands/{demandId}:
+    get:
+      summary: 需求详情
+      parameters:
+        - in: path
+          name: demandId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DemandResponse'
+        '404':
+          description: 未找到
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /demands/{demandId}/accept:
+    post:
+      summary: 接单，创建订单
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: demandId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                note:
+                  type: string
+                  maxLength: 500
+      responses:
+        '200':
+          description: 订单已创建
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+        '400':
+          description: 参数校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 权限不足（不能接自己发布的需求）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: 冲突（已被接单）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /orders/{orderId}:
+    get:
+      summary: 查看订单详情
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: orderId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 订单详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 权限不足
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 未找到
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /orders/{orderId}/reviews:
+    post:
+      summary: 提交评价
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: orderId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewCreate'
+      responses:
+        '200':
+          description: 评价提交成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewResponse'
+        '400':
+          description: 参数校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 权限不足（非订单参与方或订单未完成）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /notifications:
+    get:
+      summary: 获取消息通知列表
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: unreadOnly
+          schema:
+            type: boolean
+            default: false
+          description: 是否只返回未读消息
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - in: query
+          name: size
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: 消息通知列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationListResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /recommendations:
+    get:
+      summary: 简单推荐需求（基于分类/位置/历史行为的规则推荐）
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - in: query
+          name: size
+          schema:
+            type: integer
+            default: 10
+            maximum: 50
+      responses:
+        '200':
+          description: 推荐列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecommendationResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /admin/demands/{demandId}/review:
+    post:
+      summary: 管理员审核需求（通过/拒绝）
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: demandId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action:
+                  type: string
+                  enum: [approve,reject]
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: 审核完成
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DemandResponse'
+        '403':
+          description: 权限不足（需管理员）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /admin/users:
+    get:
+      summary: 管理员查询用户列表
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: q
+          schema:
+            type: string
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - in: query
+          name: size
+          schema:
+            type: integer
+            default: 20
+            maximum: 200
+      responses:
+        '200':
+          description: 用户列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserListResponse'
+
+  /admin/users/{userId}/ban:
+    post:
+      summary: 管理员封禁用户
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: 封禁成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse'
+        '403':
+          description: 权限不足
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /admin/users/{userId}/unban:
+    post:
+      summary: 管理员解封用户
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 解封成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse'
+        '403':
+          description: 权限不足
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /admin/stats:
+    get:
+      summary: 管理员仪表盘统计数据（日活、订单数、分类分布等）
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 统计数据
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminStatsResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >-
+        使用 JWT Bearer Token。Token 应包含用户标识与权限信息（例如 `roles` 或 `role` 声明），管理员接口需包含 `admin` 角色。
+  schemas:
+    StandardResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: object
+    ErrorResponse:
+      allOf:
+        - $ref: '#/components/schemas/StandardResponse'
+      properties:
+        errors:
+          type: object
+    UserSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        studentId:
+          type: string
+        nickname:
+          type: string
+        avatarUrl:
+          type: string
+    UserResponse:
+      allOf:
+        - $ref: '#/components/schemas/StandardResponse'
+      properties:
+        data:
+          $ref: '#/components/schemas/UserSummary'
+    RegisterRequest:
+      type: object
+      required: [studentId,password]
+      properties:
+        studentId:
+          type: string
+          minLength: 3
+          maxLength: 64
+        password:
+          type: string
+          minLength: 8
+          description: 密码最少 8 字符，建议使用复杂密码
+        nickname:
+          type: string
+          maxLength: 64
+        avatarUrl:
+          type: string
+          format: uri
+    LoginRequest:
+      type: object
+      required: [studentId,password]
+      properties:
+        studentId:
+          type: string
+          minLength: 3
+        password:
+          type: string
+          minLength: 8
+    AuthData:
+      type: object
+      properties:
+        token:
+          type: string
+        expiresIn:
+          type: integer
+        user:
+          $ref: '#/components/schemas/UserSummary'
+    AuthResponse:
+      allOf:
+        - $ref: '#/components/schemas/StandardResponse'
+      properties:
+        data:
+          $ref: '#/components/schemas/AuthData'
+    DemandCreate:
+      type: object
+      required: [title,category]
+      properties:
+        title:
+          type: string
+          minLength: 3
+          maxLength: 200
+        description:
+          type: string
+          maxLength: 2000
+        category:
+          type: string
+          enum: [取快递, 学习辅导, 二手交易, 活动组队, 其他]
+        location:
+          type: string
+          maxLength: 256
+        startTime:
+          type: string
+          format: date-time
+        endTime:
+          type: string
+          format: date-time
+        reward:
+          type: number
+          minimum: 0
+        tags:
+          type: array
+          items:
+            type: string
+          maxItems: 20
+    Demand:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+        location:
+          type: string
+        startTime:
+          type: string
+        endTime:
+          type: string
+        reward:
+          type: number
+        status:
+          type: string
+        creator:
+          $ref: '#/components/schemas/UserSummary'
+    DemandResponse:
+      allOf:
+        - $ref: '#/components/schemas/StandardResponse'
+      properties:
+        data:
+          $ref: '#/components/schemas/Demand'
+    DemandList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Demand'
+        page:
+          type: integer
+        size:
+          type: integer
+        total:
+          type: integer
+    DemandListResponse:
+      allOf:
+        - $ref: '#/components/schemas/StandardResponse'
+      properties:
+        data:
+          $ref: '#/components/schemas/DemandList'
+    Order:
+      type: object
+      properties:
+        orderId:
+          type: string
+        demand:
+          $ref: '#/components/schemas/Demand'
+        provider:
+          $ref: '#/components/schemas/UserSummary'
+        requester:
+          $ref: '#/components/schemas/UserSummary'
+        status:
+          type: string
+        createdAt:
+          type: string
+    OrderResponse:
+      allOf:
+        - $ref: '#/components/schemas/StandardResponse'
+      properties:
+        data:
+          $ref: '#/components/schemas/Order'
+    ReviewCreate:
+      type: object
+      required: [rating]
+      properties:
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+          maxLength: 1000
+    Review:
+      type: object
+      properties:
+        id:
+          type: string
+        orderId:
+          type: string
+        author:
+          $ref: '#/components/schemas/UserSummary'
+        rating:
+          type: integer
+        comment:
+          type: string
+        createdAt:
+          type: string
+    ReviewResponse:
+      allOf:
+        - $ref: '#/components/schemas/StandardResponse'
+      properties:
+        data:
+          $ref: '#/components/schemas/Review'
+    Notification:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          description: 通知类型（接单通知、状态变更通知、评价通知）
+        title:
+          type: string
+        content:
+          type: string
+        isRead:
+          type: boolean
+        createdAt:
+          type: string
+        relatedType:
+          type: string
+        relatedId:
+          type: string
+    NotificationList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Notification'
+        page:
+          type: integer
+        size:
+          type: integer
+        total:
+          type: integer
+    NotificationListResponse:
+      allOf:
+        - $ref: '#/components/schemas/StandardResponse'
+      properties:
+        data:
+          $ref: '#/components/schemas/NotificationList'
+    RecommendationItem:
+      type: object
+      properties:
+        demandId:
+          type: string
+        score:
+          type: number
+          description: 推荐得分，范围 0.0-1.0
+        rank:
+          type: integer
+        reasonTags:
+          type: array
+          items:
+            type: string
+        distanceMeters:
+          type: number
+        etaMinutes:
+          type: integer
+        demand:
+          $ref: '#/components/schemas/Demand'
+    RecommendationResponse:
+      allOf:
+        - $ref: '#/components/schemas/StandardResponse'
+      properties:
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/RecommendationItem'
+            page:
+              type: integer
+            size:
+              type: integer
+            total:
+              type: integer
+    UserListResponse:
+      allOf:
+        - $ref: '#/components/schemas/StandardResponse'
+      properties:
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/UserSummary'
+            page:
+              type: integer
+            size:
+              type: integer
+            total:
+              type: integer
+    AdminStatsResponse:
+      allOf:
+        - $ref: '#/components/schemas/StandardResponse'
+      properties:
+        data:
+          type: object
+          properties:
+            dau:
+              type: integer
+              description: 日活跃用户数
+            ordersCount:
+              type: integer
+            demandsCount:
+              type: integer
+            categoryDistribution:
+              type: object
+              additionalProperties:
+                type: integer
