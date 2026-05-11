@@ -2,14 +2,15 @@
 import { computed, reactive } from 'vue'
 import { RouterLink } from 'vue-router'
 
-import { DEMAND_CATEGORIES, type DemandRecord, type DemandSortMode } from '@/types/campushub'
+import { DEMAND_CATEGORY_OPTIONS, type DemandRecord, type DemandSortMode } from '@/types/campushub'
 import { useCampusHubStore } from '@/stores/campusHub'
-import { formatDateTime, formatMoney, statusToneClass, truncateText } from '@/utils/format'
+import { formatCampusZone, formatDateTime, formatDemandCategory, formatDemandStatus, formatMoney, statusToneClass, truncateText } from '@/utils/format'
 
 const store = useCampusHubStore()
 const filters = reactive({
   q: '',
   category: '',
+  campusZone: '',
   location: '',
   sort: 'recommend' as DemandSortMode,
   page: 1,
@@ -47,9 +48,10 @@ const filteredDemands = computed(() => {
       demand.tags.some((tag) => tag.toLowerCase().includes(keyword))
 
     const categoryMatch = !filters.category || demand.category === filters.category
+    const campusZoneMatch = !filters.campusZone || demand.campusZone === filters.campusZone
     const locationMatch = !location || demand.location.toLowerCase().includes(location)
 
-    return keywordMatch && categoryMatch && locationMatch
+    return keywordMatch && categoryMatch && campusZoneMatch && locationMatch
   })
 
   const sorted = [...matched].sort((left: DemandRecord, right: DemandRecord) => {
@@ -86,8 +88,9 @@ const filteredTotal = computed(() => {
       demand.tags.some((tag) => tag.toLowerCase().includes(keyword))
 
     const categoryMatch = !filters.category || demand.category === filters.category
+    const campusZoneMatch = !filters.campusZone || demand.campusZone === filters.campusZone
     const locationMatch = !location || demand.location.toLowerCase().includes(location)
-    return keywordMatch && categoryMatch && locationMatch
+    return keywordMatch && categoryMatch && campusZoneMatch && locationMatch
   }).length
 })
 
@@ -136,7 +139,16 @@ function resetFilters(): void {
           <label for="demand-category">分类</label>
           <select id="demand-category" v-model="filters.category">
             <option value="">全部分类</option>
-            <option v-for="category in DEMAND_CATEGORIES" :key="category" :value="category">{{ category }}</option>
+            <option v-for="category in DEMAND_CATEGORY_OPTIONS" :key="category" :value="category">{{ formatDemandCategory(category) }}</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="demand-zone">校区</label>
+          <select id="demand-zone" v-model="filters.campusZone">
+            <option value="">全部校区</option>
+            <option value="GULOU">鼓楼校区</option>
+            <option value="XIANLIN">仙林校区</option>
+            <option value="SUZHOU">苏州校区</option>
           </select>
         </div>
         <div class="field">
@@ -157,11 +169,12 @@ function resetFilters(): void {
     </section>
 
     <section class="demand-grid">
-      <article v-for="demand in filteredDemands" :key="demand.id" class="list-card" :class="{ highlight: demand.approvalStatus === '待审核' }">
+      <article v-for="demand in filteredDemands" :key="demand.id" class="list-card" :class="{ highlight: demand.status === 'REVIEWING' }">
         <div class="status-row">
-          <span class="chip" :class="statusToneClass(demand.approvalStatus)">{{ demand.approvalStatus }}</span>
-          <span class="chip" :class="statusToneClass(demand.status)">{{ demand.status }}</span>
-          <span class="chip">{{ demand.category }}</span>
+          <span class="chip" :class="statusToneClass(demand.status)">{{ formatDemandStatus(demand.status) }}</span>
+          <span class="chip">{{ formatDemandCategory(demand.category) }}</span>
+          <span class="chip">{{ formatCampusZone(demand.campusZone) }}</span>
+          <span v-if="demand.anonymous" class="chip is-warning">匿名</span>
         </div>
 
         <div class="card-head">
@@ -182,8 +195,8 @@ function resetFilters(): void {
         <div class="avatar-row">
           <img :src="demand.publisherAvatar" :alt="demand.publisherName" class="avatar" />
           <div>
-            <strong>{{ demand.publisherName }}</strong>
-            <div class="meta">发布者 · {{ demand.publisherId }}</div>
+            <strong>{{ demand.anonymous ? demand.anonymousCode ?? '匿名用户' : demand.publisherName }}</strong>
+            <div class="meta">发布者 · {{ demand.publisherId || '匿名' }}</div>
           </div>
         </div>
 

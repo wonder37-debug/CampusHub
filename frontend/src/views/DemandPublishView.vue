@@ -2,9 +2,9 @@
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
-import { DEMAND_CATEGORIES } from '@/types/campushub'
+import { DEMAND_CATEGORY_OPTIONS, type CampusZone } from '@/types/campushub'
 import { useCampusHubStore } from '@/stores/campusHub'
-import { formatMoney } from '@/utils/format'
+import { campusZoneOptions, formatCampusZone, formatDemandCategory, formatMoney } from '@/utils/format'
 
 const router = useRouter()
 const store = useCampusHubStore()
@@ -14,12 +14,14 @@ const error = ref('')
 const form = reactive({
   title: '',
   description: '',
-  category: '' as '' | (typeof DEMAND_CATEGORIES)[number],
+  category: '' as '' | (typeof DEMAND_CATEGORY_OPTIONS)[number],
+  campusZone: 'XIANLIN' as CampusZone,
   location: '',
   startTime: '',
   endTime: '',
   reward: '10',
-  tags: ''
+  tags: '',
+  anonymous: false
 })
 
 function submitDemand(): void {
@@ -60,7 +62,13 @@ function submitDemand(): void {
           <label for="demand-category">分类</label>
           <select id="demand-category" v-model="form.category">
             <option value="">请选择</option>
-            <option v-for="category in DEMAND_CATEGORIES" :key="category" :value="category">{{ category }}</option>
+            <option v-for="category in DEMAND_CATEGORY_OPTIONS" :key="category" :value="category">{{ formatDemandCategory(category) }}</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="demand-zone">校区</label>
+          <select id="demand-zone" v-model="form.campusZone">
+            <option v-for="zone in campusZoneOptions()" :key="zone.value" :value="zone.value">{{ zone.label }}</option>
           </select>
         </div>
         <div class="field">
@@ -83,6 +91,10 @@ function submitDemand(): void {
           <label for="demand-tags">标签</label>
           <input id="demand-tags" v-model="form.tags" placeholder="近距离, 宿舍楼下" />
         </div>
+        <label class="chip" style="grid-column: 1 / -1; width: fit-content;">
+          <input v-model="form.anonymous" type="checkbox" style="margin: 0 8px 0 0;" />
+          匿名发布
+        </label>
         <button type="button" class="button primary" style="grid-column: 1 / -1;" @click="submitDemand">发布需求</button>
       </div>
 
@@ -95,15 +107,15 @@ function submitDemand(): void {
       <h2 class="section-title">卡片展示</h2>
       <div class="list-card">
         <div class="status-row">
-          <span class="chip is-warning">待审核</span>
-          <span class="chip">{{ form.category || '未选择分类' }}</span>
+          <span class="chip is-warning">{{ form.anonymous ? '匿名发布' : '实名发布' }}</span>
+          <span class="chip">{{ form.category ? formatDemandCategory(form.category as typeof DEMAND_CATEGORY_OPTIONS[number]) : '未选择分类' }}</span>
         </div>
         <div class="card-head">
           <h3>{{ form.title || '需求标题预览' }}</h3>
           <strong>{{ formatMoney(Number(form.reward || 0)) }}</strong>
         </div>
         <p>{{ form.description || '这里会显示需求描述与执行细节。' }}</p>
-        <div class="meta">{{ form.location || '未填写地点' }}</div>
+        <div class="meta">{{ formatCampusZone(form.campusZone) }} · {{ form.location || '未填写地点' }}</div>
         <div class="tag-row">
           <span v-for="tag in form.tags.split(/[，,]/).filter(Boolean)" :key="tag" class="badge is-neutral">{{ tag.trim() }}</span>
         </div>
@@ -116,7 +128,7 @@ function submitDemand(): void {
         </div>
         <div class="list-card">
           <strong>审核策略</strong>
-          <p>当前演示态会将普通用户发布的需求标记为“待审核”，管理员可在后台页一键通过。</p>
+          <p>当前演示态会将普通用户发布的需求标记为“审核中”，管理员通过后进入“待接单”。</p>
         </div>
       </div>
     </section>

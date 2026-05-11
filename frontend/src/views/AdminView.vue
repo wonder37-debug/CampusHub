@@ -2,13 +2,13 @@
 import { computed, ref } from 'vue'
 
 import { useCampusHubStore } from '@/stores/campusHub'
-import { formatScore, statusToneClass } from '@/utils/format'
+import { formatDemandCategory, formatDemandStatus, formatScore, formatUserRole, formatUserStatus, statusToneClass } from '@/utils/format'
 
 const store = useCampusHubStore()
 const message = ref('')
 const error = ref('')
 
-const isAdmin = computed(() => store.currentUser?.role === 'admin')
+const isAdmin = computed(() => store.currentUser?.role === 'ADMIN')
 
 function approveDemand(demandId: string): void {
   try {
@@ -60,8 +60,8 @@ function rejectDemand(demandId: string): void {
         <div v-if="store.pendingApprovals.length" class="section-grid">
           <div v-for="demand in store.pendingApprovals" :key="demand.id" class="list-card">
             <div class="status-row">
-              <span class="chip" :class="statusToneClass(demand.approvalStatus)">{{ demand.approvalStatus }}</span>
-              <span class="chip">{{ demand.category }}</span>
+              <span class="chip" :class="statusToneClass(demand.status)">{{ formatDemandStatus(demand.status) }}</span>
+              <span class="chip">{{ formatDemandCategory(demand.category) }}</span>
             </div>
             <div class="card-head">
               <h3>{{ demand.title }}</h3>
@@ -91,9 +91,10 @@ function rejectDemand(demandId: string): void {
               <tr>
                 <th>用户</th>
                 <th>学号</th>
-                <th>学院</th>
+                <th>邮箱</th>
                 <th>信用分</th>
                 <th>角色</th>
+                <th>状态</th>
               </tr>
             </thead>
             <tbody>
@@ -105,9 +106,10 @@ function rejectDemand(demandId: string): void {
                   </div>
                 </td>
                 <td>{{ user.studentId }}</td>
-                <td>{{ user.college }}</td>
+                <td>{{ user.email }}</td>
                 <td>{{ formatScore(user.creditScore) }}</td>
-                <td><span class="chip" :class="user.role === 'admin' ? 'is-neutral' : 'is-success'">{{ user.role === 'admin' ? '管理员' : '学生' }}</span></td>
+                <td><span class="chip" :class="user.role === 'ADMIN' ? 'is-neutral' : 'is-success'">{{ formatUserRole(user.role) }}</span></td>
+                <td><span class="chip" :class="statusToneClass(user.status)">{{ formatUserStatus(user.status) }}</span></td>
               </tr>
             </tbody>
           </table>

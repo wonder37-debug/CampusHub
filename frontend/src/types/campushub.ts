@@ -1,23 +1,29 @@
-export const DEMAND_CATEGORIES = ['取快递', '学习辅导', '二手交易', '活动组队', '其他'] as const
+export const DEMAND_CATEGORY_OPTIONS = ['EXPRESS', 'STUDY_TUTORING', 'SECOND_HAND', 'TEAM_UP', 'OTHER'] as const
+export const CAMPUS_ZONE_OPTIONS = ['GULOU', 'XIANLIN', 'SUZHOU'] as const
 export const DEMAND_SORT_MODES = ['time', 'distance', 'reward', 'recommend'] as const
+export const USER_ROLE_OPTIONS = ['USER', 'ADMIN'] as const
+export const USER_STATUS_OPTIONS = ['ACTIVE', 'BANNED'] as const
+export const DEMAND_STATUS_OPTIONS = ['PENDING', 'REVIEWING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'] as const
+export const ORDER_STATUS_OPTIONS = ['ACCEPTED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'] as const
+export const NOTIFICATION_TYPE_OPTIONS = ['ORDER_ACCEPTED', 'STATUS_CHANGED', 'REVIEW_RECEIVED'] as const
 
-export type DemandCategory = (typeof DEMAND_CATEGORIES)[number]
+export type DemandCategory = (typeof DEMAND_CATEGORY_OPTIONS)[number]
+export type CampusZone = (typeof CAMPUS_ZONE_OPTIONS)[number]
 export type DemandSortMode = (typeof DEMAND_SORT_MODES)[number]
-export type UserRole = 'student' | 'admin'
-export type DemandApprovalStatus = '待审核' | '已通过' | '已拒绝'
-export type DemandStatus = '开放中' | '已接单' | '进行中' | '已完成' | '已关闭'
-export type OrderStatus = '已接单' | '进行中' | '已完成' | '已取消'
-export type NotificationType = '订单' | '需求' | '评价' | '系统'
+export type UserRole = (typeof USER_ROLE_OPTIONS)[number]
+export type UserStatus = (typeof USER_STATUS_OPTIONS)[number]
+export type DemandStatus = (typeof DEMAND_STATUS_OPTIONS)[number]
+export type OrderStatus = (typeof ORDER_STATUS_OPTIONS)[number]
+export type NotificationType = (typeof NOTIFICATION_TYPE_OPTIONS)[number]
 
 export interface PublicUser {
   id: string
   studentId: string
   email: string
   nickname: string
-  college: string
-  phone: string
   creditScore: number
   role: UserRole
+  status: UserStatus
   avatarUrl: string
 }
 
@@ -30,17 +36,20 @@ export interface DemandRecord {
   title: string
   description: string
   category: DemandCategory
+  campusZone: CampusZone
   location: string
   startTime: string
   endTime: string
   reward: number
   status: DemandStatus
-  approvalStatus: DemandApprovalStatus
+  anonymous: boolean
+  anonymousCode: string | null
   publisherId: string
   publisherName: string
   publisherAvatar: string
   tags: string[]
   createdAt: string
+  updatedAt: string
   distanceKm: number
 }
 
@@ -61,7 +70,10 @@ export interface OrderRecord {
   serviceProviderAvatar: string
   status: OrderStatus
   note: string
+  proofSubmitted: boolean
+  proofImageCount: number
   createdAt: string
+  updatedAt: string
   completedAt: string
   timeline: OrderTimelineEntry[]
 }
@@ -94,8 +106,6 @@ export interface AuthFormInput {
   email?: string
   verificationCode?: string
   nickname?: string
-  college?: string
-  phone?: string
   avatarUrl?: string
 }
 
@@ -110,17 +120,17 @@ export interface DemandFormInput {
   title: string
   description: string
   category: DemandCategory | ''
+  campusZone: CampusZone | ''
   location: string
   startTime: string
   endTime: string
   reward: string
   tags: string
+  anonymous: boolean
 }
 
 export interface ProfilePatchInput {
   nickname: string
-  college: string
-  phone: string
   avatarUrl: string
 }
 
@@ -135,4 +145,9 @@ export interface DashboardSummary {
 export interface CategoryStat {
   category: DemandCategory
   total: number
+}
+
+export interface LabelOption<T extends string = string> {
+  value: T
+  label: string
 }

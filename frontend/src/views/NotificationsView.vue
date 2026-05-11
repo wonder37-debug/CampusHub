@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 
 import { useCampusHubStore } from '@/stores/campusHub'
-import { formatDateTime, statusToneClass } from '@/utils/format'
+import { formatDateTime, formatNotificationType, statusToneClass } from '@/utils/format'
 
 const store = useCampusHubStore()
 const unreadOnly = ref(false)
@@ -34,7 +34,7 @@ const notifications = computed(() => {
     <section class="notification-grid">
       <article v-for="notification in notifications" :key="notification.id" class="list-card">
         <div class="status-row">
-          <span class="chip" :class="statusToneClass(notification.type)">{{ notification.type }}</span>
+          <span class="chip" :class="statusToneClass(notification.type)">{{ formatNotificationType(notification.type) }}</span>
           <span class="chip" :class="notification.isRead ? 'is-success' : 'is-warning'">
             {{ notification.isRead ? '已读' : '未读' }}
           </span>

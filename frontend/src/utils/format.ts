@@ -1,3 +1,19 @@
+import {
+  CAMPUS_ZONE_OPTIONS,
+  DEMAND_CATEGORY_OPTIONS,
+  NOTIFICATION_TYPE_OPTIONS,
+  ORDER_STATUS_OPTIONS,
+  USER_ROLE_OPTIONS,
+  USER_STATUS_OPTIONS,
+  type CampusZone,
+  type DemandCategory,
+  type DemandStatus,
+  type NotificationType,
+  type OrderStatus,
+  type UserRole,
+  type UserStatus
+} from '@/types/campushub'
+
 export function formatDateTime(value: string): string {
   if (!value) {
     return '未填写'
@@ -42,19 +58,133 @@ export function formatScore(value: number): string {
 }
 
 export function statusToneClass(value: string): string {
-  if (value.includes('开放') || value.includes('通过') || value.includes('已完成')) {
-    return 'is-success'
-  }
+  const normalized = value.toUpperCase()
 
-  if (value.includes('待') || value.includes('进行中') || value.includes('已接单')) {
+  if (
+    normalized.includes('PENDING') ||
+    normalized.includes('REVIEWING') ||
+    normalized.includes('IN_PROGRESS') ||
+    normalized.includes('ACTIVE')
+  ) {
     return 'is-warning'
   }
 
-  if (value.includes('拒绝') || value.includes('取消') || value.includes('关闭')) {
+  if (normalized.includes('COMPLETED') || normalized.includes('APPROVED')) {
+    return 'is-success'
+  }
+
+  if (normalized.includes('CANCELLED') || normalized.includes('BANNED') || normalized.includes('REJECT')) {
     return 'is-danger'
   }
 
   return 'is-neutral'
+}
+
+export function formatDemandCategory(category: DemandCategory): string {
+  switch (category) {
+    case 'EXPRESS':
+      return '取快递'
+    case 'STUDY_TUTORING':
+      return '学习辅导'
+    case 'SECOND_HAND':
+      return '二手交易'
+    case 'TEAM_UP':
+      return '活动组队'
+    default:
+      return '其他'
+  }
+}
+
+export function formatCampusZone(zone: CampusZone): string {
+  switch (zone) {
+    case 'GULOU':
+      return '鼓楼校区'
+    case 'XIANLIN':
+      return '仙林校区'
+    case 'SUZHOU':
+      return '苏州校区'
+  }
+}
+
+export function formatDemandStatus(status: DemandStatus): string {
+  switch (status) {
+    case 'PENDING':
+      return '待接单'
+    case 'REVIEWING':
+      return '审核中'
+    case 'IN_PROGRESS':
+      return '进行中'
+    case 'COMPLETED':
+      return '已完成'
+    case 'CANCELLED':
+      return '已取消'
+  }
+}
+
+export function formatOrderStatus(status: OrderStatus): string {
+  switch (status) {
+    case 'ACCEPTED':
+      return '已接单'
+    case 'IN_PROGRESS':
+      return '进行中'
+    case 'COMPLETED':
+      return '已完成'
+    case 'CANCELLED':
+      return '已取消'
+  }
+}
+
+export function formatUserRole(role: UserRole): string {
+  switch (role) {
+    case 'ADMIN':
+      return '管理员'
+    case 'USER':
+      return '学生'
+  }
+}
+
+export function formatUserStatus(status: UserStatus): string {
+  switch (status) {
+    case 'ACTIVE':
+      return '正常'
+    case 'BANNED':
+      return '已封禁'
+  }
+}
+
+export function formatNotificationType(type: NotificationType): string {
+  switch (type) {
+    case 'ORDER_ACCEPTED':
+      return '订单接单'
+    case 'STATUS_CHANGED':
+      return '状态变更'
+    case 'REVIEW_RECEIVED':
+      return '收到评价'
+  }
+}
+
+export function categoryOptions(): Array<{ value: DemandCategory; label: string }> {
+  return DEMAND_CATEGORY_OPTIONS.map((value) => ({ value, label: formatDemandCategory(value) }))
+}
+
+export function campusZoneOptions(): Array<{ value: CampusZone; label: string }> {
+  return CAMPUS_ZONE_OPTIONS.map((value) => ({ value, label: formatCampusZone(value) }))
+}
+
+export function roleOptions(): Array<{ value: UserRole; label: string }> {
+  return USER_ROLE_OPTIONS.map((value) => ({ value, label: formatUserRole(value) }))
+}
+
+export function statusOptions(): Array<{ value: UserStatus; label: string }> {
+  return USER_STATUS_OPTIONS.map((value) => ({ value, label: formatUserStatus(value) }))
+}
+
+export function orderStatusOptions(): Array<{ value: OrderStatus; label: string }> {
+  return ORDER_STATUS_OPTIONS.map((value) => ({ value, label: formatOrderStatus(value) }))
+}
+
+export function notificationTypeOptions(): Array<{ value: NotificationType; label: string }> {
+  return NOTIFICATION_TYPE_OPTIONS.map((value) => ({ value, label: formatNotificationType(value) }))
 }
 
 export function truncateText(value: string, length: number): string {

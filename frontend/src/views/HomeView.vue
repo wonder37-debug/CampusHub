@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 
 import { useCampusHubStore } from '@/stores/campusHub'
-import { formatDateTime, formatMoney, formatScore, statusToneClass, truncateText } from '@/utils/format'
+import { formatCampusZone, formatDateTime, formatDemandCategory, formatDemandStatus, formatMoney, formatScore, formatUserRole, statusToneClass, truncateText } from '@/utils/format'
 
 const store = useCampusHubStore()
 
@@ -34,6 +34,10 @@ const recentNotifications = computed(() => store.currentUserNotifications.slice(
             <strong>{{ store.currentUser?.nickname ?? '演示访客' }}</strong>
           </div>
           <div class="mini-stat">
+            <span class="subtle">角色</span>
+            <strong>{{ store.currentUser ? formatUserRole(store.currentUser.role) : '访客' }}</strong>
+          </div>
+          <div class="mini-stat">
             <span class="subtle">信用分</span>
             <strong>{{ formatScore(store.currentUser?.creditScore ?? store.dashboardSummary.averageCredit) }}</strong>
           </div>
@@ -62,7 +66,7 @@ const recentNotifications = computed(() => store.currentUserNotifications.slice(
         <div class="metric">
           <span>管理员待审核</span>
           <strong>{{ store.dashboardSummary.pendingApprovals }}</strong>
-          <span class="muted">对应 P4 管理后台需求审核</span>
+          <span class="muted">对应 P4 管理后台的 REVIEWING 队列</span>
         </div>
         <div class="metric">
           <span>平均信用分</span>
@@ -118,8 +122,8 @@ const recentNotifications = computed(() => store.currentUserNotifications.slice(
         <div class="section-grid">
           <div v-for="demand in featuredDemands" :key="demand.id" class="list-card">
             <div class="status-row">
-              <span class="chip" :class="statusToneClass(demand.approvalStatus)">{{ demand.approvalStatus }}</span>
-              <span class="chip">{{ demand.category }}</span>
+              <span class="chip" :class="statusToneClass(demand.status)">{{ formatDemandStatus(demand.status) }}</span>
+              <span class="chip">{{ formatDemandCategory(demand.category) }}</span>
             </div>
             <div class="card-head">
               <h3>{{ demand.title }}</h3>
@@ -127,7 +131,7 @@ const recentNotifications = computed(() => store.currentUserNotifications.slice(
             </div>
             <p>{{ truncateText(demand.description, 72) }}</p>
             <div class="meta">
-              {{ demand.location }} · {{ formatDateTime(demand.startTime) }}
+              {{ formatCampusZone(demand.campusZone) }} · {{ demand.location }} · {{ formatDateTime(demand.startTime) }}
             </div>
           </div>
         </div>

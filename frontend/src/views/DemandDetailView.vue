@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
 
 import { useCampusHubStore } from '@/stores/campusHub'
-import { formatDateTime, formatMoney, formatScore, statusToneClass } from '@/utils/format'
+import { formatCampusZone, formatDateTime, formatDemandCategory, formatDemandStatus, formatMoney, formatOrderStatus, formatScore, statusToneClass } from '@/utils/format'
 
 const route = useRoute()
 const store = useCampusHubStore()
@@ -81,9 +81,10 @@ function submitReview(): void {
   <div v-if="demand" class="page-grid two-column">
     <section class="panel">
       <div class="status-row">
-        <span class="chip" :class="statusToneClass(demand.approvalStatus)">{{ demand.approvalStatus }}</span>
-        <span class="chip" :class="statusToneClass(demand.status)">{{ demand.status }}</span>
-        <span class="chip">{{ demand.category }}</span>
+        <span class="chip" :class="statusToneClass(demand.status)">{{ formatDemandStatus(demand.status) }}</span>
+        <span class="chip">{{ formatDemandCategory(demand.category) }}</span>
+        <span class="chip">{{ formatCampusZone(demand.campusZone) }}</span>
+        <span v-if="demand.anonymous" class="chip is-warning">匿名</span>
       </div>
 
       <div class="page-head">
@@ -98,10 +99,15 @@ function submitReview(): void {
       <div class="avatar-row">
         <img :src="demand.publisherAvatar" :alt="demand.publisherName" class="avatar large" />
         <div>
-          <strong>{{ demand.publisherName }}</strong>
-          <p class="subtle">发布者编号 {{ demand.publisherId }} · {{ formatScore(store.getUserById(demand.publisherId)?.creditScore ?? 0) }}</p>
+          <strong>{{ demand.anonymous ? demand.anonymousCode ?? '匿名发布' : demand.publisherName }}</strong>
+          <p class="subtle">发布者编号 {{ demand.publisherId || '匿名' }} · {{ formatScore(store.getUserById(demand.publisherId || '')?.creditScore ?? 0) }}</p>
           <p class="meta">{{ demand.location }} · {{ formatDateTime(demand.createdAt) }}</p>
         </div>
+      </div>
+
+      <div class="tag-row">
+        <span class="badge is-neutral">{{ formatCampusZone(demand.campusZone) }}</span>
+        <span class="badge is-neutral">{{ demand.anonymous ? '匿名发布' : '实名发布' }}</span>
       </div>
 
       <div class="tag-row">
@@ -116,7 +122,7 @@ function submitReview(): void {
         </div>
         <div class="card-actions">
           <button
-            v-if="demand.status === '开放中' && demand.approvalStatus === '已通过' && store.currentUser?.id !== demand.publisherId"
+            v-if="demand.status === 'PENDING' && store.currentUser?.id !== demand.publisherId"
             type="button"
             class="button primary"
             @click="acceptCurrentDemand"
@@ -125,8 +131,8 @@ function submitReview(): void {
           </button>
           <span v-else class="chip is-warning">当前需求暂时不可接单</span>
 
-          <button v-if="relatedOrder?.status === '已接单'" type="button" class="button secondary" @click="startOrder">开始执行</button>
-          <button v-if="relatedOrder?.status === '进行中'" type="button" class="button secondary" @click="completeOrder">完成确认</button>
+          <button v-if="relatedOrder?.status === 'ACCEPTED'" type="button" class="button secondary" @click="startOrder">开始执行</button>
+          <button v-if="relatedOrder?.status === 'IN_PROGRESS'" type="button" class="button secondary" @click="completeOrder">完成确认</button>
         </div>
       </div>
 
@@ -141,7 +147,7 @@ function submitReview(): void {
       <div v-if="relatedOrder" class="section-grid">
         <div class="list-card">
           <div class="status-row">
-            <span class="chip" :class="statusToneClass(relatedOrder.status)">{{ relatedOrder.status }}</span>
+            <span class="chip" :class="statusToneClass(relatedOrder.status)">{{ formatOrderStatus(relatedOrder.status) }}</span>
             <span class="chip">订单 {{ relatedOrder.id }}</span>
           </div>
           <div class="avatar-row">
@@ -164,7 +170,7 @@ function submitReview(): void {
           </div>
         </div>
 
-        <div v-if="relatedOrder.status === '已完成'" class="list-card">
+        <div v-if="relatedOrder.status === 'COMPLETED'" class="list-card">
           <strong>提交评价</strong>
           <div class="field">
             <label for="review-rating">评分</label>

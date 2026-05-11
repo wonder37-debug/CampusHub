@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 
 import { useCampusHubStore } from '@/stores/campusHub'
+import { formatUserRole } from '@/utils/format'
 
 const route = useRoute()
 const store = useCampusHubStore()
@@ -23,7 +24,7 @@ const roleLabel = computed(() => {
     return '未登录'
   }
 
-  return store.currentUser.role === 'admin' ? '管理员' : '学生'
+  return formatUserRole(store.currentUser.role)
 })
 
 function switchAccount(userId: string): void {

@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 
 import { useCampusHubStore } from '@/stores/campusHub'
-import { formatDateTime, statusToneClass } from '@/utils/format'
+import { formatDateTime, formatOrderStatus, statusToneClass } from '@/utils/format'
 
 const store = useCampusHubStore()
 const activeFilter = ref<'all' | 'requester' | 'provider'>('all')
@@ -82,7 +82,7 @@ function sendReview(): void {
     <section class="order-grid">
       <article v-for="order in orders" :key="order.id" class="list-card">
         <div class="status-row">
-          <span class="chip" :class="statusToneClass(order.status)">{{ order.status }}</span>
+          <span class="chip" :class="statusToneClass(order.status)">{{ formatOrderStatus(order.status) }}</span>
           <span class="chip">{{ order.id }}</span>
         </div>
 
@@ -106,6 +106,7 @@ function sendReview(): void {
         </div>
 
         <p>{{ order.note || '暂无留言' }}</p>
+        <div class="meta">凭证提交：{{ order.proofSubmitted ? `${order.proofImageCount} 张图片` : '未提交' }}</div>
 
         <div class="timeline">
           <div v-for="entry in order.timeline" :key="`${order.id}-${entry.at}-${entry.label}`" class="timeline-item">
@@ -115,10 +116,10 @@ function sendReview(): void {
         </div>
 
         <div class="card-actions">
-          <button v-if="order.status === '已接单' && store.currentUser?.id === order.serviceProviderId" type="button" class="button secondary" @click="beginOrder(order.id)">开始执行</button>
-          <button v-if="order.status === '进行中' && store.currentUser?.id === order.serviceProviderId" type="button" class="button primary" @click="finishOrder(order.id)">完成确认</button>
+          <button v-if="order.status === 'ACCEPTED' && store.currentUser?.id === order.serviceProviderId" type="button" class="button secondary" @click="beginOrder(order.id)">开始执行</button>
+          <button v-if="order.status === 'IN_PROGRESS' && store.currentUser?.id === order.serviceProviderId" type="button" class="button primary" @click="finishOrder(order.id)">完成确认</button>
           <button
-            v-if="order.status === '已完成'"
+            v-if="order.status === 'COMPLETED'"
             type="button"
             class="button secondary"
             @click="reviewOrderId = order.id"
@@ -137,7 +138,7 @@ function sendReview(): void {
           <label for="order-review-id">订单</label>
           <select id="order-review-id" v-model="reviewOrderId">
             <option value="">请选择订单</option>
-            <option v-for="order in orders.filter((item) => item.status === '已完成')" :key="order.id" :value="order.id">{{ order.demandTitle }} · {{ order.id }}</option>
+            <option v-for="order in orders.filter((item) => item.status === 'COMPLETED')" :key="order.id" :value="order.id">{{ order.demandTitle }} · {{ order.id }}</option>
           </select>
         </div>
         <div class="field">
@@ -161,9 +162,9 @@ function sendReview(): void {
         <p class="eyebrow">流程说明</p>
         <h2 class="section-title">与 P4 看板一致的按钮策略</h2>
         <div class="timeline">
-          <div class="timeline-item"><span>已接单</span><span>显示开始执行</span></div>
-          <div class="timeline-item"><span>进行中</span><span>显示完成确认</span></div>
-          <div class="timeline-item"><span>已完成</span><span>允许评价提交</span></div>
+          <div class="timeline-item"><span>ACCEPTED</span><span>显示开始执行</span></div>
+          <div class="timeline-item"><span>IN_PROGRESS</span><span>显示完成确认</span></div>
+          <div class="timeline-item"><span>COMPLETED</span><span>允许评价提交</span></div>
         </div>
       </article>
     </section>

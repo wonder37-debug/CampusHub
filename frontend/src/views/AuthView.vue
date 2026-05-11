@@ -2,6 +2,7 @@
 import { computed, reactive, ref } from 'vue'
 
 import { useCampusHubStore } from '@/stores/campusHub'
+import { formatUserRole, formatUserStatus } from '@/utils/format'
 
 const store = useCampusHubStore()
 const activeTab = ref<'login' | 'register'>('login')
@@ -23,8 +24,6 @@ const registerForm = reactive({
   email: '',
   verificationCode: '',
   nickname: '',
-  college: '',
-  phone: '',
   avatarUrl: ''
 })
 
@@ -139,7 +138,7 @@ function submitRegister(): void {
         <div class="field" style="grid-column: 1 / -1;">
           <label for="register-email">邮箱</label>
           <input id="register-email" v-model="registerForm.email" type="email" placeholder="请输入接收验证码的邮箱" />
-          <span class="input-help">验证码会从平台主邮箱发送到此邮箱，当前为前端演示版。</span>
+          <span class="input-help">当前后端的邮箱验证码接口尚未落地，前端会先用演示仓库模拟发送与校验。</span>
         </div>
         <div class="field" style="grid-column: 1 / -1;">
           <label for="register-code">邮箱验证码</label>
@@ -154,14 +153,6 @@ function submitRegister(): void {
         <div class="field">
           <label for="register-nickname">昵称</label>
           <input id="register-nickname" v-model="registerForm.nickname" placeholder="你的校园昵称" />
-        </div>
-        <div class="field">
-          <label for="register-college">学院</label>
-          <input id="register-college" v-model="registerForm.college" placeholder="所在学院" />
-        </div>
-        <div class="field">
-          <label for="register-phone">手机号</label>
-          <input id="register-phone" v-model="registerForm.phone" placeholder="用于联系" />
         </div>
         <div class="field">
           <label for="register-avatar">头像链接</label>
@@ -186,9 +177,10 @@ function submitRegister(): void {
         <img :src="currentUser.avatarUrl" :alt="currentUser.nickname" class="avatar large" />
         <div>
           <h3>{{ currentUser.nickname }}</h3>
-          <p class="subtle">{{ currentUser.studentId }} · {{ currentUser.college }}</p>
+          <p class="subtle">{{ currentUser.studentId }} · {{ currentUser.email }}</p>
           <div class="stats-row">
-            <span class="chip is-neutral">{{ currentUser.role === 'admin' ? '管理员' : '学生' }}</span>
+            <span class="chip is-neutral">{{ formatUserRole(currentUser.role) }}</span>
+            <span class="chip is-success">{{ formatUserStatus(currentUser.status) }}</span>
             <span class="chip is-success">信用分 {{ currentUser.creditScore }}</span>
           </div>
         </div>

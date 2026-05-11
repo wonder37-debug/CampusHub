@@ -2,7 +2,7 @@
 import { computed, reactive, ref } from 'vue'
 
 import { useCampusHubStore } from '@/stores/campusHub'
-import { formatDateTime, formatScore } from '@/utils/format'
+import { formatDateTime, formatScore, formatUserRole, formatUserStatus } from '@/utils/format'
 
 const store = useCampusHubStore()
 const message = ref('')
@@ -10,8 +10,6 @@ const error = ref('')
 
 const profileForm = reactive({
   nickname: store.currentUser?.nickname ?? '',
-  college: store.currentUser?.college ?? '',
-  phone: store.currentUser?.phone ?? '',
   avatarUrl: store.currentUser?.avatarUrl ?? ''
 })
 
@@ -39,9 +37,10 @@ function updateProfile(): void {
         <div>
           <p class="eyebrow">USR-05 / REV-05</p>
           <h1 class="page-title">{{ store.currentUser.nickname }}</h1>
-          <p class="page-summary">{{ store.currentUser.studentId }} · {{ store.currentUser.college }}</p>
+          <p class="page-summary">{{ store.currentUser.studentId }} · {{ store.currentUser.email }}</p>
           <div class="stats-row">
-            <span class="chip is-neutral">{{ store.currentUser.role === 'admin' ? '管理员' : '学生' }}</span>
+            <span class="chip is-neutral">{{ formatUserRole(store.currentUser.role) }}</span>
+            <span class="chip is-neutral">{{ formatUserStatus(store.currentUser.status) }}</span>
             <span class="chip is-success">{{ formatScore(store.currentUser.creditScore) }}</span>
           </div>
         </div>
@@ -58,14 +57,6 @@ function updateProfile(): void {
         <div class="field">
           <label for="profile-nickname">昵称</label>
           <input id="profile-nickname" v-model="profileForm.nickname" />
-        </div>
-        <div class="field">
-          <label for="profile-college">学院</label>
-          <input id="profile-college" v-model="profileForm.college" />
-        </div>
-        <div class="field">
-          <label for="profile-phone">手机号</label>
-          <input id="profile-phone" v-model="profileForm.phone" />
         </div>
         <div class="field">
           <label for="profile-avatar">头像链接</label>
