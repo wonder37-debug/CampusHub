@@ -1,142 +1,115 @@
 -- =============================================
--- 表：sys_user 用户基础表
--- 索引说明：
---   PRIMARY KEY (id)：主键，所有外键关联基础
---   uk_student_id：唯一索引，防止并发注册重复学号
---   idx_is_deleted：软删除过滤索引，加速全局查询
--- 余额设计：
---   balance 存可用余额，frozen_balance 存冻结金额
---   查余额直接 SELECT balance，无需聚合计算
---   所有余额变更必须在 @Transactional 内同步写 ast_ledger
+-- 1. 用户基础表 (sys_user)
+--
+-- 【索引说明】
+-- 1. 索引策略：保留 PRIMARY KEY (id) 提供基础聚簇索引。
+-- 2. 业务底层防线：设立 UNIQUE KEY (student_id)。在不依赖复杂复合索引的前提下，
+--    这是唯一且必须的物理级防线，从数据库底层阻断高并发测试时的重复注册问题。
+-- 3. 最小必要约束：对 role 和 status 开启 CHECK 约束，防止应用层透传非法脏数据。
 -- =============================================
 CREATE TABLE `sys_user` (
-  `id`             bigint       NOT NULL AUTO_INCREMENT COMMENT '主键',
-  `student_id`     varchar(32)  NOT NULL                COMMENT '学号',
-  `password_hash`  varchar(255) NOT NULL                COMMENT 'BCrypt哈希密码',
-  `nickname`       varchar(64)  DEFAULT '匿名校友'      COMMENT '昵称',
-  `avatar_url`     varchar(255) DEFAULT NULL            COMMENT '头像地址',
-  `credit_score`   int          NOT NULL DEFAULT 100    COMMENT '信用分',
-  `balance`        decimal(10,2) NOT NULL DEFAULT '0.00' COMMENT '可用余额',
+  `id` bigint NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `student_id` varchar(32) NOT NULL UNIQUE COMMENT '学号(唯一标识)',
+  `password_hash` varchar(255) NOT NULL COMMENT '哈希密码',
+  `nickname` varchar(64) DEFAULT '匿名校友',
+  `avatar_url` varchar(255) DEFAULT NULL,
+  `role` varchar(16) NOT NULL DEFAULT 'USER' COMMENT 'USER/ADMIN',
+  `status` varchar(16) NOT NULL DEFAULT 'ACTIVE' COMMENT 'ACTIVE/BANNED',
+  `credit_score` int NOT NULL DEFAULT 100 COMMENT '信用分',
+  `balance` decimal(10,2) NOT NULL DEFAULT '0.00' COMMENT '可用余额',
   `frozen_balance` decimal(10,2) NOT NULL DEFAULT '0.00' COMMENT '冻结金额',
-  `created_at`     datetime     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  `updated_at`     datetime     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  `is_deleted`     tinyint(1)   NOT NULL DEFAULT 0      COMMENT '逻辑删除(0:正常,1:删除)',
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_student_id` (`student_id`),
-  KEY `idx_is_deleted` (`is_deleted`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户基础表';
-
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT `chk_user_role` CHECK (`role` IN ('USER','ADMIN')),
+  CONSTRAINT `chk_user_status` CHECK (`status` IN ('ACTIVE','BANNED'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- =============================================
--- 表：ord_demand 需求与订单主表
--- 索引说明：
---   PRIMARY KEY (id)：主键
---   idx_status_created (status, created_at)：复合覆盖索引
---     需求大厅核心查询为 WHERE status='PENDING' ORDER BY created_at DESC
---     组合索引使数据库在索引树直接完成过滤+排序，避免 filesort 全表扫描
---   idx_publisher (publisher_id)："我发布的需求"查询入口
---   idx_receiver (receiver_id)："我接单的需求"查询入口
+-- 2. 需求订单主表 (ord_demand)
+--
+-- 【索引说明】
+-- 1. 逻辑外键 (Logical FKs)：publisher_id 与 receiver_id 仅作逻辑关联。
+--    刻意放弃物理 FOREIGN KEY，规避高频订单流转时引发的级联锁问题，提升开发联调效率。
+-- 2. 索引取舍：未对 (status, created_at) 建立复合索引。鉴于该项目有限数据量，
+--    以及状态机变更频繁的“写密集”特点，省略该索引以避免额外的 B-Tree 维护开销，
+--    直接依托内存全表扫描即可满足极速响应要求。
+-- 3. 最小必要约束：应用 CHECK 约束锁死 category 和 status 枚举。
 -- =============================================
 CREATE TABLE `ord_demand` (
-  `id`           bigint        NOT NULL AUTO_INCREMENT  COMMENT '主键',
-  `publisher_id` bigint        NOT NULL                 COMMENT '发单人ID',
-  `receiver_id`  bigint        DEFAULT NULL             COMMENT '接单人ID(可空)',
-  `title`        varchar(200)  NOT NULL                 COMMENT '标题',
-  `description`  text          NOT NULL                 COMMENT '详细描述',
-  `category`     varchar(32)   NOT NULL                 COMMENT '分类',
-  `location`     varchar(256)  DEFAULT NULL             COMMENT '地点',
-  `start_time`   datetime      DEFAULT NULL             COMMENT '开始时间',
-  `end_time`     datetime      DEFAULT NULL             COMMENT '结束时间',
-  `reward`       decimal(10,2) NOT NULL DEFAULT '0.00'  COMMENT '悬赏金额',
-  `tags`         json          DEFAULT NULL             COMMENT '标签数组',
-  `status`       varchar(32)   NOT NULL DEFAULT 'PENDING' COMMENT '状态机',
-  `created_at`   datetime      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  `updated_at`   datetime      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  `is_deleted`   tinyint(1)    NOT NULL DEFAULT 0       COMMENT '逻辑删除标志',
-  PRIMARY KEY (`id`),
-  KEY `idx_status_created` (`status`, `created_at`),
-  KEY `idx_publisher` (`publisher_id`),
-  KEY `idx_receiver` (`receiver_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='需求与订单主表';
-
+  `id` bigint NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `publisher_id` bigint NOT NULL COMMENT '发单人(逻辑关联sys_user)',
+  `receiver_id` bigint DEFAULT NULL COMMENT '接单人(逻辑关联sys_user,未接单为空)',
+  `title` varchar(200) NOT NULL COMMENT '标题',
+  `description` text,
+  `category` varchar(32) NOT NULL COMMENT '分类',
+  `location` varchar(256) DEFAULT NULL,
+  `start_time` datetime DEFAULT NULL,
+  `end_time` datetime DEFAULT NULL,
+  `reward` decimal(10,2) NOT NULL DEFAULT '0.00' COMMENT '悬赏金额',
+  `tags` varchar(500) DEFAULT NULL COMMENT '存逗号分隔字符串',
+  `status` varchar(32) NOT NULL DEFAULT 'PENDING' COMMENT '状态机',
+  `note` varchar(500) DEFAULT NULL COMMENT '接单留言',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT `chk_demand_category` CHECK (`category` IN ('取快递','学习辅导','二手交易','活动组队','其他')),
+  CONSTRAINT `chk_demand_status` CHECK (`status` IN ('PENDING','REVIEWING','IN_PROGRESS','COMPLETED','CANCELLED'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- =============================================
--- 表：ord_review 订单双向评价表
--- 索引说明：
---   PRIMARY KEY (id)：主键
---   uk_order_author (order_id, author_id)：联合唯一索引
---     确保同一订单内一个用户只能提交一次评价，防止恶意刷分
---   idx_target_id (target_id)：信用分聚合计算索引
---     支持 SELECT AVG(rating) WHERE target_id=? 毫秒级响应
--- CHECK 约束：
---   chk_rating：数据库层强制 rating 在 1-5 范围内
---     即使业务层校验被绕过，非法打分也无法写入
--- 不可变策略：本表禁止 UPDATE/DELETE，评价提交后不可撤回
+-- 3. 评价表 (ord_review)
+--
+-- 【索引说明】
+-- 1. 逻辑外键：order_id, author_id, target_id 均采用应用层逻辑关联。
+-- 2. 最小必要约束：通过 CONSTRAINT chk_review_rating 强制拦截 1-5 以外的非法打分，
+--    为上层业务代码计算“信用分聚合 AVG(rating)”提供绝对可靠的数据基座。
+-- 3. 索引取舍：未对 target_id 建立单列索引。由于演示场景数据量较小，全表扫描效率极高，
+--    且减少了每次插入评价时的索引树分裂成本。
 -- =============================================
 CREATE TABLE `ord_review` (
-  `id`         bigint       NOT NULL AUTO_INCREMENT COMMENT '主键',
-  `order_id`   bigint       NOT NULL               COMMENT '关联订单ID',
-  `author_id`  bigint       NOT NULL               COMMENT '评价人ID',
-  `target_id`  bigint       NOT NULL               COMMENT '被评价人ID',
-  `rating`     tinyint      NOT NULL               COMMENT '1-5星打分',
-  `comment`    varchar(1000) DEFAULT NULL          COMMENT '评价内容',
-  `created_at` datetime     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间(不可变)',
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_order_author` (`order_id`, `author_id`),
-  KEY `idx_target_id` (`target_id`),
-  CONSTRAINT `chk_rating` CHECK (`rating` BETWEEN 1 AND 5)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单双向评价表';
-
+  `id` bigint NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `order_id` bigint NOT NULL COMMENT '关联订单(逻辑关联ord_demand)',
+  `author_id` bigint NOT NULL COMMENT '评价人(逻辑关联sys_user)',
+  `target_id` bigint NOT NULL COMMENT '被评价人(逻辑关联sys_user)',
+  `rating` tinyint NOT NULL COMMENT '1-5星打分',
+  `comment` varchar(1000) DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT `chk_review_rating` CHECK (`rating` BETWEEN 1 AND 5)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- =============================================
--- 表：ast_ledger 资产流水表
--- 索引说明：
---   PRIMARY KEY (id)：主键
---   idx_user_time (user_id, created_at)：时序联合索引
---     "我的账单"按用户+时间倒序查询，user_id 精准匹配
---     后跟 created_at 排序，无需额外排序操作
--- CHECK 约束：
---   chk_direction：强制 direction 只允许 IN/OUT/FREEZE/UNFREEZE
---     IN=充值/收款，OUT=支出，FREEZE=冻结，UNFREEZE=解冻
---     防止非法资金方向写入，保证账单日志语义清晰
--- 不可变策略：本表严禁 UPDATE/DELETE
---   账目错误只能新增反向冲正流水，不得修改原记录
--- 与 sys_user 的联动：
---   所有写入必须在 @Transactional 内同步更新 sys_user.balance
+-- 4. 资产流水表 (ast_ledger)
+--
+-- 【索引说明】
+-- 1. 业务定位：不可变的财务辅助审计表，不提供 UPDATE/DELETE 操作。
+-- 2. 最小必要约束：强校验 direction，防止出现未定义的资金流向导致对账失败。
+-- 3. 极简索引：依靠主键 PK，未对 user_id 建索引。账单列表查询直接由数据库
+--    顺序扫描过滤，规避回表开销，完全契合敏捷开发模式。
 -- =============================================
 CREATE TABLE `ast_ledger` (
-  `id`           bigint        NOT NULL AUTO_INCREMENT COMMENT '主键',
-  `user_id`      bigint        NOT NULL               COMMENT '资产归属人ID',
-  `amount`       decimal(10,2) NOT NULL               COMMENT '变动金额绝对值',
-  `direction`    varchar(10)   NOT NULL               COMMENT '方向(IN/OUT/FREEZE/UNFREEZE)',
-  `biz_order_id` bigint        NOT NULL               COMMENT '关联订单号',
-  `created_at`   datetime      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间(不可变)',
-  PRIMARY KEY (`id`),
-  KEY `idx_user_time` (`user_id`, `created_at`),
-  CONSTRAINT `chk_direction` CHECK (`direction` IN ('IN','OUT','FREEZE','UNFREEZE'))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='资产流水表(不可变，禁止UPDATE/DELETE)';
-
+  `id` bigint NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `user_id` bigint NOT NULL COMMENT '资产归属人(逻辑关联sys_user)',
+  `amount` decimal(10,2) NOT NULL COMMENT '变动金额',
+  `direction` varchar(10) NOT NULL COMMENT '方向',
+  `biz_order_id` bigint DEFAULT NULL COMMENT '关联订单(充值赠送为空)',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT `chk_ledger_direction` CHECK (`direction` IN ('IN','OUT','FREEZE','UNFREEZE'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- =============================================
--- 表：sys_notification 系统通知表
--- 索引说明：
---   PRIMARY KEY (id)：主键
---   idx_user_read_time (user_id, is_read, created_at)：三列联合索引
---     典型查询为 WHERE user_id=? AND is_read=0 ORDER BY created_at DESC
---     is_read 放中间而非末尾，因为未读消息是高频过滤条件
---     三列联合使过滤、排序全部命中索引，无需回表
--- 软删除策略：用户清除通知走 is_deleted=1，不物理删除
+-- 5. 通知表 (sys_notification)
+--
+-- 【索引说明】
+-- 1. 逻辑外键：user_id 采用逻辑关联，保障发消息时的数据写入性能。
+-- 2. 最小必要约束：校验 type，确保站内信类型的合法性。
+-- 3. 索引取舍：不对 is_read (布尔值) 等低基数字段建立普通索引，
+--    因为在小数据量下，MySQL 优化器通常会无视此类索引。直接依赖无索引扫描是更优解。
 -- =============================================
 CREATE TABLE `sys_notification` (
-  `id`         bigint       NOT NULL AUTO_INCREMENT COMMENT '主键',
-  `user_id`    bigint       NOT NULL               COMMENT '接收人ID',
-  `type`       varchar(32)  NOT NULL               COMMENT '通知类型',
-  `title`      varchar(128) NOT NULL               COMMENT '标题',
-  `content`    varchar(500) NOT NULL               COMMENT '内容',
-  `is_read`    tinyint(1)   NOT NULL DEFAULT 0     COMMENT '是否已读(0:未读,1:已读)',
-  `related_id` bigint       DEFAULT NULL           COMMENT '关联业务ID',
-  `created_at` datetime     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  `is_deleted` tinyint(1)   NOT NULL DEFAULT 0     COMMENT '逻辑删除标志',
-  PRIMARY KEY (`id`),
-  KEY `idx_user_read_time` (`user_id`, `is_read`, `created_at`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='系统通知表';
+  `id` bigint NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `user_id` bigint NOT NULL COMMENT '接收人(逻辑关联sys_user)',
+  `type` varchar(32) NOT NULL COMMENT '通知类型',
+  `title` varchar(128) NOT NULL COMMENT '标题',
+  `content` varchar(500) NOT NULL COMMENT '内容',
+  `is_read` tinyint(1) NOT NULL DEFAULT 0 COMMENT '0未读 1已读',
+  `related_id` bigint DEFAULT NULL COMMENT '业务ID',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT `chk_notify_type` CHECK (`type` IN ('ORDER_ACCEPTED','STATUS_CHANGED','REVIEW_RECEIVED'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
