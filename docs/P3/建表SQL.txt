@@ -3,13 +3,14 @@
 --
 -- 【索引说明】
 -- 1. 索引策略：保留 PRIMARY KEY (id) 提供基础聚簇索引。
--- 2. 业务底层防线：设立 UNIQUE KEY (student_id)。在不依赖复杂复合索引的前提下，
---    这是唯一且必须的物理级防线，从数据库底层阻断高并发测试时的重复注册问题。
+-- 2. 注册底层防线：设立 UNIQUE KEY (email) 与 UNIQUE KEY (student_id)。
+--    email 用于验证码注册与登录，student_id 作为校园业务标识，二者都必须唯一。
 -- 3. 最小必要约束：对 role 和 status 开启 CHECK 约束，防止应用层透传非法脏数据。
 -- =============================================
 CREATE TABLE `sys_user` (
   `id` bigint NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  `student_id` varchar(32) NOT NULL UNIQUE COMMENT '学号(唯一标识)',
+  `email` varchar(128) NOT NULL UNIQUE COMMENT '学校邮箱(注册/登录标识)',
+  `student_id` varchar(32) NOT NULL UNIQUE COMMENT '学号(业务标识)',
   `password_hash` varchar(255) NOT NULL COMMENT '哈希密码',
   `nickname` varchar(64) DEFAULT '匿名校友',
   `avatar_url` varchar(255) DEFAULT NULL,
@@ -19,6 +20,7 @@ CREATE TABLE `sys_user` (
   `balance` decimal(10,2) NOT NULL DEFAULT '0.00' COMMENT '可用余额',
   `frozen_balance` decimal(10,2) NOT NULL DEFAULT '0.00' COMMENT '冻结金额',
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `email_verified_at` datetime DEFAULT NULL COMMENT '邮箱验证完成时间',
   CONSTRAINT `chk_user_role` CHECK (`role` IN ('USER','ADMIN')),
   CONSTRAINT `chk_user_status` CHECK (`status` IN ('ACTIVE','BANNED'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

@@ -40,6 +40,40 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /auth/email-code:
+    post:
+      summary: 发送邮箱验证码
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmailCodeRequest'
+      responses:
+        '200':
+          description: 验证码已发送
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse'
+        '400':
+          description: 参数校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: 冲突（邮箱已绑定或发送过于频繁）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /auth/login:
     post:
       summary: 用户登录，返回 JWT
@@ -581,6 +615,8 @@ components:
       properties:
         id:
           type: string
+        email:
+          type: string
         studentId:
           type: string
         nickname:
@@ -595,8 +631,16 @@ components:
           $ref: '#/components/schemas/UserSummary'
     RegisterRequest:
       type: object
-      required: [studentId,password]
+      required: [email,verificationCode,studentId,password]
       properties:
+        email:
+          type: string
+          format: email
+          description: 学校邮箱
+        verificationCode:
+          type: string
+          minLength: 4
+          maxLength: 8
         studentId:
           type: string
           minLength: 3
@@ -611,13 +655,24 @@ components:
         avatarUrl:
           type: string
           format: uri
-    LoginRequest:
+    EmailCodeRequest:
       type: object
-      required: [studentId,password]
+      required: [email]
       properties:
+        email:
+          type: string
+          format: email
         studentId:
           type: string
           minLength: 3
+          maxLength: 64
+    LoginRequest:
+      type: object
+      required: [loginId,password]
+      properties:
+        loginId:
+          type: string
+          description: 邮箱或学号
         password:
           type: string
           minLength: 8
