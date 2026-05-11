@@ -38,3 +38,5 @@ coverage/
 docker-compose.override.yml
 *.env.docker
 logs/
+CLAUDE.md
+.claude/
