@@ -1,0 +1,211 @@
+package com.campushub.backend.demand.domain;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+
+public class Demand {
+
+    private Long id;
+    private Long publisherId;
+    private String publisherDisplayName;
+    private String title;
+    private String description;
+    private DemandCategory category;
+    private CampusZone campusZone;
+    private String location;
+    private LocalDateTime startTime;
+    private LocalDateTime endTime;
+    private BigDecimal reward;
+    private List<String> tags;
+    private DemandStatus status;
+    private boolean anonymous;
+    private String anonymousCode;
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
+
+    public Demand() {
+        this.tags = new ArrayList<>();
+    }
+
+    public Demand(
+        Long id,
+        Long publisherId,
+        String publisherDisplayName,
+        String title,
+        String description,
+        DemandCategory category,
+        CampusZone campusZone,
+        String location,
+        LocalDateTime startTime,
+        LocalDateTime endTime,
+        BigDecimal reward,
+        List<String> tags,
+        DemandStatus status,
+        boolean anonymous,
+        String anonymousCode,
+        LocalDateTime createdAt,
+        LocalDateTime updatedAt
+    ) {
+        this.id = id;
+        this.publisherId = publisherId;
+        this.publisherDisplayName = publisherDisplayName;
+        this.title = title;
+        this.description = description;
+        this.category = category;
+        this.campusZone = campusZone;
+        this.location = location;
+        this.startTime = startTime;
+        this.endTime = endTime;
+        this.reward = reward;
+        this.tags = tags == null ? new ArrayList<>() : new ArrayList<>(tags);
+        this.status = status;
+        this.anonymous = anonymous;
+        this.anonymousCode = anonymousCode;
+        this.createdAt = createdAt;
+        this.updatedAt = updatedAt;
+    }
+
+    public boolean isEditableBy(Long operatorId) {
+        return publisherId != null && publisherId.equals(operatorId)
+            && status != DemandStatus.COMPLETED
+            && status != DemandStatus.CANCELLED;
+    }
+
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    public Long getPublisherId() {
+        return publisherId;
+    }
+
+    public void setPublisherId(Long publisherId) {
+        this.publisherId = publisherId;
+    }
+
+    public String getPublisherDisplayName() {
+        return publisherDisplayName;
+    }
+
+    public void setPublisherDisplayName(String publisherDisplayName) {
+        this.publisherDisplayName = publisherDisplayName;
+    }
+
+    public String getTitle() {
+        return title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
+    public DemandCategory getCategory() {
+        return category;
+    }
+
+    public void setCategory(DemandCategory category) {
+        this.category = category;
+    }
+
+    public CampusZone getCampusZone() {
+        return campusZone;
+    }
+
+    public void setCampusZone(CampusZone campusZone) {
+        this.campusZone = campusZone;
+    }
+
+    public String getLocation() {
+        return location;
+    }
+
+    public void setLocation(String location) {
+        this.location = location;
+    }
+
+    public LocalDateTime getStartTime() {
+        return startTime;
+    }
+
+    public void setStartTime(LocalDateTime startTime) {
+        this.startTime = startTime;
+    }
+
+    public LocalDateTime getEndTime() {
+        return endTime;
+    }
+
+    public void setEndTime(LocalDateTime endTime) {
+        this.endTime = endTime;
+    }
+
+    public BigDecimal getReward() {
+        return reward;
+    }
+
+    public void setReward(BigDecimal reward) {
+        this.reward = reward;
+    }
+
+    public List<String> getTags() {
+        return new ArrayList<>(tags);
+    }
+
+    public void setTags(List<String> tags) {
+        this.tags = tags == null ? new ArrayList<>() : new ArrayList<>(tags);
+    }
+
+    public DemandStatus getStatus() {
+        return status;
+    }
+
+    public void setStatus(DemandStatus status) {
+        this.status = status;
+    }
+
+    public boolean isAnonymous() {
+        return anonymous;
+    }
+
+    public void setAnonymous(boolean anonymous) {
+        this.anonymous = anonymous;
+    }
+
+    public String getAnonymousCode() {
+        return anonymousCode;
+    }
+
+    public void setAnonymousCode(String anonymousCode) {
+        this.anonymousCode = anonymousCode;
+    }
+
+    public LocalDateTime getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(LocalDateTime createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    public LocalDateTime getUpdatedAt() {
+        return updatedAt;
+    }
+
+    public void setUpdatedAt(LocalDateTime updatedAt) {
+        this.updatedAt = updatedAt;
+    }
+}
