@@ -1,0 +1,124 @@
+<script setup lang="ts">
+import { reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
+
+import { DEMAND_CATEGORIES } from '@/types/campushub'
+import { useCampusHubStore } from '@/stores/campusHub'
+import { formatMoney } from '@/utils/format'
+
+const router = useRouter()
+const store = useCampusHubStore()
+const message = ref('')
+const error = ref('')
+
+const form = reactive({
+  title: '',
+  description: '',
+  category: '' as '' | (typeof DEMAND_CATEGORIES)[number],
+  location: '',
+  startTime: '',
+  endTime: '',
+  reward: '10',
+  tags: ''
+})
+
+function submitDemand(): void {
+  error.value = ''
+  message.value = ''
+
+  try {
+    const demand = store.createDemand(form)
+    message.value = `已创建需求“${demand.title}”。`
+    router.push(`/demands/${demand.id}`)
+  } catch (submitError) {
+    error.value = submitError instanceof Error ? submitError.message : '发布失败'
+  }
+}
+</script>
+
+<template>
+  <div class="page-grid two-column">
+    <section class="form-panel">
+      <div class="page-head">
+        <div>
+          <p class="eyebrow">DEM-05</p>
+          <h1 class="page-title">发布需求表单</h1>
+          <p class="page-summary">字段设计遵循 P3 里的发布需求接口，演示页会自动生成需求卡片。</p>
+        </div>
+      </div>
+
+      <div class="form-grid two-column">
+        <div class="field" style="grid-column: 1 / -1;">
+          <label for="demand-title">标题</label>
+          <input id="demand-title" v-model="form.title" placeholder="例如：帮取快递并送到宿舍" />
+        </div>
+        <div class="field" style="grid-column: 1 / -1;">
+          <label for="demand-description">描述</label>
+          <textarea id="demand-description" v-model="form.description" placeholder="补充时间、地点和需求细节"></textarea>
+        </div>
+        <div class="field">
+          <label for="demand-category">分类</label>
+          <select id="demand-category" v-model="form.category">
+            <option value="">请选择</option>
+            <option v-for="category in DEMAND_CATEGORIES" :key="category" :value="category">{{ category }}</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="demand-location">地点</label>
+          <input id="demand-location" v-model="form.location" placeholder="北区、南区、图书馆" />
+        </div>
+        <div class="field">
+          <label for="demand-start">开始时间</label>
+          <input id="demand-start" v-model="form.startTime" type="datetime-local" />
+        </div>
+        <div class="field">
+          <label for="demand-end">结束时间</label>
+          <input id="demand-end" v-model="form.endTime" type="datetime-local" />
+        </div>
+        <div class="field">
+          <label for="demand-reward">报酬</label>
+          <input id="demand-reward" v-model="form.reward" type="number" min="0" step="1" />
+        </div>
+        <div class="field">
+          <label for="demand-tags">标签</label>
+          <input id="demand-tags" v-model="form.tags" placeholder="近距离, 宿舍楼下" />
+        </div>
+        <button type="button" class="button primary" style="grid-column: 1 / -1;" @click="submitDemand">发布需求</button>
+      </div>
+
+      <p v-if="message" class="hero-badge">{{ message }}</p>
+      <p v-if="error" class="hero-badge" style="background: rgba(181, 71, 71, 0.14); color: var(--danger)">{{ error }}</p>
+    </section>
+
+    <section class="panel">
+      <p class="eyebrow">实时预览</p>
+      <h2 class="section-title">卡片展示</h2>
+      <div class="list-card">
+        <div class="status-row">
+          <span class="chip is-warning">待审核</span>
+          <span class="chip">{{ form.category || '未选择分类' }}</span>
+        </div>
+        <div class="card-head">
+          <h3>{{ form.title || '需求标题预览' }}</h3>
+          <strong>{{ formatMoney(Number(form.reward || 0)) }}</strong>
+        </div>
+        <p>{{ form.description || '这里会显示需求描述与执行细节。' }}</p>
+        <div class="meta">{{ form.location || '未填写地点' }}</div>
+        <div class="tag-row">
+          <span v-for="tag in form.tags.split(/[，,]/).filter(Boolean)" :key="tag" class="badge is-neutral">{{ tag.trim() }}</span>
+        </div>
+      </div>
+
+      <div class="section-grid">
+        <div class="list-card">
+          <strong>接口映射</strong>
+          <p><code>POST /api/v1/demands</code> 对应当前表单提交动作。</p>
+        </div>
+        <div class="list-card">
+          <strong>审核策略</strong>
+          <p>当前演示态会将普通用户发布的需求标记为“待审核”，管理员可在后台页一键通过。</p>
+        </div>
+      </div>
+    </section>
+  </div>
+</template>
