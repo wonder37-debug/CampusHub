@@ -18,9 +18,9 @@ const notifications = computed(() => {
     <section class="panel">
       <div class="page-head">
         <div>
-          <p class="eyebrow">NOT-05</p>
+          <p class="eyebrow">消息中心</p>
           <h1 class="page-title">通知中心</h1>
-          <p class="page-summary">这里汇总接单、状态变更、评价和系统消息，并支持未读筛选和一键已读。</p>
+          <p class="page-summary">这里会汇总接单、状态变更、评价和系统提醒，也可以只看未读消息。</p>
         </div>
         <button type="button" class="button secondary" @click="store.markAllNotificationsRead">全部标记已读</button>
       </div>

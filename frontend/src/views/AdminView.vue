@@ -34,9 +34,9 @@ function rejectDemand(demandId: string): void {
     <section class="panel">
       <div class="page-head">
         <div>
-          <p class="eyebrow">ADM-05 / ADM-04</p>
+          <p class="eyebrow">管理中心</p>
           <h1 class="page-title">管理后台看板</h1>
-          <p class="page-summary">展示需求审核、用户列表与统计信息，符合 P4 管理后台页面要求。</p>
+          <p class="page-summary">在这里可以查看待审核需求、用户情况和平台统计，方便统一处理日常事务。</p>
         </div>
       </div>
 

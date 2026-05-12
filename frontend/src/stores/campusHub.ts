@@ -198,7 +198,7 @@ function createDemands(accounts: AccountRecord[]): DemandRecord[] {
     {
       id: 'd-1005',
       title: '代买实验用品，需求待审核示例',
-      description: '这是管理员审核队列中的示例需求，演示 P4 管理后台的审核流程。',
+      description: '这是管理员审核队列中的示例需求，用于展示 P4 管理后台的审核流程。',
       category: 'OTHER',
       campusZone: 'GULOU',
       location: '化学楼',
@@ -319,7 +319,7 @@ function createNotifications(): NotificationRecord[] {
       id: 'n-4004',
       receiverId: 'u-chen',
       type: 'STATUS_CHANGED',
-      content: 'CampusHub 演示数据已准备完成，可以切换不同身份查看流程。',
+      content: 'CampusHub 基础数据已准备完成，可以切换不同身份查看流程。',
       isRead: true,
       createdAt: now(-500),
       relatedId: 'system'
@@ -356,7 +356,7 @@ export const useCampusHubStore = defineStore('campusHub', {
     reviews: createReviews(),
     notifications: createNotifications(),
     verificationCodes: {} as Record<string, EmailVerificationRecord>,
-    appMessage: '校园互助平台展示层已启用演示数据仓库。'
+    appMessage: '校园互助平台已加载基础业务数据。'
   }),
 
   getters: {
@@ -450,7 +450,7 @@ export const useCampusHubStore = defineStore('campusHub', {
     switchAccount(userId: string): void {
       const account = this.accounts.find((item) => item.id === userId)
       if (!account) {
-        throw new Error('未找到可切换的演示账号')
+        throw new Error('未找到可切换的账号')
       }
 
       this.currentUserId = account.id

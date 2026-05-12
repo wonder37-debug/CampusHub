@@ -35,7 +35,7 @@ function updateProfile(): void {
       <div class="avatar-row">
         <img :src="store.currentUser.avatarUrl" :alt="store.currentUser.nickname" class="avatar large" />
         <div>
-          <p class="eyebrow">USR-05 / REV-05</p>
+          <p class="eyebrow">我的资料</p>
           <h1 class="page-title">{{ store.currentUser.nickname }}</h1>
           <p class="page-summary">{{ store.currentUser.studentId }} · {{ store.currentUser.email }}</p>
           <div class="stats-row">
@@ -43,6 +43,7 @@ function updateProfile(): void {
             <span class="chip is-neutral">{{ formatUserStatus(store.currentUser.status) }}</span>
             <span class="chip is-success">{{ formatScore(store.currentUser.creditScore) }}</span>
           </div>
+          <p class="subtle">你可以在这里查看个人信息、修改昵称和头像，并浏览收到的评价。</p>
         </div>
       </div>
 
@@ -71,7 +72,7 @@ function updateProfile(): void {
 
     <section class="section-grid">
       <article class="panel">
-        <p class="eyebrow">评价列表</p>
+        <p class="eyebrow">收到的评价</p>
         <h2 class="section-title">收到的评价</h2>
         <div v-if="userReviews.length" class="review-grid">
           <div v-for="review in userReviews" :key="review.id" class="timeline-item">
@@ -86,7 +87,7 @@ function updateProfile(): void {
       </article>
 
       <article class="panel">
-        <p class="eyebrow">我给出的评价</p>
+        <p class="eyebrow">我提交的评价</p>
         <h2 class="section-title">历史评价记录</h2>
         <div v-if="givenReviews.length" class="review-grid">
           <div v-for="review in givenReviews" :key="review.id" class="timeline-item">

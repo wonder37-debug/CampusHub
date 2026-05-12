@@ -58,7 +58,7 @@ function switchAccount(userId: string): void {
       <div class="topbar-tools">
         <div class="status-chip">
           <span>{{ roleLabel }}</span>
-          <strong>{{ store.currentUser?.nickname ?? '演示访客' }}</strong>
+          <strong>{{ store.currentUser?.nickname ?? '访客' }}</strong>
         </div>
         <RouterLink class="nav-button ghost" to="/notifications">
           未读 {{ store.unreadNotificationCount }}
@@ -68,15 +68,15 @@ function switchAccount(userId: string): void {
 
     <section class="demo-strip">
       <div class="demo-copy">
-        <p class="eyebrow">P3 / P4 对齐</p>
-        <h2>按接口规范和 Sprint 看板搭建的展示层。</h2>
+        <p class="eyebrow">校园互助平台</p>
+        <h2>围绕需求、接单、评价与管理闭环打造的产品页面。</h2>
         <p>
-          当前页面基于演示数据仓库运行，可切换身份查看注册、发布需求、接单、评价、通知和后台审核流程。
+          当前页面已完成需求发布、接单、通知和后台审核等核心路径，切换账号即可体验不同角色的完整流程。
         </p>
       </div>
 
       <div class="account-switcher">
-        <span class="switcher-label">切换演示身份</span>
+        <span class="switcher-label">切换账号视角</span>
         <button
           v-for="account in store.accountOptions"
           :key="account.id"

@@ -16,10 +16,10 @@ const recentNotifications = computed(() => store.currentUserNotifications.slice(
   <div class="page-grid">
     <section class="hero">
       <article class="hero-copy">
-        <p class="eyebrow">展示层主页</p>
-        <h1>让校园互助的注册、需求、订单、通知和后台审核变成一条清晰路径。</h1>
+        <p class="eyebrow">平台首页</p>
+        <h1>让校园互助的注册、需求、订单、通知和后台审核形成一条清晰路径。</h1>
         <p class="lead">
-          当前前端已按 P3 API 结构与 P4 Sprint 看板完成核心模块布局，并接入演示态数据仓库，方便你直接演示业务流程。
+          这里汇集了校园互助的主要功能，你可以从首页快速进入发布、接单、通知和管理等常用场景。
         </p>
 
         <div class="hero-actions">
@@ -31,7 +31,7 @@ const recentNotifications = computed(() => store.currentUserNotifications.slice(
         <div class="mini-grid">
           <div class="mini-stat">
             <span class="subtle">当前账号</span>
-            <strong>{{ store.currentUser?.nickname ?? '演示访客' }}</strong>
+            <strong>{{ store.currentUser?.nickname ?? '访客' }}</strong>
           </div>
           <div class="mini-stat">
             <span class="subtle">角色</span>
@@ -56,22 +56,22 @@ const recentNotifications = computed(() => store.currentUserNotifications.slice(
         <div class="metric">
           <span>开放中的需求</span>
           <strong>{{ store.dashboardSummary.openDemands }}</strong>
-          <span class="muted">用户可以直接浏览并接单的需求数</span>
+          <span class="muted">正在公开等待同学浏览和接单的需求</span>
         </div>
         <div class="metric">
           <span>进行中的订单</span>
           <strong>{{ store.dashboardSummary.activeOrders }}</strong>
-          <span class="muted">接单后进入执行流程的任务</span>
+          <span class="muted">已经开始协作、正在推进的订单</span>
         </div>
         <div class="metric">
           <span>管理员待审核</span>
           <strong>{{ store.dashboardSummary.pendingApprovals }}</strong>
-          <span class="muted">对应 P4 管理后台的 REVIEWING 队列</span>
+          <span class="muted">需要管理员确认的需求数量</span>
         </div>
         <div class="metric">
           <span>平均信用分</span>
           <strong>{{ store.dashboardSummary.averageCredit }}</strong>
-          <span class="muted">展示当前演示账号整体信用状态</span>
+          <span class="muted">当前账号在平台上的整体表现</span>
         </div>
       </aside>
     </section>
@@ -80,7 +80,7 @@ const recentNotifications = computed(() => store.currentUserNotifications.slice(
       <div class="section-header">
         <div>
           <p class="eyebrow">关键业务入口</p>
-          <h2 class="section-title">从前端展示层直接进入核心流程</h2>
+          <h2 class="section-title">从首页直接进入核心流程</h2>
         </div>
         <RouterLink class="button secondary" to="/auth">进入账号中心</RouterLink>
       </div>
@@ -89,21 +89,21 @@ const recentNotifications = computed(() => store.currentUserNotifications.slice(
         <article class="card helper-card">
           <span class="hero-badge">USR / 认证</span>
           <h3>注册、登录、个人资料</h3>
-          <p class="section-lead">表单入口已经做好，可以切换身份、修改资料并观察信用分变化。</p>
+          <p class="section-lead">表单入口已完成，可切换账号、修改资料并查看信用分变化。</p>
           <RouterLink class="button secondary" to="/auth">查看认证页</RouterLink>
         </article>
 
         <article class="card helper-card">
           <span class="hero-badge">DEM / 需求</span>
           <h3>需求发布、浏览与详情</h3>
-          <p class="section-lead">支持筛选、推荐排序、需求详情和接单按钮的演示流程。</p>
+          <p class="section-lead">支持筛选、推荐排序、需求详情和接单操作。</p>
           <RouterLink class="button secondary" to="/demands">查看需求列表</RouterLink>
         </article>
 
         <article class="card helper-card">
           <span class="hero-badge">ORD / 通知</span>
           <h3>订单流转与站内消息</h3>
-          <p class="section-lead">订单状态变化会同步到通知中心，方便演示完整闭环。</p>
+          <p class="section-lead">订单状态变化会同步到通知中心，形成完整闭环。</p>
           <RouterLink class="button secondary" to="/notifications">打开通知中心</RouterLink>
         </article>
       </div>

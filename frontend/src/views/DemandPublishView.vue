@@ -43,9 +43,9 @@ function submitDemand(): void {
     <section class="form-panel">
       <div class="page-head">
         <div>
-          <p class="eyebrow">DEM-05</p>
+          <p class="eyebrow">发布需求</p>
           <h1 class="page-title">发布需求表单</h1>
-          <p class="page-summary">字段设计遵循 P3 里的发布需求接口，演示页会自动生成需求卡片。</p>
+          <p class="page-summary">填写标题、地点和时间后即可发布，让同学更快看到你的需求。</p>
         </div>
       </div>
 
@@ -123,12 +123,12 @@ function submitDemand(): void {
 
       <div class="section-grid">
         <div class="list-card">
-          <strong>接口映射</strong>
-          <p><code>POST /api/v1/demands</code> 对应当前表单提交动作。</p>
+          <strong>发布后效果</strong>
+          <p>发布后需求会出现在列表里，方便其他同学浏览和接单。</p>
         </div>
         <div class="list-card">
-          <strong>审核策略</strong>
-          <p>当前演示态会将普通用户发布的需求标记为“审核中”，管理员通过后进入“待接单”。</p>
+          <strong>审核说明</strong>
+          <p>部分需求会先经过确认，审核通过后就能更快被接单。</p>
         </div>
       </div>
     </section>

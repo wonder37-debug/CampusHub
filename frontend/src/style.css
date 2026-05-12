@@ -80,6 +80,9 @@ img {
 }
 
 .topbar {
+  position: sticky;
+  top: 16px;
+  z-index: 40;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 18px;

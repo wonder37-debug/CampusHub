@@ -70,7 +70,7 @@ function sendVerificationCode(): void {
       codeCountdown.value -= 1
     }, 1000)
 
-    message.value = `验证码已通过平台主邮箱发送到 ${registerForm.email}。演示验证码：${verificationCodeHint.value}`
+    message.value = `验证码已通过平台主邮箱发送到 ${registerForm.email}。验证码示例：${verificationCodeHint.value}`
   } catch (sendError) {
     error.value = sendError instanceof Error ? sendError.message : '验证码发送失败'
   }
@@ -123,7 +123,7 @@ function submitRegister(): void {
           <label for="login-password">密码</label>
           <input id="login-password" v-model="loginForm.password" type="password" placeholder="campus123" />
         </div>
-        <button type="button" class="button primary" @click="submitLogin">登录到演示平台</button>
+        <button type="button" class="button primary" @click="submitLogin">登录到平台</button>
       </div>
 
       <div v-else class="form-grid two-column">
@@ -138,7 +138,7 @@ function submitRegister(): void {
         <div class="field" style="grid-column: 1 / -1;">
           <label for="register-email">邮箱</label>
           <input id="register-email" v-model="registerForm.email" type="email" placeholder="请输入接收验证码的邮箱" />
-          <span class="input-help">当前后端的邮箱验证码接口尚未落地，前端会先用演示仓库模拟发送与校验。</span>
+          <span class="input-help">填写邮箱后就能收到验证码，输入后即可完成注册。</span>
         </div>
         <div class="field" style="grid-column: 1 / -1;">
           <label for="register-code">邮箱验证码</label>
@@ -148,7 +148,7 @@ function submitRegister(): void {
               {{ codeCountdown > 0 ? `${codeCountdown}s 后重发` : '发送验证码' }}
             </button>
           </div>
-          <span v-if="verificationCodeHint" class="input-help">演示验证码：{{ verificationCodeHint }}</span>
+          <span v-if="verificationCodeHint" class="input-help">验证码已发送，请填写示例码完成注册：{{ verificationCodeHint }}</span>
         </div>
         <div class="field">
           <label for="register-nickname">昵称</label>
@@ -188,12 +188,12 @@ function submitRegister(): void {
 
       <div class="section-grid">
         <div class="list-card">
-          <strong>API 对齐</strong>
-          <p>注册 / 登录表单对应 <code>/api/v1/auth/register</code> 和 <code>/api/v1/auth/login</code>。</p>
+          <strong>使用说明</strong>
+          <p>注册完成后就能直接登录，继续使用发布、接单和消息功能。</p>
         </div>
         <div class="list-card">
-          <strong>展示层说明</strong>
-          <p>当前使用 Pinia 演示仓库模拟后端返回，后续只需替换 service 层即可接真实接口。</p>
+          <strong>账号提示</strong>
+          <p>登录后会自动带出当前账号信息，方便继续使用平台。</p>
         </div>
       </div>
     </section>

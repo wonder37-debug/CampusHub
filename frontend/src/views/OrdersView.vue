@@ -66,9 +66,9 @@ function sendReview(): void {
     <section class="panel">
       <div class="page-head">
         <div>
-          <p class="eyebrow">ORD-05 / REV-05</p>
+          <p class="eyebrow">订单中心</p>
           <h1 class="page-title">订单列表与完成确认</h1>
-          <p class="page-summary">这里展示作为需求方或服务方时的订单视图，并支持状态流转和评价提交。</p>
+          <p class="page-summary">这里可以查看自己参与的订单，确认进度，并在完成后留下评价。</p>
         </div>
       </div>
 
@@ -160,11 +160,11 @@ function sendReview(): void {
 
       <article class="panel helper-card">
         <p class="eyebrow">流程说明</p>
-        <h2 class="section-title">与 P4 看板一致的按钮策略</h2>
+        <h2 class="section-title">订单状态对应的操作按钮</h2>
         <div class="timeline">
-          <div class="timeline-item"><span>ACCEPTED</span><span>显示开始执行</span></div>
-          <div class="timeline-item"><span>IN_PROGRESS</span><span>显示完成确认</span></div>
-          <div class="timeline-item"><span>COMPLETED</span><span>允许评价提交</span></div>
+          <div class="timeline-item"><span>已接单</span><span>可以开始处理</span></div>
+          <div class="timeline-item"><span>进行中</span><span>可以确认完成</span></div>
+          <div class="timeline-item"><span>已完成</span><span>可以提交评价</span></div>
         </div>
       </article>
     </section>

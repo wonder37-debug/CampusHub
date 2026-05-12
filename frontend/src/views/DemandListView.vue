@@ -123,9 +123,9 @@ function resetFilters(): void {
     <section class="panel">
       <div class="page-head">
         <div>
-          <p class="eyebrow">P3 / DEM-05</p>
+          <p class="eyebrow">需求广场</p>
           <h1 class="page-title">需求列表与推荐排序</h1>
-          <p class="page-summary">支持关键词、分类、地点筛选，以及时间、报酬、距离和推荐排序。</p>
+          <p class="page-summary">你可以按关键词、分类、校区和地点筛选需求，也能按时间、报酬、距离或推荐顺序查看。</p>
         </div>
         <RouterLink class="button primary" to="/demands/new">发布需求</RouterLink>
       </div>
@@ -196,7 +196,7 @@ function resetFilters(): void {
           <img :src="demand.publisherAvatar" :alt="demand.publisherName" class="avatar" />
           <div>
             <strong>{{ demand.anonymous ? demand.anonymousCode ?? '匿名用户' : demand.publisherName }}</strong>
-            <div class="meta">发布者 · {{ demand.publisherId || '匿名' }}</div>
+            <div class="meta">发布者信息 · {{ demand.publisherId || '匿名' }}</div>
           </div>
         </div>
 
@@ -210,7 +210,7 @@ function resetFilters(): void {
     <section class="panel toolbar">
       <div class="stack">
         <strong>共 {{ filteredTotal }} 条结果</strong>
-        <span class="meta">当前页 {{ filters.page }} / {{ totalPages }} · 每页 {{ filters.size }} 条</span>
+        <span class="meta">当前第 {{ filters.page }} 页，共 {{ totalPages }} 页，每页显示 {{ filters.size }} 条</span>
       </div>
       <div class="inline-actions">
         <button type="button" class="button secondary" @click="goPrev">上一页</button>
