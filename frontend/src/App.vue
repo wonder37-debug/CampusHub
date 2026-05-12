@@ -27,6 +27,8 @@ const roleLabel = computed(() => {
   return formatUserRole(store.currentUser.role)
 })
 
+const showHomeStrip = computed(() => route.path === '/')
+
 function switchAccount(userId: string): void {
   store.switchAccount(userId)
 }
@@ -66,7 +68,7 @@ function switchAccount(userId: string): void {
       </div>
     </header>
 
-    <section class="demo-strip">
+    <section v-if="showHomeStrip" class="demo-strip">
       <div class="demo-copy">
         <p class="eyebrow">校园互助平台</p>
         <h2>围绕需求、接单、评价与管理闭环打造的产品页面。</h2>
