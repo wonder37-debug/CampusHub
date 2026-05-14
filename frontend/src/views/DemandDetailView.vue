@@ -81,7 +81,9 @@ function submitReview(): void {
   <div v-if="demand" class="page-grid two-column">
     <section class="panel">
       <div class="status-row">
-        <span class="chip" :class="statusToneClass(demand.status)">{{ formatDemandStatus(demand.status) }}</span>
+        <span class="chip" :class="relatedOrder ? statusToneClass(relatedOrder.status) : statusToneClass(demand.status)">
+          {{ relatedOrder ? formatOrderStatus(relatedOrder.status) : formatDemandStatus(demand.status) }}
+        </span>
         <span class="chip">{{ formatDemandCategory(demand.category) }}</span>
         <span class="chip">{{ formatCampusZone(demand.campusZone) }}</span>
         <span v-if="demand.anonymous" class="chip is-warning">匿名</span>
@@ -122,7 +124,7 @@ function submitReview(): void {
         </div>
         <div class="card-actions">
           <button
-            v-if="demand.status === 'PENDING' && store.currentUser?.id !== demand.publisherId"
+            v-if="!relatedOrder && demand.status === 'PENDING' && store.currentUser?.id !== demand.publisherId"
             type="button"
             class="button primary"
             @click="acceptCurrentDemand"

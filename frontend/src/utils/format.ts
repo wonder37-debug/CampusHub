@@ -109,7 +109,7 @@ export function formatCampusZone(zone: CampusZone): string {
 export function formatDemandStatus(status: DemandStatus): string {
   switch (status) {
     case 'PENDING':
-      return '待接单'
+      return '开放中'
     case 'REVIEWING':
       return '审核中'
     case 'IN_PROGRESS':
@@ -193,4 +193,31 @@ export function truncateText(value: string, length: number): string {
   }
 
   return `${value.slice(0, length)}…`
+}
+
+export function formatRelativeTime(value: string): string {
+  if (!value) {
+    return '刚刚'
+  }
+
+  const timestamp = new Date(value).getTime()
+  if (Number.isNaN(timestamp)) {
+    return value
+  }
+
+  const diffMinutes = Math.floor((Date.now() - timestamp) / 60000)
+  if (diffMinutes < 1) {
+    return '刚刚'
+  }
+  if (diffMinutes < 60) {
+    return `${diffMinutes}分钟前`
+  }
+
+  const diffHours = Math.floor(diffMinutes / 60)
+  if (diffHours < 24) {
+    return `${diffHours}小时前`
+  }
+
+  const diffDays = Math.floor(diffHours / 24)
+  return `${diffDays}天前`
 }

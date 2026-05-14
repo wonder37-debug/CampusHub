@@ -11,10 +11,13 @@ import type {
   DemandRecord,
   EmailVerificationRecord,
   NotificationRecord,
+  NotificationType,
   OrderRecord,
+  OrderStatus,
   ProfilePatchInput,
   PublicUser,
-  ReviewRecord
+  ReviewRecord,
+  DemandStatus
 } from '@/types/campushub'
 import {
   CAMPUS_ZONE_OPTIONS,
@@ -651,10 +654,16 @@ export const useCampusHubStore = defineStore('campusHub', {
         throw new Error('不能接自己的需求')
       }
 
+      // prevent duplicate acceptance: if an order already exists for this demand, block it
+      if (this.orders.some((o) => o.demandId === demand.id)) {
+        throw new Error('该需求已被接单')
+      }
+
       if (demand.status !== 'PENDING') {
         throw new Error('该需求当前不可接单')
       }
 
+      // backend sets demand to IN_PROGRESS when an order is accepted
       demand.status = 'IN_PROGRESS'
       demand.updatedAt = now()
 
@@ -719,6 +728,11 @@ export const useCampusHubStore = defineStore('campusHub', {
       order.status = 'IN_PROGRESS'
       order.updatedAt = now()
       order.timeline.unshift({ at: now(), label: '开始执行' })
+      const demand = this.demands.find((item) => item.id === order.demandId)
+      if (demand) {
+        demand.status = 'IN_PROGRESS'
+        demand.updatedAt = now()
+      }
       this.notifications.unshift({
         id: nextId('n'),
         receiverId: order.requesterId,
@@ -747,11 +761,46 @@ export const useCampusHubStore = defineStore('campusHub', {
       order.updatedAt = now()
       order.completedAt = now()
       order.timeline.unshift({ at: now(), label: '确认完成' })
+      const demand = this.demands.find((item) => item.id === order.demandId)
+      if (demand) {
+        demand.status = 'COMPLETED'
+        demand.updatedAt = now()
+      }
       this.notifications.unshift({
         id: nextId('n'),
         receiverId: order.requesterId,
         type: 'STATUS_CHANGED',
         content: `你的订单“${order.demandTitle}”已经完成，可以进行评价。`,
+        isRead: false,
+        createdAt: now(),
+        relatedId: order.id
+      })
+      return order
+    },
+
+    cancelOrder(orderId: string): OrderRecord {
+      const order = this.orders.find((item) => item.id === orderId)
+      if (!order) {
+        throw new Error('未找到订单')
+      }
+
+      if (order.status === 'COMPLETED' || order.status === 'CANCELLED') {
+        throw new Error('当前状态不能取消订单')
+      }
+
+      order.status = 'CANCELLED'
+      order.updatedAt = now()
+      order.timeline.unshift({ at: now(), label: '订单已取消' })
+      const demand = this.demands.find((item) => item.id === order.demandId)
+      if (demand) {
+        demand.status = 'PENDING'
+        demand.updatedAt = now()
+      }
+      this.notifications.unshift({
+        id: nextId('n'),
+        receiverId: order.requesterId,
+        type: 'STATUS_CHANGED',
+        content: `你的订单“${order.demandTitle}”已取消。`,
         isRead: false,
         createdAt: now(),
         relatedId: order.id
@@ -835,6 +884,181 @@ export const useCampusHubStore = defineStore('campusHub', {
       this.notifications = createNotifications()
       this.currentUserId = 'u-chen'
       this.token = 'demo-token'
+    },
+
+    async fetchDemands(): Promise<void> {
+      const base = import.meta.env.VITE_API_BASE || '/api/v1'
+      try {
+        const response = await fetch(`${base}/demands`)
+        if (!response.ok) throw new Error('network')
+        const payload = await response.json()
+        this.demands = (Array.isArray(payload) ? payload : payload?.items ?? []).map((item: any) => ({
+          id: String(item.id ?? item.demandId ?? ''),
+          title: String(item.title ?? item.demandTitle ?? ''),
+          description: String(item.description ?? ''),
+          category: (item.category ?? 'OTHER') as DemandCategoryCode,
+          campusZone: (item.campusZone ?? 'GULOU') as CampusZone,
+          location: String(item.location ?? ''),
+          startTime: String(item.startTime ?? item.startTime ?? now()),
+          endTime: String(item.endTime ?? item.endTime ?? now()),
+          reward: Number(item.reward ?? 0),
+          status: (item.status ?? item.state ?? 'PENDING') as DemandStatus,
+          anonymous: Boolean(item.anonymous),
+          anonymousCode: item.anonymousCode ?? null,
+          // backend uses publisherDisplayName and publisherId (may be null when anonymous)
+          // publisherId may be null for anonymous; normalize to empty string
+          publisherId: item.publisherId == null ? '' : String(item.publisherId),
+          publisherName: String(item.publisherDisplayName ?? item.publisherName ?? item.publisherNick ?? '匿名'),
+          publisherAvatar: String(item.publisherAvatar ?? buildAvatar(String(item.publisherDisplayName ?? item.publisherName ?? item.publisherNick ?? '匿名'))),
+          tags: Array.isArray(item.tags) ? item.tags.map((tag: string) => String(tag)) : [],
+          createdAt: String(item.createdAt ?? item.createdAt ?? now()),
+          updatedAt: String(item.updatedAt ?? item.updatedAt ?? now()),
+          distanceKm: Number(item.distanceKm ?? 0)
+        }))
+      } catch {
+        this.demands = createDemands(this.accounts)
+      }
+    },
+
+    async fetchOrders(): Promise<void> {
+      const base = import.meta.env.VITE_API_BASE || '/api/v1'
+      try {
+        const response = await fetch(`${base}/orders`)
+        if (!response.ok) throw new Error('network')
+        const payload = await response.json()
+        const remoteOrders = (Array.isArray(payload) ? payload : payload?.items ?? []).map((item: any) => ({
+          id: String(item.orderId ?? item.id ?? ''),
+          demandId: String(item.demandId ?? item.demand?.id ?? item.demandId ?? ''),
+          demandTitle: String(item.demandTitle ?? item.demand?.title ?? ''),
+          // backend OrderSummaryResponse uses publisherId/accepterId
+          requesterId: String(item.publisherId ?? item.requesterId ?? item.demand?.publisherId ?? ''),
+          requesterName: String(item.publisherName ?? item.requesterName ?? item.demand?.publisherDisplayName ?? ''),
+          requesterAvatar: String(item.requesterAvatar ?? item.publisherAvatar ?? buildAvatar(String(item.requesterName ?? item.publisherName ?? item.demand?.publisherDisplayName ?? ''))),
+          serviceProviderId: String(item.accepterId ?? item.serviceProviderId ?? ''),
+          serviceProviderName: String(item.accepterName ?? item.serviceProviderName ?? ''),
+          serviceProviderAvatar: String(item.serviceProviderAvatar ?? buildAvatar(String(item.serviceProviderName ?? ''))),
+          status: (item.status ?? item.orderStatus ?? 'ACCEPTED') as OrderStatus,
+          note: String(item.acceptNote ?? item.note ?? ''),
+          proofSubmitted: Boolean(item.proofSubmitted),
+          proofImageCount: Number(item.proofImageCount ?? 0),
+          createdAt: String(item.createdAt ?? item.createdAt ?? now()),
+          updatedAt: String(item.updatedAt ?? item.updatedAt ?? now()),
+          completedAt: String(item.completedAt ?? item.completedAt ?? ''),
+          timeline: Array.isArray(item.timeline)
+            ? item.timeline.map((entry: any) => ({ at: String(entry.at ?? now()), label: String(entry.label ?? '') }))
+            : []
+        }))
+
+        const localOrderMap = new Map(this.orders.map((order) => [order.id, order]))
+        remoteOrders.forEach((order: OrderRecord) => {
+          localOrderMap.set(order.id, order)
+        })
+
+        this.orders = Array.from(localOrderMap.values())
+      } catch {
+        if (!this.orders.length) {
+          this.orders = createOrders()
+        }
+      }
+    },
+
+    async fetchNotifications(): Promise<void> {
+      const base = import.meta.env.VITE_API_BASE || '/api/v1'
+      try {
+        const response = await fetch(`${base}/notifications`)
+        if (!response.ok) throw new Error('network')
+        const payload = await response.json()
+        const remoteNotifications = (Array.isArray(payload) ? payload : payload?.items ?? []).map((item: any) => ({
+          id: String(item.id),
+          // backend NotificationResponse does not include receiverId (endpoint is per-user); fallback to currentUserId
+          receiverId: String(item.receiverId ?? this.currentUserId),
+          type: (item.type ?? 'STATUS_CHANGED') as NotificationType,
+          // backend may provide title + content
+          content: String(item.content ?? item.title ?? ''),
+          isRead: Boolean(item.read ?? item.isRead),
+          createdAt: String(item.createdAt ?? now()),
+          relatedId: String(item.relatedId ?? item.relatedId ?? '')
+        }))
+
+        const localNotificationMap = new Map(this.notifications.map((notification) => [notification.id, notification]))
+        remoteNotifications.forEach((notification: NotificationRecord) => {
+          localNotificationMap.set(notification.id, notification)
+        })
+
+        this.notifications = Array.from(localNotificationMap.values())
+      } catch {
+        if (!this.notifications.length) {
+          this.notifications = createNotifications()
+        }
+      }
+    },
+
+    async fetchProfile(): Promise<void> {
+      const base = import.meta.env.VITE_API_BASE || '/api/v1'
+      try {
+        const response = await fetch(`${base}/users/me`)
+        if (!response.ok) throw new Error('network')
+        const payload = await response.json()
+        const account = this.accounts.find((item) => item.id === this.currentUserId)
+        if (account) {
+          // backend UserProfileResponse: id, email, studentId, nickname, avatarUrl, role, status, creditScore
+          account.nickname = String(payload.nickname ?? account.nickname)
+          account.avatarUrl = String(payload.avatarUrl ?? account.avatarUrl)
+          account.email = String(payload.email ?? account.email)
+          account.studentId = String(payload.studentId ?? account.studentId)
+          account.role = String(payload.role ?? account.role) as any
+          account.status = String(payload.status ?? account.status) as any
+          account.creditScore = Number(payload.creditScore ?? account.creditScore)
+        }
+      } catch {
+        // keep demo profile
+      }
+    },
+
+    async fetchRecommendations(page = 1, size = 20): Promise<DemandRecord[]> {
+      const base = import.meta.env.VITE_API_BASE || '/api/v1'
+      if (!this.currentUserId) {
+        return []
+      }
+
+      try {
+        const response = await fetch(`${base}/recommendations?page=${page}&size=${size}`)
+        if (!response.ok) throw new Error('network')
+
+        const payload = await response.json()
+        const items = Array.isArray(payload?.data?.items)
+          ? payload.data.items
+          : Array.isArray(payload?.items)
+            ? payload.items
+            : []
+
+        return items
+          .map((item: any) => item.demand ?? item)
+          .filter(Boolean)
+          .map((item: any) => ({
+            id: String(item.id ?? item.demandId ?? ''),
+            title: String(item.title ?? ''),
+            description: String(item.description ?? ''),
+            category: (item.category ?? 'OTHER') as DemandCategoryCode,
+            campusZone: (item.campusZone ?? 'GULOU') as CampusZone,
+            location: String(item.location ?? ''),
+            startTime: String(item.startTime ?? now()),
+            endTime: String(item.endTime ?? now()),
+            reward: Number(item.reward ?? 0),
+            status: (item.status ?? 'PENDING') as DemandStatus,
+            anonymous: Boolean(item.anonymous),
+            anonymousCode: item.anonymousCode ?? null,
+            publisherId: String(item.publisherId ?? ''),
+            publisherName: String(item.publisherName ?? item.creator?.nickname ?? '匿名'),
+            publisherAvatar: String(item.publisherAvatar ?? item.creator?.avatarUrl ?? buildAvatar(String(item.publisherName ?? item.creator?.nickname ?? '匿名'))),
+            tags: Array.isArray(item.tags) ? item.tags.map((tag: string) => String(tag)) : [],
+            createdAt: String(item.createdAt ?? now()),
+            updatedAt: String(item.updatedAt ?? now()),
+            distanceKm: Number(item.distanceKm ?? 0)
+          }))
+      } catch {
+        return []
+      }
     }
   }
 })

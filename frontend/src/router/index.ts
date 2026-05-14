@@ -4,7 +4,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/',
     name: 'Home',
-    component: () => import('@/views/HomeView.vue')
+    component: () => import('@/views/DemandListView.vue')
   },
   {
     path: '/auth',
@@ -33,6 +33,12 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/OrdersView.vue')
   },
   {
+    path: '/orders/:id',
+    name: 'OrderDetail',
+    component: () => import('@/views/OrderDetailView.vue'),
+    props: true
+  },
+  {
     path: '/notifications',
     name: 'Notifications',
     component: () => import('@/views/NotificationsView.vue')
@@ -41,6 +47,11 @@ const routes: RouteRecordRaw[] = [
     path: '/profile',
     name: 'Profile',
     component: () => import('@/views/ProfileView.vue')
+  },
+  {
+    path: '/profile/edit',
+    name: 'ProfileEdit',
+    component: () => import('@/views/ProfileEditView.vue')
   },
   {
     path: '/admin',

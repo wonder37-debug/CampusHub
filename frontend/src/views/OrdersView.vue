@@ -1,64 +1,85 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 
 import { useCampusHubStore } from '@/stores/campusHub'
-import { formatDateTime, formatOrderStatus, statusToneClass } from '@/utils/format'
+import { formatOrderStatus, formatRelativeTime, statusToneClass, formatDemandStatus } from '@/utils/format'
 
 const store = useCampusHubStore()
-const activeFilter = ref<'all' | 'requester' | 'provider'>('all')
-const reviewOrderId = ref('')
-const reviewRating = ref('5')
-const reviewComment = ref('')
-const message = ref('')
-const error = ref('')
+const router = useRouter()
+const activeTab = ref<'published' | 'accepted'>('published')
 
-const orders = computed(() => {
+const visibleOrders = computed(() => {
   const currentUserId = store.currentUser?.id
-  const visible = store.currentUserOrders
+  if (!currentUserId) return []
 
-  if (activeFilter.value === 'requester') {
-    return visible.filter((order) => order.requesterId === currentUserId)
+  if (activeTab.value === 'accepted') {
+    return store.orders.filter((order) => order.serviceProviderId === currentUserId)
   }
 
-  if (activeFilter.value === 'provider') {
-    return visible.filter((order) => order.serviceProviderId === currentUserId)
-  }
+  // published: include actual orders where current user is requester,
+  // plus published demands by current user that have no order yet (as placeholders)
+  const publishedOrders = store.orders.filter((order) => order.requesterId === currentUserId)
 
-  return visible
+  const userDemands = store.demands.filter((d) => d.publisherId === currentUserId)
+  const demandsWithoutOrder = userDemands.filter((d) => !store.orders.some((o) => o.demandId === d.id))
+
+  const placeholders = demandsWithoutOrder.map((d) => ({
+    id: `d-${d.id}`,
+    demandId: d.id,
+    demandTitle: d.title,
+    requesterId: d.publisherId,
+    requesterName: d.publisherName,
+    requesterAvatar: d.publisherAvatar,
+    serviceProviderId: '',
+    serviceProviderName: '',
+    serviceProviderAvatar: '',
+    status: 'PENDING' as unknown as import('@/types/campushub').OrderStatus,
+    note: '',
+    proofSubmitted: false,
+    proofImageCount: 0,
+    createdAt: d.createdAt,
+    updatedAt: d.updatedAt,
+    completedAt: '',
+    timeline: [],
+    isPlaceholder: true
+  }))
+
+  return [...publishedOrders, ...placeholders]
 })
 
-function beginOrder(orderId: string): void {
-  try {
-    store.startOrder(orderId)
-    message.value = '订单已切换为进行中。'
-  } catch (startError) {
-    error.value = startError instanceof Error ? startError.message : '操作失败'
+function otherPartyName(order: (typeof store.orders)[number] & { isPlaceholder?: boolean }): string {
+  if (activeTab.value === 'published') {
+    return order.isPlaceholder ? '未被接单' : order.serviceProviderName
   }
+  return order.requesterName
 }
 
-function finishOrder(orderId: string): void {
-  try {
-    store.completeOrder(orderId)
-    message.value = '订单已完成。'
-  } catch (completeError) {
-    error.value = completeError instanceof Error ? completeError.message : '操作失败'
-  }
-}
-
-function sendReview(): void {
-  if (!reviewOrderId.value) {
-    error.value = '请先选择一个已完成的订单进行评价。'
+function openOrder(orderId: string): void {
+  // if placeholder id (starts with d-), open demand instead
+  if (orderId.startsWith('d-')) {
+    const demandId = orderId.replace(/^d-/, '')
+    router.push(`/demands/${demandId}`)
     return
   }
-
-  try {
-    store.submitReview(reviewOrderId.value, Number(reviewRating.value), reviewComment.value)
-    message.value = '评价已提交。'
-    reviewComment.value = ''
-  } catch (reviewError) {
-    error.value = reviewError instanceof Error ? reviewError.message : '评价失败'
-  }
+  router.push(`/orders/${orderId}`)
 }
+
+function startOrder(orderId: string): void {
+  store.startOrder(orderId)
+}
+
+function completeOrder(orderId: string): void {
+  store.completeOrder(orderId)
+}
+
+function cancelOrder(orderId: string): void {
+  store.cancelOrder(orderId)
+}
+
+onMounted(() => {
+  void store.fetchOrders()
+})
 </script>
 
 <template>
@@ -66,110 +87,73 @@ function sendReview(): void {
     <section class="panel">
       <div class="page-head">
         <div>
-          <p class="eyebrow">订单中心</p>
-          <h1 class="page-title">订单列表与完成确认</h1>
-          <p class="page-summary">这里可以查看自己参与的订单，确认进度，并在完成后留下评价。</p>
+          <p class="eyebrow">我的订单</p>
+          <h1 class="page-title">订单列表</h1>
+          <p class="page-summary">查看我发布和我接下的订单，按状态执行操作。</p>
         </div>
       </div>
 
       <div class="segment-row">
-        <button type="button" class="button" :class="activeFilter === 'all' ? 'primary' : 'secondary'" @click="activeFilter = 'all'">全部</button>
-        <button type="button" class="button" :class="activeFilter === 'requester' ? 'primary' : 'secondary'" @click="activeFilter = 'requester'">作为需求方</button>
-        <button type="button" class="button" :class="activeFilter === 'provider' ? 'primary' : 'secondary'" @click="activeFilter = 'provider'">作为服务方</button>
+        <button type="button" class="button" :class="activeTab === 'published' ? 'primary' : 'secondary'" @click="activeTab = 'published'">我发布的订单</button>
+        <button type="button" class="button" :class="activeTab === 'accepted' ? 'primary' : 'secondary'" @click="activeTab = 'accepted'">我接的订单</button>
       </div>
     </section>
 
-    <section class="order-grid">
-      <article v-for="order in orders" :key="order.id" class="list-card">
+    <div v-if="!store.currentUser" class="empty-state">
+      <strong>请先登录查看订单</strong>
+    </div>
+
+    <section v-else class="order-grid">
+      <div v-if="!visibleOrders.length" class="empty-state">
+        <strong>暂无订单</strong>
+      </div>
+
+      <article v-for="order in visibleOrders" :key="order.id" class="list-card order-card" @click="openOrder(order.id)">
         <div class="status-row">
-          <span class="chip" :class="statusToneClass(order.status)">{{ formatOrderStatus(order.status) }}</span>
-          <span class="chip">{{ order.id }}</span>
+          <template v-if="(order as any).isPlaceholder">
+            <span class="chip" :class="statusToneClass('PENDING')">{{ formatDemandStatus('PENDING') }}</span>
+            <span class="chip">发布单</span>
+          </template>
+          <template v-else>
+            <span class="chip" :class="statusToneClass(order.status)">{{ formatOrderStatus(order.status) }}</span>
+            <span class="chip">{{ activeTab === 'published' ? '发布单' : '接单单' }}</span>
+          </template>
         </div>
 
         <div class="card-head">
           <h3>{{ order.demandTitle }}</h3>
-          <span class="meta">{{ formatDateTime(order.createdAt) }}</span>
+          <span class="meta">{{ formatRelativeTime(order.createdAt) }}</span>
         </div>
 
-        <div class="avatar-row">
-          <img :src="order.requesterAvatar" :alt="order.requesterName" class="avatar" />
-          <div>
-            <strong>{{ order.requesterName }}</strong>
-            <div class="meta">需求方</div>
-          </div>
-          <span>→</span>
-          <img :src="order.serviceProviderAvatar" :alt="order.serviceProviderName" class="avatar" />
-          <div>
-            <strong>{{ order.serviceProviderName }}</strong>
-            <div class="meta">服务方</div>
-          </div>
-        </div>
-
-        <p>{{ order.note || '暂无留言' }}</p>
-        <div class="meta">凭证提交：{{ order.proofSubmitted ? `${order.proofImageCount} 张图片` : '未提交' }}</div>
-
-        <div class="timeline">
-          <div v-for="entry in order.timeline" :key="`${order.id}-${entry.at}-${entry.label}`" class="timeline-item">
-            <span>{{ entry.label }}</span>
-            <span class="meta">{{ formatDateTime(entry.at) }}</span>
-          </div>
-        </div>
+        <div class="meta">对方：{{ otherPartyName(order) }}</div>
 
         <div class="card-actions">
-          <button v-if="order.status === 'ACCEPTED' && store.currentUser?.id === order.serviceProviderId" type="button" class="button secondary" @click="beginOrder(order.id)">开始执行</button>
-          <button v-if="order.status === 'IN_PROGRESS' && store.currentUser?.id === order.serviceProviderId" type="button" class="button primary" @click="finishOrder(order.id)">完成确认</button>
           <button
-            v-if="order.status === 'COMPLETED'"
+            v-if="order.status === 'ACCEPTED' && activeTab === 'published'"
             type="button"
             class="button secondary"
-            @click="reviewOrderId = order.id"
+            @click.stop="cancelOrder(order.id)"
           >
-            评价此单
+            取消订单
+          </button>
+          <button
+            v-if="order.status === 'ACCEPTED' && activeTab === 'accepted'"
+            type="button"
+            class="button secondary"
+            @click.stop="startOrder(order.id)"
+          >
+            开始执行
+          </button>
+          <button
+            v-if="order.status === 'IN_PROGRESS' && activeTab === 'accepted'"
+            type="button"
+            class="button primary"
+            @click.stop="completeOrder(order.id)"
+          >
+            确认完成
           </button>
         </div>
       </article>
     </section>
-
-    <section class="two-column page-grid">
-      <article class="panel">
-        <p class="eyebrow">评价入口</p>
-        <h2 class="section-title">提交订单评价</h2>
-        <div class="field">
-          <label for="order-review-id">订单</label>
-          <select id="order-review-id" v-model="reviewOrderId">
-            <option value="">请选择订单</option>
-            <option v-for="order in orders.filter((item) => item.status === 'COMPLETED')" :key="order.id" :value="order.id">{{ order.demandTitle }} · {{ order.id }}</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="order-review-rating">评分</label>
-          <select id="order-review-rating" v-model="reviewRating">
-            <option value="5">5 分</option>
-            <option value="4">4 分</option>
-            <option value="3">3 分</option>
-            <option value="2">2 分</option>
-            <option value="1">1 分</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="order-review-comment">评价</label>
-          <textarea id="order-review-comment" v-model="reviewComment" placeholder="输入你的文字评价"></textarea>
-        </div>
-        <button type="button" class="button primary" @click="sendReview">提交评价</button>
-      </article>
-
-      <article class="panel helper-card">
-        <p class="eyebrow">流程说明</p>
-        <h2 class="section-title">订单状态对应的操作按钮</h2>
-        <div class="timeline">
-          <div class="timeline-item"><span>已接单</span><span>可以开始处理</span></div>
-          <div class="timeline-item"><span>进行中</span><span>可以确认完成</span></div>
-          <div class="timeline-item"><span>已完成</span><span>可以提交评价</span></div>
-        </div>
-      </article>
-    </section>
-
-    <p v-if="message" class="hero-badge">{{ message }}</p>
-    <p v-if="error" class="hero-badge" style="background: rgba(181, 71, 71, 0.14); color: var(--danger)">{{ error }}</p>
   </div>
 </template>

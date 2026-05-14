@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 
 import { useCampusHubStore } from '@/stores/campusHub'
 import { formatUserRole, formatUserStatus } from '@/utils/format'
 
 const store = useCampusHubStore()
+const router = useRouter()
 const activeTab = ref<'login' | 'register'>('login')
 const message = ref('')
 const error = ref('')
@@ -36,6 +38,7 @@ function submitLogin(): void {
   try {
     const user = store.login(loginForm)
     message.value = `欢迎回来，${user.nickname}。`
+    router.replace('/profile')
   } catch (loginError) {
     error.value = loginError instanceof Error ? loginError.message : '登录失败'
   }
@@ -86,6 +89,7 @@ function submitRegister(): void {
     activeTab.value = 'login'
     registerForm.verificationCode = ''
     verificationCodeHint.value = ''
+    router.replace('/profile')
   } catch (registerError) {
     error.value = registerError instanceof Error ? registerError.message : '注册失败'
   }

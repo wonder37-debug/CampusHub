@@ -1,57 +1,117 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 
 import { useCampusHubStore } from '@/stores/campusHub'
-import { formatDateTime, formatScore, formatUserRole, formatUserStatus } from '@/utils/format'
+import { formatScore, formatUserRole, formatUserStatus } from '@/utils/format'
 
 const store = useCampusHubStore()
-const message = ref('')
-const error = ref('')
+const router = useRouter()
+const saving = ref(false)
 
 const profileForm = reactive({
   nickname: store.currentUser?.nickname ?? '',
   avatarUrl: store.currentUser?.avatarUrl ?? ''
 })
 
-const userReviews = computed(() => store.currentUserReviews.filter((review) => review.targetId === store.currentUser?.id))
-const givenReviews = computed(() => store.currentUserReviews.filter((review) => review.reviewerId === store.currentUser?.id))
+function onAvatarFileSelected(event: Event): void {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
 
-function updateProfile(): void {
-  error.value = ''
-  message.value = ''
+  const reader = new FileReader()
+  reader.onload = () => {
+    profileForm.avatarUrl = String(reader.result || '')
+  }
+  reader.readAsDataURL(file)
+}
 
+const creditLevel = computed(() => {
+  const score = store.currentUser?.creditScore ?? 0
+  if (score >= 95) return '金牌助教'
+  if (score >= 85) return '银牌助教'
+  return '成长中'
+})
+
+const maskedPhone = computed(() => {
+  const phone = store.currentUser?.phone ?? store.currentUser?.studentId ?? ''
+  return phone ? `${String(phone).slice(0, 3)}****${String(phone).slice(-4)}` : '138****0000'
+})
+
+function saveProfile(): void {
+  saving.value = true
   try {
     store.updateProfile(profileForm)
-    message.value = '个人资料已更新。'
-  } catch (profileError) {
-    error.value = profileError instanceof Error ? profileError.message : '更新失败'
+  } finally {
+    saving.value = false
   }
 }
+
+function openEditPage(): void {
+  router.push('/profile/edit')
+}
+
+function logout(): void {
+  store.logout()
+  router.push('/auth')
+}
+
+onMounted(() => {
+  void store.fetchProfile()
+})
 </script>
 
 <template>
-  <div v-if="store.currentUser" class="page-grid two-column">
+  <div v-if="store.currentUser" class="page-grid">
     <section class="panel">
       <div class="avatar-row">
         <img :src="store.currentUser.avatarUrl" :alt="store.currentUser.nickname" class="avatar large" />
         <div>
-          <p class="eyebrow">我的资料</p>
+          <p class="eyebrow">个人中心</p>
           <h1 class="page-title">{{ store.currentUser.nickname }}</h1>
-          <p class="page-summary">{{ store.currentUser.studentId }} · {{ store.currentUser.email }}</p>
+          <p class="page-summary">{{ store.currentUser.studentId }} · {{ maskedPhone }}</p>
           <div class="stats-row">
             <span class="chip is-neutral">{{ formatUserRole(store.currentUser.role) }}</span>
             <span class="chip is-neutral">{{ formatUserStatus(store.currentUser.status) }}</span>
-            <span class="chip is-success">{{ formatScore(store.currentUser.creditScore) }}</span>
           </div>
-          <p class="subtle">你可以在这里查看个人信息、修改昵称和头像，并浏览收到的评价。</p>
+          <button type="button" class="button secondary" @click="openEditPage">编辑资料</button>
         </div>
       </div>
 
       <div class="mini-grid">
-        <div class="mini-stat"><span class="subtle">我的需求</span><strong>{{ store.currentUserDemands.length }}</strong></div>
-        <div class="mini-stat"><span class="subtle">我的订单</span><strong>{{ store.currentUserOrders.length }}</strong></div>
-        <div class="mini-stat"><span class="subtle">我的评价</span><strong>{{ userReviews.length }}</strong></div>
-        <div class="mini-stat"><span class="subtle">我已评价</span><strong>{{ givenReviews.length }}</strong></div>
+        <div class="mini-stat">
+          <span class="subtle">信用分</span>
+          <strong>{{ formatScore(store.currentUser.creditScore) }}</strong>
+        </div>
+        <div class="mini-stat">
+          <span class="subtle">信用等级</span>
+          <strong>{{ creditLevel }}</strong>
+        </div>
+        <div class="mini-stat">
+          <span class="subtle">已完成订单</span>
+          <strong>{{ store.currentUserOrders.filter((order) => order.status === 'COMPLETED').length }}</strong>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <p class="eyebrow">功能入口</p>
+      <div class="section-grid">
+        <button type="button" class="button secondary" @click="router.push('/orders')">我的订单</button>
+        <button type="button" class="button secondary" @click="router.push('/notifications')">消息通知</button>
+        <button v-if="store.currentUser.role === 'ADMIN'" type="button" class="button secondary" @click="router.push('/admin')">管理后台</button>
+        <button type="button" class="button primary" @click="logout">退出登录</button>
+      </div>
+
+      <div class="hero-badge" style="margin-top: 16px;">v1.0.0</div>
+    </section>
+
+    <section class="panel">
+      <div class="page-head">
+        <div>
+          <p class="eyebrow">资料编辑</p>
+          <h2 class="section-title">修改头像与昵称</h2>
+        </div>
       </div>
 
       <div class="form-grid two-column">
@@ -63,49 +123,28 @@ function updateProfile(): void {
           <label for="profile-avatar">头像链接</label>
           <input id="profile-avatar" v-model="profileForm.avatarUrl" />
         </div>
-        <button type="button" class="button primary" style="grid-column: 1 / -1;" @click="updateProfile">保存资料</button>
+        <div class="field" style="grid-column: 1 / -1;">
+          <label for="profile-avatar-file">本地上传头像</label>
+          <input
+            id="profile-avatar-file"
+            ref="avatarFileInput"
+            type="file"
+            accept="image/*"
+            @change="onAvatarFileSelected"
+          />
+          <span class="input-help">选择本地图片后会自动转成预览地址，保存后即作为头像使用。</span>
+        </div>
       </div>
 
-      <p v-if="message" class="hero-badge">{{ message }}</p>
-      <p v-if="error" class="hero-badge" style="background: rgba(181, 71, 71, 0.14); color: var(--danger)">{{ error }}</p>
-    </section>
-
-    <section class="section-grid">
-      <article class="panel">
-        <p class="eyebrow">收到的评价</p>
-        <h2 class="section-title">收到的评价</h2>
-        <div v-if="userReviews.length" class="review-grid">
-          <div v-for="review in userReviews" :key="review.id" class="timeline-item">
-            <div>
-              <strong>{{ review.reviewerName }} 评价你为 {{ review.rating }} 星</strong>
-              <div class="meta">{{ review.comment }}</div>
-              <div class="meta">{{ formatDateTime(review.createdAt) }}</div>
-            </div>
-          </div>
-        </div>
-        <div v-else class="empty-state">当前没有收到评价。</div>
-      </article>
-
-      <article class="panel">
-        <p class="eyebrow">我提交的评价</p>
-        <h2 class="section-title">历史评价记录</h2>
-        <div v-if="givenReviews.length" class="review-grid">
-          <div v-for="review in givenReviews" :key="review.id" class="timeline-item">
-            <div>
-              <strong>→ {{ review.targetName }}</strong>
-              <div class="meta">{{ review.comment }}</div>
-              <div class="meta">{{ formatDateTime(review.createdAt) }}</div>
-            </div>
-            <span class="chip is-success">{{ review.rating }} 星</span>
-          </div>
-        </div>
-        <div v-else class="empty-state">还没有提交过评价。</div>
-      </article>
+      <div class="card-actions">
+        <button type="button" class="button primary" :disabled="saving" @click="saveProfile">保存资料</button>
+      </div>
     </section>
   </div>
 
   <div v-else class="empty-state">
-    <strong>当前未登录</strong>
-    <p>请先前往认证页登录或注册账号。</p>
+    <strong>请先登录</strong>
+    <p>前往认证页后再查看个人中心。</p>
+    <button type="button" class="button primary" @click="router.push('/auth')">去认证页</button>
   </div>
 </template>

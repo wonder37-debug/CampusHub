@@ -15,7 +15,7 @@ const form = reactive({
   title: '',
   description: '',
   category: '' as '' | (typeof DEMAND_CATEGORY_OPTIONS)[number],
-  campusZone: 'XIANLIN' as CampusZone,
+  campusZone: '' as CampusZone | '',
   location: '',
   startTime: '',
   endTime: '',
@@ -27,6 +27,11 @@ const form = reactive({
 function submitDemand(): void {
   error.value = ''
   message.value = ''
+
+  if (!form.campusZone) {
+    error.value = '请选择校区后再发布需求'
+    return
+  }
 
   try {
     const demand = store.createDemand(form)
@@ -44,8 +49,9 @@ function submitDemand(): void {
       <div class="page-head">
         <div>
           <p class="eyebrow">发布需求</p>
-          <h1 class="page-title">发布需求表单</h1>
+          <label for="demand-zone">校区</label>
           <p class="page-summary">填写标题、地点和时间后即可发布，让同学更快看到你的需求。</p>
+            <option value="">请选择校区</option>
         </div>
       </div>
 
@@ -115,7 +121,7 @@ function submitDemand(): void {
           <strong>{{ formatMoney(Number(form.reward || 0)) }}</strong>
         </div>
         <p>{{ form.description || '这里会显示需求描述与执行细节。' }}</p>
-        <div class="meta">{{ formatCampusZone(form.campusZone) }} · {{ form.location || '未填写地点' }}</div>
+        <div class="meta">{{ form.campusZone ? formatCampusZone(form.campusZone) : '请选择校区' }} · {{ form.location || '未填写地点' }}</div>
         <div class="tag-row">
           <span v-for="tag in form.tags.split(/[，,]/).filter(Boolean)" :key="tag" class="badge is-neutral">{{ tag.trim() }}</span>
         </div>

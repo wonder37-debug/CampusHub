@@ -21,6 +21,7 @@ export interface PublicUser {
   studentId: string
   email: string
   nickname: string
+  phone?: string
   creditScore: number
   role: UserRole
   status: UserStatus

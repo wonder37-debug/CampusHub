@@ -1,60 +1,91 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 
 import { useCampusHubStore } from '@/stores/campusHub'
-import { formatDateTime, formatNotificationType, statusToneClass } from '@/utils/format'
+import { formatNotificationType, formatRelativeTime } from '@/utils/format'
 
 const store = useCampusHubStore()
-const unreadOnly = ref(false)
+const router = useRouter()
 
-const notifications = computed(() => {
-  const items = store.currentUserNotifications
-  return unreadOnly.value ? items.filter((notification) => !notification.isRead) : items
+const notifications = computed(() => store.currentUserNotifications)
+
+function goBack(): void {
+  router.back()
+}
+
+function iconFor(type: string): string {
+  if (type === 'ORDER_ACCEPTED') return '🧩'
+  if (type === 'REVIEW_RECEIVED') return '⭐'
+  return '🔔'
+}
+
+function openNotification(notificationId: string, relatedId: string): void {
+  store.markNotificationRead(notificationId)
+  if (relatedId.startsWith('d-')) {
+    router.push(`/demands/${relatedId}`)
+    return
+  }
+  if (relatedId.startsWith('o-')) {
+    router.push(`/orders/${relatedId}`)
+    return
+  }
+  router.push('/notifications')
+}
+
+onMounted(() => {
+  void store.fetchNotifications()
 })
 </script>
 
 <template>
   <div class="page-grid">
-    <section class="panel">
+    <section class="panel page-head">
       <div class="page-head">
+        <button type="button" class="button secondary" @click="goBack">返回</button>
         <div>
-          <p class="eyebrow">消息中心</p>
-          <h1 class="page-title">通知中心</h1>
-          <p class="page-summary">这里会汇总接单、状态变更、评价和系统提醒，也可以只看未读消息。</p>
+          <p class="eyebrow">消息</p>
+          <h1 class="page-title">消息</h1>
+          <p class="page-summary">接单、状态变更和评价会在这里显示。</p>
         </div>
         <button type="button" class="button secondary" @click="store.markAllNotificationsRead">全部标记已读</button>
       </div>
-
-      <label class="chip" style="width: fit-content;">
-        <input v-model="unreadOnly" type="checkbox" style="margin: 0 8px 0 0;" />
-        只看未读通知
-      </label>
     </section>
 
     <section class="notification-grid">
-      <article v-for="notification in notifications" :key="notification.id" class="list-card">
+      <div v-if="!store.currentUser" class="empty-state">
+        <strong>请先登录查看消息</strong>
+      </div>
+
+      <div v-else-if="!notifications.length" class="empty-state">
+        <strong>暂无消息</strong>
+      </div>
+
+      <article
+        v-for="notification in notifications"
+        :key="notification.id"
+        class="list-card notification-card"
+        :class="{ faded: notification.isRead }"
+        @click="openNotification(notification.id, notification.relatedId)"
+      >
         <div class="status-row">
-          <span class="chip" :class="statusToneClass(notification.type)">{{ formatNotificationType(notification.type) }}</span>
+          <span class="badge is-neutral">{{ iconFor(notification.type) }}</span>
+          <span class="chip">{{ formatNotificationType(notification.type) }}</span>
           <span class="chip" :class="notification.isRead ? 'is-success' : 'is-warning'">
             {{ notification.isRead ? '已读' : '未读' }}
           </span>
         </div>
 
         <div class="card-head">
-          <h3>{{ notification.content }}</h3>
-          <span class="meta">{{ formatDateTime(notification.createdAt) }}</span>
+          <h3 :style="notification.isRead ? 'font-weight: 500;' : 'font-weight: 700;'">{{ notification.content }}</h3>
+          <span class="meta">{{ formatRelativeTime(notification.createdAt) }}</span>
         </div>
 
-        <div class="card-actions">
-          <button v-if="!notification.isRead" type="button" class="button primary" @click="store.markNotificationRead(notification.id)">标记已读</button>
-          <span v-else class="chip is-success">已处理</span>
+        <div class="meta">
+          <span v-if="!notification.isRead" class="unread-dot"></span>
+          点击可查看相关订单或需求详情
         </div>
       </article>
     </section>
-
-    <div v-if="!notifications.length" class="empty-state">
-      <strong>没有符合条件的通知</strong>
-      <p>可以切换账号后体验不同身份收到的消息。</p>
-    </div>
   </div>
 </template>
