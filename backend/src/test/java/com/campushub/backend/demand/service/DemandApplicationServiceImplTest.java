@@ -65,7 +65,7 @@ class DemandApplicationServiceImplTest {
     }
 
     @Test
-    void shouldPublishDemandWithDefaultPendingStatus() {
+    void shouldPublishDemandWithDefaultReviewingStatus() {
         DemandDetailResponse response = demandApplicationService.publish(
             publisherId,
             new PublishDemandCommand(
@@ -82,7 +82,7 @@ class DemandApplicationServiceImplTest {
             )
         );
 
-        assertEquals("PENDING", response.status());
+        assertEquals("REVIEWING", response.status());
         assertTrue(response.anonymous());
         assertTrue(response.publisherDisplayName().startsWith("匿名校友"));
     }

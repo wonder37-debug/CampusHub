@@ -188,6 +188,10 @@ class OrderApplicationServiceImplTest {
                 false
             )
         );
+        demandRepository.findById(secondDemand.id()).ifPresent(saved -> {
+            saved.setStatus(com.campushub.backend.demand.domain.DemandStatus.PENDING);
+            demandRepository.save(saved);
+        });
         orderApplicationService.accept(accepterId, secondDemand.id(), new AcceptOrderCommand("第二单"));
 
         PageResponse<OrderSummaryResponse> history = orderApplicationService.listHistory(
@@ -200,7 +204,7 @@ class OrderApplicationServiceImplTest {
     }
 
     private DemandDetailResponse createDemand() {
-        return demandApplicationService.publish(
+        DemandDetailResponse demand = demandApplicationService.publish(
             publisherId,
             new PublishDemandCommand(
                 "帮拿快递",
@@ -215,5 +219,10 @@ class OrderApplicationServiceImplTest {
                 false
             )
         );
+        demandRepository.findById(demand.id()).ifPresent(saved -> {
+            saved.setStatus(com.campushub.backend.demand.domain.DemandStatus.PENDING);
+            demandRepository.save(saved);
+        });
+        return demandApplicationService.getDetail(demand.id());
     }
 }

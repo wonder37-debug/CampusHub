@@ -163,6 +163,10 @@ class AdminApplicationServiceImplTest {
         });
 
         DemandDetailResponse completedDemand = createDemand("已完成快递", "EXPRESS");
+        demandRepository.findById(completedDemand.id()).ifPresent(demand -> {
+            demand.setStatus(DemandStatus.PENDING);
+            demandRepository.save(demand);
+        });
         OrderDetailResponse order = orderApplicationService.accept(
             accepterId,
             completedDemand.id(),
@@ -196,6 +200,10 @@ class AdminApplicationServiceImplTest {
     @Test
     void shouldRejectReviewForNonReviewingDemand() {
         DemandDetailResponse demand = createDemand("普通需求", "OTHER");
+        demandRepository.findById(demand.id()).ifPresent(saved -> {
+            saved.setStatus(DemandStatus.PENDING);
+            demandRepository.save(saved);
+        });
 
         BusinessException exception = assertThrows(BusinessException.class, () ->
             adminApplicationService.reviewDemand(

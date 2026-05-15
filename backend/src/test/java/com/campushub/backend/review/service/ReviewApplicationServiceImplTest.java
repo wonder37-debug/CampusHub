@@ -180,7 +180,7 @@ class ReviewApplicationServiceImplTest {
     }
 
     private DemandDetailResponse createDemand() {
-        return demandApplicationService.publish(
+        DemandDetailResponse demand = demandApplicationService.publish(
             publisherId,
             new PublishDemandCommand(
                 "帮拿快递",
@@ -195,6 +195,11 @@ class ReviewApplicationServiceImplTest {
                 false
             )
         );
+        demandRepository.findById(demand.id()).ifPresent(saved -> {
+            saved.setStatus(com.campushub.backend.demand.domain.DemandStatus.PENDING);
+            demandRepository.save(saved);
+        });
+        return demandApplicationService.getDetail(demand.id());
     }
 
     private OrderDetailResponse createCompletedOrder() {

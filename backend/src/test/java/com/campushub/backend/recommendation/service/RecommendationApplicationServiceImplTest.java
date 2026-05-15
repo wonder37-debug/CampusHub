@@ -156,7 +156,7 @@ class RecommendationApplicationServiceImplTest {
     }
 
     private DemandDetailResponse createDemand(String title, String category) {
-        return demandApplicationService.publish(
+        DemandDetailResponse demand = demandApplicationService.publish(
             publisherId,
             new PublishDemandCommand(
                 title,
@@ -171,5 +171,10 @@ class RecommendationApplicationServiceImplTest {
                 false
             )
         );
+        demandRepository.findById(demand.id()).ifPresent(saved -> {
+            saved.setStatus(com.campushub.backend.demand.domain.DemandStatus.PENDING);
+            demandRepository.save(saved);
+        });
+        return demandApplicationService.getDetail(demand.id());
     }
 }

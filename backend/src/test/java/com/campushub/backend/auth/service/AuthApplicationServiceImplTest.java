@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.campushub.backend.auth.domain.User;
 import com.campushub.backend.auth.domain.UserRole;
 import com.campushub.backend.auth.domain.UserStatus;
+import com.campushub.backend.auth.dto.EmailVerificationIssue;
 import com.campushub.backend.auth.dto.LoginCommand;
 import com.campushub.backend.auth.dto.LoginResult;
 import com.campushub.backend.auth.dto.RegisterCommand;
@@ -35,17 +36,18 @@ class AuthApplicationServiceImplTest {
         userRepository = new InMemoryUserRepository();
         authApplicationService = new AuthApplicationServiceImpl(
             userRepository,
-            new NoopVerificationCodeService(),
+            new InMemoryVerificationCodeService(),
             new SimpleTokenService()
         );
     }
 
     @Test
     void shouldRegisterUserSuccessfully() {
+        EmailVerificationIssue issue = authApplicationService.sendRegistrationCode("zheng@example.edu.cn", "20260001");
         UserProfileResponse response = authApplicationService.register(
             new RegisterCommand(
                 "zheng@example.edu.cn",
-                "123456",
+                issue.verificationCode(),
                 "20260001",
                 "Password1",
                 "嘉鸿",
@@ -62,10 +64,11 @@ class AuthApplicationServiceImplTest {
 
     @Test
     void shouldRejectDuplicateStudentId() {
+        EmailVerificationIssue firstIssue = authApplicationService.sendRegistrationCode("one@example.edu.cn", "20260001");
         authApplicationService.register(
             new RegisterCommand(
                 "one@example.edu.cn",
-                "123456",
+                firstIssue.verificationCode(),
                 "20260001",
                 "Password1",
                 "one",
@@ -73,12 +76,14 @@ class AuthApplicationServiceImplTest {
             )
         );
 
+        EmailVerificationIssue secondIssue = authApplicationService.sendRegistrationCode("two@example.edu.cn", null);
+
         BusinessException exception = assertThrows(
             BusinessException.class,
             () -> authApplicationService.register(
                 new RegisterCommand(
                     "two@example.edu.cn",
-                    "123456",
+                    secondIssue.verificationCode(),
                     "20260001",
                     "Password2",
                     "two",
@@ -92,10 +97,11 @@ class AuthApplicationServiceImplTest {
 
     @Test
     void shouldLoginSuccessfully() {
+        EmailVerificationIssue issue = authApplicationService.sendRegistrationCode("zheng@example.edu.cn", "20260001");
         UserProfileResponse registered = authApplicationService.register(
             new RegisterCommand(
                 "zheng@example.edu.cn",
-                "123456",
+                issue.verificationCode(),
                 "20260001",
                 "Password1",
                 "嘉鸿",
@@ -112,10 +118,11 @@ class AuthApplicationServiceImplTest {
 
     @Test
     void shouldRejectWrongPassword() {
+        EmailVerificationIssue issue = authApplicationService.sendRegistrationCode("zheng@example.edu.cn", "20260001");
         authApplicationService.register(
             new RegisterCommand(
                 "zheng@example.edu.cn",
-                "123456",
+                issue.verificationCode(),
                 "20260001",
                 "Password1",
                 "嘉鸿",
@@ -158,10 +165,11 @@ class AuthApplicationServiceImplTest {
 
     @Test
     void shouldRejectUpdatingAnotherUsersProfile() {
+        EmailVerificationIssue issue = authApplicationService.sendRegistrationCode("zheng@example.edu.cn", "20260001");
         UserProfileResponse user = authApplicationService.register(
             new RegisterCommand(
                 "zheng@example.edu.cn",
-                "123456",
+                issue.verificationCode(),
                 "20260001",
                 "Password1",
                 "嘉鸿",
@@ -179,10 +187,11 @@ class AuthApplicationServiceImplTest {
 
     @Test
     void shouldUpdateOwnProfile() {
+        EmailVerificationIssue issue = authApplicationService.sendRegistrationCode("zheng@example.edu.cn", "20260001");
         UserProfileResponse user = authApplicationService.register(
             new RegisterCommand(
                 "zheng@example.edu.cn",
-                "123456",
+                issue.verificationCode(),
                 "20260001",
                 "Password1",
                 "嘉鸿",

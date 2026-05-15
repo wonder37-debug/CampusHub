@@ -3,6 +3,7 @@ package com.campushub.backend.auth.service;
 import com.campushub.backend.auth.domain.User;
 import com.campushub.backend.auth.domain.UserRole;
 import com.campushub.backend.auth.domain.UserStatus;
+import com.campushub.backend.auth.dto.EmailVerificationIssue;
 import com.campushub.backend.auth.dto.LoginCommand;
 import com.campushub.backend.auth.dto.LoginResult;
 import com.campushub.backend.auth.dto.RegisterCommand;
@@ -38,6 +39,18 @@ public class AuthApplicationServiceImpl implements AuthApplicationService {
         this.userRepository = userRepository;
         this.verificationCodeService = verificationCodeService;
         this.tokenService = tokenService;
+    }
+
+    @Override
+    public EmailVerificationIssue sendRegistrationCode(String email, String studentId) {
+        validateEmail(email);
+        if (!isBlank(studentId) && userRepository.findByStudentId(studentId.trim()).isPresent()) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "studentId already registered");
+        }
+        if (userRepository.findByEmail(email.trim()).isPresent()) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "email already registered");
+        }
+        return verificationCodeService.issueCode(email.trim(), emptyToNull(studentId));
     }
 
     @Override
@@ -128,6 +141,7 @@ public class AuthApplicationServiceImpl implements AuthApplicationService {
         if (isBlank(command.email())) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "email must not be blank");
         }
+        validateEmail(command.email());
         if (isBlank(command.verificationCode())) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "verificationCode must not be blank");
         }
@@ -150,6 +164,12 @@ public class AuthApplicationServiceImpl implements AuthApplicationService {
 
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    private void validateEmail(String email) {
+        if (isBlank(email) || !email.contains("@")) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "email must be a valid address");
+        }
     }
 
     private String resolveNickname(String nickname) {
