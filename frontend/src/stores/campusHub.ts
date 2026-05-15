@@ -247,6 +247,17 @@ export const useCampusHubStore = defineStore('campusHub', {
   },
 
   actions: {
+    async hydrateAuthenticatedState(): Promise<void> {
+      if (!this.token) {
+        return
+      }
+
+      await this.fetchProfile()
+      await this.fetchDemands()
+      await this.fetchOrders()
+      await this.fetchNotifications()
+    },
+
     getDemandById(demandId: string): DemandRecord | undefined {
       return this.demands.find((demand) => demand.id === demandId)
     },
@@ -280,10 +291,7 @@ export const useCampusHubStore = defineStore('campusHub', {
       this.currentUserId = user.id
       this.currentProfile = user
       this.token = String(authData.token ?? '')
-      await this.fetchProfile()
-      await this.fetchDemands()
-      await this.fetchOrders()
-      await this.fetchNotifications()
+      await this.hydrateAuthenticatedState()
       return user
     },
 
@@ -312,7 +320,7 @@ export const useCampusHubStore = defineStore('campusHub', {
     },
 
     async register(form: AuthFormInput): Promise<PublicUser> {
-      const user = await requestJson<any>('/auth/register', {
+      const registeredUser = await requestJson<any>('/auth/register', {
         method: 'POST',
         body: JSON.stringify({
           email: normalizeEmail(form.email ?? ''),
@@ -324,15 +332,21 @@ export const useCampusHubStore = defineStore('campusHub', {
         })
       })
 
-      const profile = mapUserSummary(user)
-      this.currentUserId = profile.id
-      this.currentProfile = profile
-      this.token = ''
-      await this.fetchProfile()
-      await this.fetchDemands()
-      await this.fetchOrders()
-      await this.fetchNotifications()
-      return profile
+      const profile = mapUserSummary(registeredUser)
+
+      try {
+        return await this.login({
+          studentId: form.studentId,
+          password: form.password
+        })
+      } catch (error) {
+        this.currentUserId = ''
+        this.currentProfile = null
+        this.token = ''
+        throw error instanceof Error
+          ? error
+          : new Error(`注册成功，但账号 ${profile.studentId} 自动登录失败，请手动登录后继续`)
+      }
     },
 
     async updateProfile(form: ProfilePatchInput): Promise<PublicUser> {

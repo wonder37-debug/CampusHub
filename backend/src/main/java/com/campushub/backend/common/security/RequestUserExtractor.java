@@ -31,14 +31,16 @@ public class RequestUserExtractor {
     private CurrentUser parseToken(String token) {
         try {
             String decoded = new String(Base64.getUrlDecoder().decode(token), StandardCharsets.UTF_8);
-            String[] parts = decoded.split(":", 4);
-            if (parts.length < 3) {
+            int firstSeparator = decoded.indexOf(':');
+            int secondSeparator = firstSeparator < 0 ? -1 : decoded.indexOf(':', firstSeparator + 1);
+            int lastSeparator = decoded.lastIndexOf(':');
+            if (firstSeparator < 0 || secondSeparator < 0 || lastSeparator <= secondSeparator) {
                 throw new BusinessException(ErrorCode.AUTH_FAILED, "invalid token format");
             }
 
-            Long userId = Long.valueOf(parts[0]);
-            UserRole role = UserRole.valueOf(parts[1]);
-            Instant expiresAt = Instant.parse(parts[2]);
+            Long userId = Long.valueOf(decoded.substring(0, firstSeparator));
+            UserRole role = UserRole.valueOf(decoded.substring(firstSeparator + 1, secondSeparator));
+            Instant expiresAt = Instant.parse(decoded.substring(secondSeparator + 1, lastSeparator));
             if (expiresAt.isBefore(Instant.now())) {
                 throw new BusinessException(ErrorCode.AUTH_FAILED, "token has expired");
             }
