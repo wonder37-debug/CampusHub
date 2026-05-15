@@ -65,16 +65,16 @@ function openOrder(orderId: string): void {
   router.push(`/orders/${orderId}`)
 }
 
-function startOrder(orderId: string): void {
-  store.startOrder(orderId)
+async function startOrder(orderId: string): Promise<void> {
+  await store.startOrder(orderId)
 }
 
-function completeOrder(orderId: string): void {
-  store.completeOrder(orderId)
+async function completeOrder(orderId: string): Promise<void> {
+  await store.completeOrder(orderId)
 }
 
-function cancelOrder(orderId: string): void {
-  store.cancelOrder(orderId)
+async function cancelOrder(orderId: string): Promise<void> {
+  await store.cancelOrder(orderId)
 }
 
 onMounted(() => {

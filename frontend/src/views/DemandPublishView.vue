@@ -24,7 +24,7 @@ const form = reactive({
   anonymous: false
 })
 
-function submitDemand(): void {
+async function submitDemand(): Promise<void> {
   error.value = ''
   message.value = ''
 
@@ -34,7 +34,7 @@ function submitDemand(): void {
   }
 
   try {
-    const demand = store.createDemand(form)
+    const demand = await store.createDemand(form)
     message.value = `已创建需求“${demand.title}”。`
     router.push(`/demands/${demand.id}`)
   } catch (submitError) {

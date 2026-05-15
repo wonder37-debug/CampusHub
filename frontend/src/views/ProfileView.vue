@@ -38,10 +38,10 @@ const maskedPhone = computed(() => {
   return phone ? `${String(phone).slice(0, 3)}****${String(phone).slice(-4)}` : '138****0000'
 })
 
-function saveProfile(): void {
+async function saveProfile(): Promise<void> {
   saving.value = true
   try {
-    store.updateProfile(profileForm)
+    await store.updateProfile(profileForm)
   } finally {
     saving.value = false
   }

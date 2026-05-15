@@ -16,8 +16,8 @@ const codeSent = ref(false)
 let countdownTimer: number | undefined
 
 const loginForm = reactive({
-  studentId: '20260001',
-  password: 'campus123'
+  studentId: '',
+  password: ''
 })
 
 const registerForm = reactive({
@@ -31,12 +31,12 @@ const registerForm = reactive({
 
 const currentUser = computed(() => store.currentUser)
 
-function submitLogin(): void {
+async function submitLogin(): Promise<void> {
   error.value = ''
   message.value = ''
 
   try {
-    const user = store.login(loginForm)
+    const user = await store.login(loginForm)
     message.value = `欢迎回来，${user.nickname}。`
     router.replace('/profile')
   } catch (loginError) {
@@ -44,12 +44,12 @@ function submitLogin(): void {
   }
 }
 
-function sendVerificationCode(): void {
+async function sendVerificationCode(): Promise<void> {
   error.value = ''
   message.value = ''
 
   try {
-    verificationCodeHint.value = store.sendRegistrationCode(registerForm.email)
+    verificationCodeHint.value = await store.sendRegistrationCode(registerForm.email)
     codeSent.value = true
     codeCountdown.value = 60
 
@@ -73,18 +73,20 @@ function sendVerificationCode(): void {
       codeCountdown.value -= 1
     }, 1000)
 
-    message.value = `验证码已通过平台主邮箱发送到 ${registerForm.email}。验证码示例：${verificationCodeHint.value}`
+    message.value = verificationCodeHint.value
+      ? `验证码接口暂未落地，已生成演示码：${verificationCodeHint.value}`
+      : `验证码已发送到 ${registerForm.email}。请查收邮箱后完成注册。`
   } catch (sendError) {
     error.value = sendError instanceof Error ? sendError.message : '验证码发送失败'
   }
 }
 
-function submitRegister(): void {
+async function submitRegister(): Promise<void> {
   error.value = ''
   message.value = ''
 
   try {
-    const user = store.register(registerForm)
+    const user = await store.register(registerForm)
     message.value = `注册成功，${user.nickname} 已自动登录。`
     activeTab.value = 'login'
     registerForm.verificationCode = ''

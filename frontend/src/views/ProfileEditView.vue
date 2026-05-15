@@ -24,10 +24,10 @@ function onAvatarFileSelected(event: Event): void {
   reader.readAsDataURL(file)
 }
 
-function save(): void {
+async function save(): Promise<void> {
   saving.value = true
   try {
-    store.updateProfile(profileForm)
+    await store.updateProfile(profileForm)
     router.push('/profile')
   } finally {
     saving.value = false

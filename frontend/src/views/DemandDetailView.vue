@@ -17,7 +17,7 @@ const demand = computed(() => store.getDemandById(String(route.params.id)))
 const relatedOrder = computed(() => store.orders.find((order) => order.demandId === demand.value?.id))
 const relatedReviews = computed(() => store.reviews.filter((review) => review.orderId === relatedOrder.value?.id))
 
-function acceptCurrentDemand(): void {
+async function acceptCurrentDemand(): Promise<void> {
   if (!demand.value) {
     return
   }
@@ -26,40 +26,40 @@ function acceptCurrentDemand(): void {
   message.value = ''
 
   try {
-    const order = store.acceptDemand(demand.value.id, note.value)
+    const order = await store.acceptDemand(demand.value.id, note.value)
     message.value = `已接单，生成订单 ${order.id}`
   } catch (acceptError) {
     error.value = acceptError instanceof Error ? acceptError.message : '接单失败'
   }
 }
 
-function startOrder(): void {
+async function startOrder(): Promise<void> {
   if (!relatedOrder.value) {
     return
   }
 
   try {
-    store.startOrder(relatedOrder.value.id)
+    await store.startOrder(relatedOrder.value.id)
     message.value = '订单已进入进行中状态。'
   } catch (startError) {
     error.value = startError instanceof Error ? startError.message : '操作失败'
   }
 }
 
-function completeOrder(): void {
+async function completeOrder(): Promise<void> {
   if (!relatedOrder.value) {
     return
   }
 
   try {
-    store.completeOrder(relatedOrder.value.id)
+    await store.completeOrder(relatedOrder.value.id)
     message.value = '订单已完成，可以提交评价。'
   } catch (completeError) {
     error.value = completeError instanceof Error ? completeError.message : '操作失败'
   }
 }
 
-function submitReview(): void {
+async function submitReview(): Promise<void> {
   if (!relatedOrder.value) {
     return
   }
@@ -68,7 +68,7 @@ function submitReview(): void {
   message.value = ''
 
   try {
-    store.submitReview(relatedOrder.value.id, Number(reviewRating.value), reviewComment.value)
+    await store.submitReview(relatedOrder.value.id, Number(reviewRating.value), reviewComment.value)
     message.value = '评价已提交。'
     reviewComment.value = ''
   } catch (reviewError) {

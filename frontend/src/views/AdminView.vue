@@ -10,18 +10,20 @@ const error = ref('')
 
 const isAdmin = computed(() => store.currentUser?.role === 'ADMIN')
 
-function approveDemand(demandId: string): void {
+void store.fetchAdminUsers()
+
+async function approveDemand(demandId: string): Promise<void> {
   try {
-    store.approveDemand(demandId, true)
+    await store.approveDemand(demandId, true)
     message.value = '需求已通过审核。'
   } catch (approveError) {
     error.value = approveError instanceof Error ? approveError.message : '审核失败'
   }
 }
 
-function rejectDemand(demandId: string): void {
+async function rejectDemand(demandId: string): Promise<void> {
   try {
-    store.approveDemand(demandId, false)
+    await store.approveDemand(demandId, false)
     message.value = '需求已拒绝。'
   } catch (rejectError) {
     error.value = rejectError instanceof Error ? rejectError.message : '审核失败'

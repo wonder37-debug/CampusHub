@@ -9,6 +9,7 @@ import type {
   DemandCategory,
   DemandFormInput,
   DemandRecord,
+  DemandStatus,
   EmailVerificationRecord,
   NotificationRecord,
   NotificationType,
@@ -16,11 +17,9 @@ import type {
   OrderStatus,
   ProfilePatchInput,
   PublicUser,
-  ReviewRecord,
-  DemandStatus
+  ReviewRecord
 } from '@/types/campushub'
 import {
-  CAMPUS_ZONE_OPTIONS,
   DEMAND_CATEGORY_OPTIONS,
   type DemandCategory as DemandCategoryCode
 } from '@/types/campushub'
@@ -29,16 +28,11 @@ function buildAvatar(seed: string): string {
   return `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(seed)}`
 }
 
-function buildEmail(seed: string): string {
-  const normalized = seed.toLowerCase().replace(/[^a-z0-9]+/g, '.').replace(/^\.+|\.+$/g, '')
-  return `${normalized || 'user'}@campushub.edu.cn`
-}
-
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase()
 }
 
-function generateVerificationCode(): string {
+function generateVerificationCodeLocal(): string {
   return `${Math.floor(100000 + Math.random() * 900000)}`
 }
 
@@ -51,325 +45,141 @@ function cloneUser(account: AccountRecord): PublicUser {
   return { ...user }
 }
 
-function randomCampusZone(): CampusZone {
-  return CAMPUS_ZONE_OPTIONS[Math.floor(Math.random() * CAMPUS_ZONE_OPTIONS.length)]
+const API_BASE = import.meta.env.VITE_API_BASE || '/api/v1'
+
+function unwrapApiPayload<T>(payload: any): T {
+  if (payload && typeof payload === 'object' && 'data' in payload) {
+    return payload.data as T
+  }
+
+  return payload as T
 }
 
-function anonymousCode(): string {
-  return `匿名${Math.floor(1000 + Math.random() * 9000)}`
-}
-
-function createAccounts(): AccountRecord[] {
-  return [
-    {
-      id: 'u-admin',
-      studentId: 'admin01',
-      email: buildEmail('campus admin'),
-      password: 'admin123',
-      nickname: '校务管理员',
-      creditScore: 99,
-      role: 'ADMIN',
-      status: 'ACTIVE',
-      avatarUrl: buildAvatar('Campus Admin')
-    },
-    {
-      id: 'u-chen',
-      studentId: '20260001',
-      email: buildEmail('chen chen'),
-      password: 'campus123',
-      nickname: '陈晨',
-      creditScore: 94,
-      role: 'USER',
-      status: 'ACTIVE',
-      avatarUrl: buildAvatar('陈晨')
-    },
-    {
-      id: 'u-lin',
-      studentId: '20260002',
-      email: buildEmail('lin xia'),
-      password: 'campus123',
-      nickname: '林夏',
-      creditScore: 88,
-      role: 'USER',
-      status: 'ACTIVE',
-      avatarUrl: buildAvatar('林夏')
-    },
-    {
-      id: 'u-zhou',
-      studentId: '20260003',
-      email: buildEmail('zhou yang'),
-      password: 'campus123',
-      nickname: '周扬',
-      creditScore: 90,
-      role: 'USER',
-      status: 'ACTIVE',
-      avatarUrl: buildAvatar('周扬')
+async function requestJson<T>(path: string, init: RequestInit = {}, token?: string): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(init.headers ?? {})
     }
-  ]
+  })
+
+  const payload = await response.json().catch(() => null)
+  if (!response.ok) {
+    throw new Error(payload?.message || payload?.error || '请求失败')
+  }
+
+  return unwrapApiPayload<T>(payload)
 }
 
-function createDemands(accounts: AccountRecord[]): DemandRecord[] {
-  const chen = accounts.find((account) => account.id === 'u-chen')
-  const lin = accounts.find((account) => account.id === 'u-lin')
-  const zhou = accounts.find((account) => account.id === 'u-zhou')
-
-  return [
-    {
-      id: 'd-1001',
-      title: '帮取快递并送到北区宿舍',
-      description: '周五下午三点后可以取件，快递站距离宿舍步行约八分钟，希望顺路帮忙送到楼下。',
-      category: 'EXPRESS',
-      campusZone: 'XIANLIN',
-      location: '北区快递站',
-      startTime: now(-240),
-      endTime: now(360),
-      reward: 8,
-      status: 'PENDING',
-      anonymous: false,
-      anonymousCode: null,
-      publisherId: chen?.id ?? 'u-chen',
-      publisherName: chen?.nickname ?? '陈晨',
-      publisherAvatar: chen?.avatarUrl ?? buildAvatar('陈晨'),
-      tags: ['近距离', '宿舍楼下'],
-      createdAt: now(-300),
-      updatedAt: now(-300),
-      distanceKm: 1.2
-    },
-    {
-      id: 'd-1002',
-      title: '高数作业思路互助',
-      description: '一起梳理本周作业第 3、4 题的解题思路，接受线上语音沟通。',
-      category: 'STUDY_TUTORING',
-      campusZone: 'GULOU',
-      location: '图书馆三楼',
-      startTime: now(-180),
-      endTime: now(180),
-      reward: 20,
-      status: 'IN_PROGRESS',
-      anonymous: false,
-      anonymousCode: null,
-      publisherId: lin?.id ?? 'u-lin',
-      publisherName: lin?.nickname ?? '林夏',
-      publisherAvatar: lin?.avatarUrl ?? buildAvatar('林夏'),
-      tags: ['高数', '线上'],
-      createdAt: now(-240),
-      updatedAt: now(-30),
-      distanceKm: 0.8
-    },
-    {
-      id: 'd-1003',
-      title: '二手教材转让：Python 入门',
-      description: '教材使用一学期，书页完整，适合大一新生入门，支持校园内面交。',
-      category: 'SECOND_HAND',
-      campusZone: 'SUZHOU',
-      location: '东区食堂门口',
-      startTime: now(-120),
-      endTime: now(720),
-      reward: 35,
-      status: 'PENDING',
-      anonymous: true,
-      anonymousCode: anonymousCode(),
-      publisherId: zhou?.id ?? 'u-zhou',
-      publisherName: zhou?.nickname ?? '周扬',
-      publisherAvatar: zhou?.avatarUrl ?? buildAvatar('周扬'),
-      tags: ['教材', '面交'],
-      createdAt: now(-180),
-      updatedAt: now(-180),
-      distanceKm: 2.4
-    },
-    {
-      id: 'd-1004',
-      title: '篮球赛临时组队，缺两名队员',
-      description: '校内友谊赛周末开打，希望找两个跑动能力强、能打外线的同学。',
-      category: 'TEAM_UP',
-      campusZone: 'XIANLIN',
-      location: '南区篮球场',
-      startTime: now(60),
-      endTime: now(240),
-      reward: 0,
-      status: 'COMPLETED',
-      anonymous: false,
-      anonymousCode: null,
-      publisherId: chen?.id ?? 'u-chen',
-      publisherName: chen?.nickname ?? '陈晨',
-      publisherAvatar: chen?.avatarUrl ?? buildAvatar('陈晨'),
-      tags: ['体育', '周末'],
-      createdAt: now(-90),
-      updatedAt: now(-10),
-      distanceKm: 1.8
-    },
-    {
-      id: 'd-1005',
-      title: '代买实验用品，需求待审核示例',
-      description: '这是管理员审核队列中的示例需求，用于展示 P4 管理后台的审核流程。',
-      category: 'OTHER',
-      campusZone: 'GULOU',
-      location: '化学楼',
-      startTime: now(120),
-      endTime: now(420),
-      reward: 12,
-      status: 'REVIEWING',
-      anonymous: false,
-      anonymousCode: null,
-      publisherId: zhou?.id ?? 'u-zhou',
-      publisherName: zhou?.nickname ?? '周扬',
-      publisherAvatar: zhou?.avatarUrl ?? buildAvatar('周扬'),
-      tags: ['审核中', '后台'],
-      createdAt: now(-60),
-      updatedAt: now(-60),
-      distanceKm: 3.2
-    }
-  ]
+function mapUserSummary(raw: any): PublicUser {
+  return {
+    id: String(raw.id ?? ''),
+    email: String(raw.email ?? ''),
+    studentId: String(raw.studentId ?? ''),
+    nickname: String(raw.nickname ?? '匿名校友'),
+    avatarUrl: String(raw.avatarUrl ?? buildAvatar(String(raw.nickname ?? raw.studentId ?? '用户'))),
+    creditScore: Number(raw.creditScore ?? 0),
+    role: String(raw.role ?? 'USER') as AccountRecord['role'],
+    status: String(raw.status ?? 'ACTIVE') as AccountRecord['status']
+  }
 }
 
-function createOrders(): OrderRecord[] {
-  return [
-    {
-      id: 'o-2001',
-      demandId: 'd-1002',
-      demandTitle: '高数作业思路互助',
-      requesterId: 'u-lin',
-      requesterName: '林夏',
-      requesterAvatar: buildAvatar('林夏'),
-      serviceProviderId: 'u-zhou',
-      serviceProviderName: '周扬',
-      serviceProviderAvatar: buildAvatar('周扬'),
-      status: 'IN_PROGRESS',
-      note: '今晚八点前可以开始，想先看一下题目。',
-      proofSubmitted: false,
-      proofImageCount: 0,
-      createdAt: now(-200),
-      updatedAt: now(-30),
-      completedAt: '',
-      timeline: [
-        { at: now(-200), label: '订单创建' },
-        { at: now(-150), label: '双方确认需求细节' },
-        { at: now(-30), label: '进入进行中' }
-      ]
-    },
-    {
-      id: 'o-2002',
-      demandId: 'd-1004',
-      demandTitle: '篮球赛临时组队，缺两名队员',
-      requesterId: 'u-chen',
-      requesterName: '陈晨',
-      requesterAvatar: buildAvatar('陈晨'),
-      serviceProviderId: 'u-lin',
-      serviceProviderName: '林夏',
-      serviceProviderAvatar: buildAvatar('林夏'),
-      status: 'COMPLETED',
-      note: '同学之间协调时间，周末已完成比赛。',
-      proofSubmitted: true,
-      proofImageCount: 2,
-      createdAt: now(-320),
-      updatedAt: now(-10),
-      completedAt: now(-10),
-      timeline: [
-        { at: now(-320), label: '订单创建' },
-        { at: now(-260), label: '开始执行' },
-        { at: now(-10), label: '已完成' }
-      ]
-    }
-  ]
+function mapDemandRecord(raw: any): DemandRecord {
+  const publisherDisplayName = raw.publisherDisplayName ?? raw.publisherName ?? raw.creator?.nickname ?? '匿名'
+  return {
+    id: String(raw.id ?? raw.demandId ?? ''),
+    title: String(raw.title ?? ''),
+    description: String(raw.description ?? ''),
+    category: String(raw.category ?? 'OTHER') as DemandCategoryCode,
+    campusZone: String(raw.campusZone ?? 'GULOU') as CampusZone,
+    location: String(raw.location ?? ''),
+    startTime: String(raw.startTime ?? now()),
+    endTime: String(raw.endTime ?? now()),
+    reward: Number(raw.reward ?? 0),
+    status: String(raw.status ?? 'PENDING') as DemandStatus,
+    anonymous: Boolean(raw.anonymous ?? false),
+    anonymousCode: raw.anonymousCode ?? null,
+    publisherId: raw.publisherId == null ? '' : String(raw.publisherId),
+    publisherName: String(publisherDisplayName),
+    publisherAvatar: String(raw.publisherAvatar ?? buildAvatar(String(publisherDisplayName))),
+    tags: Array.isArray(raw.tags) ? raw.tags.map((tag: any) => String(tag)) : [],
+    createdAt: String(raw.createdAt ?? now()),
+    updatedAt: String(raw.updatedAt ?? raw.createdAt ?? now()),
+    distanceKm: Number(raw.distanceKm ?? 0)
+  }
 }
 
-function createReviews(): ReviewRecord[] {
-  return [
-    {
-      id: 'r-3001',
-      orderId: 'o-2002',
-      reviewerId: 'u-chen',
-      reviewerName: '陈晨',
-      targetId: 'u-lin',
-      targetName: '林夏',
-      rating: 5,
-      comment: '沟通很及时，比赛也非常顺利。',
-      createdAt: now(-8)
-    }
-  ]
+function mapOrderRecord(raw: any): OrderRecord {
+  const demand = raw.demand ?? {}
+  const requester = raw.requester ?? {}
+  const provider = raw.provider ?? raw.accepter ?? {}
+
+  return {
+    id: String(raw.orderId ?? raw.id ?? ''),
+    demandId: String(demand.id ?? raw.demandId ?? ''),
+    demandTitle: String(demand.title ?? raw.demandTitle ?? ''),
+    requesterId: String(requester.id ?? raw.publisherId ?? raw.requesterId ?? demand.publisherId ?? ''),
+    requesterName: String(requester.nickname ?? raw.publisherDisplayName ?? raw.requesterName ?? demand.publisherDisplayName ?? ''),
+    requesterAvatar: String(requester.avatarUrl ?? raw.requesterAvatar ?? raw.publisherAvatar ?? buildAvatar(String(requester.nickname ?? raw.publisherDisplayName ?? ''))),
+    serviceProviderId: String(provider.id ?? raw.accepterId ?? raw.serviceProviderId ?? ''),
+    serviceProviderName: String(provider.nickname ?? raw.accepterName ?? raw.serviceProviderName ?? ''),
+    serviceProviderAvatar: String(provider.avatarUrl ?? raw.serviceProviderAvatar ?? buildAvatar(String(provider.nickname ?? raw.accepterName ?? ''))),
+    status: String(raw.status ?? 'ACCEPTED') as OrderStatus,
+    note: String(raw.acceptNote ?? raw.note ?? ''),
+    proofSubmitted: Boolean(raw.proofSubmitted ?? false),
+    proofImageCount: Number(raw.proofImageCount ?? 0),
+    createdAt: String(raw.createdAt ?? now()),
+    updatedAt: String(raw.updatedAt ?? raw.createdAt ?? now()),
+    completedAt: String(raw.completedAt ?? ''),
+    timeline: Array.isArray(raw.statusHistory)
+      ? raw.statusHistory.map((entry: any) => ({
+          at: String(entry.changedAt ?? entry.createdAt ?? now()),
+          label: String(entry.note ?? entry.toStatus ?? '')
+        }))
+      : []
+  }
 }
 
-function createNotifications(): NotificationRecord[] {
-  return [
-    {
-      id: 'n-4001',
-      receiverId: 'u-lin',
-      type: 'ORDER_ACCEPTED',
-      content: '你的需求“高数作业思路互助”已被周扬接单。',
-      isRead: false,
-      createdAt: now(-120),
-      relatedId: 'o-2001'
-    },
-    {
-      id: 'n-4002',
-      receiverId: 'u-zhou',
-      type: 'REVIEW_RECEIVED',
-      content: '陈晨刚刚给你提交了一条 5 星评价。',
-      isRead: true,
-      createdAt: now(-6),
-      relatedId: 'r-3001'
-    },
-    {
-      id: 'n-4003',
-      receiverId: 'u-admin',
-      type: 'STATUS_CHANGED',
-      content: '有一条需求正在等待管理员审核。',
-      isRead: false,
-      createdAt: now(-55),
-      relatedId: 'd-1005'
-    },
-    {
-      id: 'n-4004',
-      receiverId: 'u-chen',
-      type: 'STATUS_CHANGED',
-      content: 'CampusHub 基础数据已准备完成，可以切换不同身份查看流程。',
-      isRead: true,
-      createdAt: now(-500),
-      relatedId: 'system'
-    }
-  ]
+function mapNotificationRecord(raw: any, fallbackReceiverId = ''): NotificationRecord {
+  return {
+    id: String(raw.id ?? ''),
+    receiverId: String(raw.receiverId ?? fallbackReceiverId),
+    type: String(raw.type ?? 'STATUS_CHANGED') as NotificationType,
+    content: String(raw.content ?? raw.title ?? ''),
+    isRead: Boolean(raw.read ?? raw.isRead ?? false),
+    createdAt: String(raw.createdAt ?? now()),
+    relatedId: String(raw.relatedId ?? '')
+  }
 }
 
 function nextId(prefix: string): string {
   return `${prefix}-${Math.random().toString(36).slice(2, 9)}`
 }
 
-function recalculateCredit(accounts: AccountRecord[], targetId: string, reviews: ReviewRecord[]): void {
-  const target = accounts.find((account) => account.id === targetId)
-  if (!target) {
-    return
-  }
-
-  const targetReviews = reviews.filter((review) => review.targetId === targetId)
-  if (!targetReviews.length) {
-    return
-  }
-
-  const average = targetReviews.reduce((sum, review) => sum + review.rating, 0) / targetReviews.length
-  target.creditScore = Math.round(average * 20)
-}
-
 export const useCampusHubStore = defineStore('campusHub', {
   state: () => ({
-    currentUserId: 'u-chen',
-    token: 'demo-token',
-    accounts: createAccounts(),
-    demands: createDemands(createAccounts()),
-    orders: createOrders(),
-    reviews: createReviews(),
-    notifications: createNotifications(),
+    currentUserId: '',
+    token: '',
+    currentProfile: null as PublicUser | null,
+    accounts: [] as AccountRecord[],
+    demands: [] as DemandRecord[],
+    orders: [] as OrderRecord[],
+    reviews: [] as ReviewRecord[],
+    notifications: [] as NotificationRecord[],
+    adminUsers: [] as PublicUser[],
     verificationCodes: {} as Record<string, EmailVerificationRecord>,
     appMessage: '校园互助平台已加载基础业务数据。'
   }),
 
   getters: {
     currentUser(state): PublicUser | null {
-      const account = state.accounts.find((item) => item.id === state.currentUserId)
-      return account ? cloneUser(account) : null
+      return state.currentProfile
     },
 
     accountOptions(state): PublicUser[] {
-      return state.accounts.map((account) => cloneUser(account))
+      return state.adminUsers
     },
 
     unreadNotificationCount(state): number {
@@ -450,415 +260,218 @@ export const useCampusHubStore = defineStore('campusHub', {
       return account ? cloneUser(account) : undefined
     },
 
-    switchAccount(userId: string): void {
-      const account = this.accounts.find((item) => item.id === userId)
-      if (!account) {
-        throw new Error('未找到可切换的账号')
-      }
-
-      this.currentUserId = account.id
-      this.token = `demo-${account.studentId}`
-    },
-
     logout(): void {
       this.currentUserId = ''
       this.token = ''
+      this.currentProfile = null
     },
 
-    login(form: AuthFormInput): PublicUser {
-      const account = this.accounts.find((item) => item.studentId === form.studentId.trim() && item.password === form.password)
+    async login(form: AuthFormInput): Promise<PublicUser> {
+      const payload = await requestJson<any>('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({
+          loginId: form.studentId.trim(),
+          password: form.password
+        })
+      })
 
-      if (!account) {
-        throw new Error('学号或密码不正确')
-      }
-
-      this.currentUserId = account.id
-      this.token = `demo-${account.studentId}`
-      return cloneUser(account)
+      const authData = unwrapApiPayload<any>(payload)
+      const user = mapUserSummary(authData.user ?? authData)
+      this.currentUserId = user.id
+      this.currentProfile = user
+      this.token = String(authData.token ?? '')
+      await this.fetchProfile()
+      await this.fetchDemands()
+      await this.fetchOrders()
+      await this.fetchNotifications()
+      return user
     },
 
-    sendRegistrationCode(email: string): string {
+    async sendRegistrationCode(email: string): Promise<string> {
       const normalizedEmail = normalizeEmail(email)
-
       if (!normalizedEmail || !normalizedEmail.includes('@')) {
         throw new Error('请输入有效的邮箱地址')
       }
 
-      const code = generateVerificationCode()
-      this.verificationCodes[normalizedEmail] = {
-        code,
-        email: normalizedEmail,
-        expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
-        sender: 'noreply@campushub.edu.cn'
+      try {
+        await requestJson<void>('/auth/email-code', {
+          method: 'POST',
+          body: JSON.stringify({ email: normalizedEmail })
+        })
+        return ''
+      } catch {
+        const code = generateVerificationCodeLocal()
+        this.verificationCodes[normalizedEmail] = {
+          code,
+          email: normalizedEmail,
+          expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+          sender: 'noreply@campushub.edu.cn'
+        }
+        return code
       }
-
-      return code
     },
 
-    register(form: AuthFormInput): PublicUser {
-      const studentId = form.studentId.trim()
-      const email = normalizeEmail(form.email ?? '')
-      const verificationCode = form.verificationCode?.trim() ?? ''
+    async register(form: AuthFormInput): Promise<PublicUser> {
+      const user = await requestJson<any>('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({
+          email: normalizeEmail(form.email ?? ''),
+          verificationCode: form.verificationCode?.trim() ?? '',
+          studentId: form.studentId.trim(),
+          password: form.password,
+          nickname: form.nickname?.trim() || undefined,
+          avatarUrl: form.avatarUrl?.trim() || undefined
+        })
+      })
 
-      if (!email) {
-        throw new Error('请输入邮箱地址')
-      }
-
-      if (!verificationCode) {
-        throw new Error('请输入邮箱验证码')
-      }
-
-      if (this.accounts.some((account) => account.studentId === studentId)) {
-        throw new Error('该学号已经被注册')
-      }
-
-      if (this.accounts.some((account) => account.email === email)) {
-        throw new Error('该邮箱已经被注册')
-      }
-
-      const verification = this.verificationCodes[email]
-      if (!verification) {
-        throw new Error('请先发送邮箱验证码')
-      }
-
-      if (verification.code !== verificationCode) {
-        throw new Error('验证码不正确')
-      }
-
-      if (new Date(verification.expiresAt).getTime() < Date.now()) {
-        throw new Error('验证码已过期，请重新发送')
-      }
-
-      const nickname = form.nickname?.trim() ?? ''
-      const avatarUrl = form.avatarUrl?.trim() ?? ''
-
-      const account: AccountRecord = {
-        id: nextId('u'),
-        studentId,
-        email,
-        password: form.password,
-        nickname: nickname || studentId,
-        creditScore: 90,
-        role: 'USER',
-        status: 'ACTIVE',
-        avatarUrl: avatarUrl || buildAvatar(nickname || studentId)
-      }
-
-      this.accounts.unshift(account)
-      this.currentUserId = account.id
-      this.token = `demo-${account.studentId}`
-      delete this.verificationCodes[email]
-      return cloneUser(account)
+      const profile = mapUserSummary(user)
+      this.currentUserId = profile.id
+      this.currentProfile = profile
+      this.token = ''
+      await this.fetchProfile()
+      await this.fetchDemands()
+      await this.fetchOrders()
+      await this.fetchNotifications()
+      return profile
     },
 
-    updateProfile(form: ProfilePatchInput): PublicUser {
-      const account = this.accounts.find((item) => item.id === this.currentUserId)
-      if (!account) {
+    async updateProfile(form: ProfilePatchInput): Promise<PublicUser> {
+      if (!this.currentUserId) {
         throw new Error('请先登录后再编辑资料')
       }
 
-      account.nickname = form.nickname.trim() || account.nickname
-      account.avatarUrl = form.avatarUrl.trim() || account.avatarUrl
-      return cloneUser(account)
+      const profile = await requestJson<any>('/users/me', {
+        method: 'PUT',
+        body: JSON.stringify({
+          nickname: form.nickname.trim(),
+          avatarUrl: form.avatarUrl.trim()
+        })
+      }, this.token)
+
+      const mapped = mapUserSummary(profile)
+      this.currentProfile = mapped
+      await this.fetchProfile()
+      return mapped
     },
 
-    createDemand(form: DemandFormInput): DemandRecord {
-      const currentUser = this.accounts.find((account) => account.id === this.currentUserId)
-      if (!currentUser) {
+    async createDemand(form: DemandFormInput): Promise<DemandRecord> {
+      if (!this.currentUserId) {
         throw new Error('请先登录后再发布需求')
       }
 
-      const reward = Number(form.reward || 0)
-      const demand: DemandRecord = {
-        id: nextId('d'),
-        title: form.title.trim(),
-        description: form.description.trim(),
-        category: (form.category || 'OTHER') as DemandCategoryCode,
-        campusZone: form.campusZone || randomCampusZone(),
-        location: form.location.trim() || '校园内',
-        startTime: form.startTime || now(),
-        endTime: form.endTime || now(180),
-        reward: Number.isNaN(reward) ? 0 : reward,
-        status: currentUser.role === 'ADMIN' ? 'PENDING' : 'REVIEWING',
-        anonymous: Boolean(form.anonymous),
-        anonymousCode: form.anonymous ? anonymousCode() : null,
-        publisherId: currentUser.id,
-        publisherName: currentUser.nickname,
-        publisherAvatar: currentUser.avatarUrl,
-        tags: form.tags
-          .split(/[，,]/)
-          .map((tag) => tag.trim())
-          .filter(Boolean),
-        createdAt: now(),
-        updatedAt: now(),
-        distanceKm: Number((Math.random() * 3 + 0.4).toFixed(1))
-      }
+      const demand = await requestJson<any>('/demands', {
+        method: 'POST',
+        body: JSON.stringify({
+          title: form.title.trim(),
+          description: form.description.trim(),
+          category: form.category || 'OTHER',
+          campusZone: form.campusZone,
+          location: form.location.trim() || '校园内',
+          startTime: form.startTime || undefined,
+          endTime: form.endTime || undefined,
+          reward: Number(form.reward || 0),
+          tags: form.tags
+            .split(/[，,]/)
+            .map((tag) => tag.trim())
+            .filter(Boolean),
+          anonymous: Boolean(form.anonymous)
+        })
+      }, this.token)
 
-      this.demands.unshift(demand)
-      this.notifications.unshift({
-        id: nextId('n'),
-        receiverId: currentUser.id,
-        type: 'STATUS_CHANGED',
-        content: `你刚刚发布了需求“${demand.title}”。`,
-        isRead: false,
-        createdAt: now(),
-        relatedId: demand.id
-      })
-
-      return demand
+      const mapped = mapDemandRecord(demand)
+      await this.fetchDemands()
+      await this.fetchNotifications()
+      return mapped
     },
 
-    approveDemand(demandId: string, approved: boolean): DemandRecord {
-      const demand = this.demands.find((item) => item.id === demandId)
-      if (!demand) {
-        throw new Error('未找到待审核需求')
-      }
+    async approveDemand(demandId: string, approved: boolean): Promise<DemandRecord> {
+      const demand = await requestJson<any>(`/admin/demands/${encodeURIComponent(demandId)}/review`, {
+        method: 'POST',
+        body: JSON.stringify({
+          action: approved ? 'approve' : 'reject'
+        })
+      }, this.token)
 
-      if (demand.status !== 'REVIEWING') {
-        throw new Error('只有审核中的需求才能审核')
-      }
-
-      demand.status = approved ? 'PENDING' : 'CANCELLED'
-      if (approved) {
-        demand.updatedAt = now()
-      } else {
-        demand.updatedAt = now()
-      }
-
-      this.notifications.unshift({
-        id: nextId('n'),
-        receiverId: demand.publisherId,
-        type: 'STATUS_CHANGED',
-        content: approved ? `你的需求“${demand.title}”已通过审核。` : `你的需求“${demand.title}”已被驳回。`,
-        isRead: false,
-        createdAt: now(),
-        relatedId: demand.id
-      })
-
-      return demand
+      const mapped = mapDemandRecord(demand)
+      await this.fetchDemands()
+      await this.fetchNotifications()
+      return mapped
     },
 
-    acceptDemand(demandId: string, note = ''): OrderRecord {
-      const currentUser = this.accounts.find((account) => account.id === this.currentUserId)
-      const demand = this.demands.find((item) => item.id === demandId)
+    async acceptDemand(demandId: string, note = ''): Promise<OrderRecord> {
+      const order = await requestJson<any>(`/demands/${encodeURIComponent(demandId)}/accept`, {
+        method: 'POST',
+        body: JSON.stringify({ note: note.trim() })
+      }, this.token)
 
-      if (!currentUser) {
-        throw new Error('请先登录后再接单')
-      }
-
-      if (!demand) {
-        throw new Error('未找到需求')
-      }
-
-      if (demand.publisherId === currentUser.id) {
-        throw new Error('不能接自己的需求')
-      }
-
-      // prevent duplicate acceptance: if an order already exists for this demand, block it
-      if (this.orders.some((o) => o.demandId === demand.id)) {
-        throw new Error('该需求已被接单')
-      }
-
-      if (demand.status !== 'PENDING') {
-        throw new Error('该需求当前不可接单')
-      }
-
-      // backend sets demand to IN_PROGRESS when an order is accepted
-      demand.status = 'IN_PROGRESS'
-      demand.updatedAt = now()
-
-      const order: OrderRecord = {
-        id: nextId('o'),
-        demandId: demand.id,
-        demandTitle: demand.title,
-        requesterId: demand.publisherId,
-        requesterName: demand.publisherName,
-        requesterAvatar: demand.publisherAvatar,
-        serviceProviderId: currentUser.id,
-        serviceProviderName: currentUser.nickname,
-        serviceProviderAvatar: currentUser.avatarUrl,
-        status: 'ACCEPTED',
-        note: note.trim(),
-        proofSubmitted: false,
-        proofImageCount: 0,
-        createdAt: now(),
-        updatedAt: now(),
-        completedAt: '',
-        timeline: [
-          { at: now(), label: '接单成功' },
-          { at: now(5), label: '等待执行' }
-        ]
-      }
-
-      this.orders.unshift(order)
-      this.notifications.unshift(
-        {
-          id: nextId('n'),
-          receiverId: demand.publisherId,
-          type: 'ORDER_ACCEPTED',
-          content: `你的需求“${demand.title}”已被 ${currentUser.nickname} 接单。`,
-          isRead: false,
-          createdAt: now(),
-          relatedId: order.id
-        },
-        {
-          id: nextId('n'),
-          receiverId: currentUser.id,
-          type: 'ORDER_ACCEPTED',
-          content: `你已成功接下需求“${demand.title}”。`,
-          isRead: false,
-          createdAt: now(),
-          relatedId: order.id
-        }
-      )
-
-      return order
+      const mapped = mapOrderRecord(order)
+      await this.fetchDemands()
+      await this.fetchOrders()
+      await this.fetchNotifications()
+      return mapped
     },
 
-    startOrder(orderId: string): OrderRecord {
-      const order = this.orders.find((item) => item.id === orderId)
-      if (!order) {
-        throw new Error('未找到订单')
-      }
+    async startOrder(orderId: string): Promise<OrderRecord> {
+      const order = await requestJson<any>(`/orders/${encodeURIComponent(orderId)}`, {
+        method: 'PUT',
+        body: JSON.stringify({ targetStatus: 'IN_PROGRESS' })
+      }, this.token)
 
-      if (order.status !== 'ACCEPTED') {
-        throw new Error('只有已接单的订单可以开始执行')
-      }
-
-      order.status = 'IN_PROGRESS'
-      order.updatedAt = now()
-      order.timeline.unshift({ at: now(), label: '开始执行' })
-      const demand = this.demands.find((item) => item.id === order.demandId)
-      if (demand) {
-        demand.status = 'IN_PROGRESS'
-        demand.updatedAt = now()
-      }
-      this.notifications.unshift({
-        id: nextId('n'),
-        receiverId: order.requesterId,
-        type: 'STATUS_CHANGED',
-        content: `你的订单“${order.demandTitle}”已进入进行中状态。`,
-        isRead: false,
-        createdAt: now(),
-        relatedId: order.id
-      })
-      return order
+      const mapped = mapOrderRecord(order)
+      await this.fetchDemands()
+      await this.fetchOrders()
+      await this.fetchNotifications()
+      return mapped
     },
 
-    completeOrder(orderId: string): OrderRecord {
-      const order = this.orders.find((item) => item.id === orderId)
-      if (!order) {
-        throw new Error('未找到订单')
-      }
+    async completeOrder(orderId: string): Promise<OrderRecord> {
+      const order = await requestJson<any>(`/orders/${encodeURIComponent(orderId)}`, {
+        method: 'PUT',
+        body: JSON.stringify({ targetStatus: 'COMPLETED', proofImageCount: 1 })
+      }, this.token)
 
-      if (order.status !== 'IN_PROGRESS' && order.status !== 'ACCEPTED') {
-        throw new Error('当前状态不能直接完成订单')
-      }
-
-      order.status = 'COMPLETED'
-      order.proofSubmitted = true
-      order.proofImageCount = Math.max(order.proofImageCount, 1)
-      order.updatedAt = now()
-      order.completedAt = now()
-      order.timeline.unshift({ at: now(), label: '确认完成' })
-      const demand = this.demands.find((item) => item.id === order.demandId)
-      if (demand) {
-        demand.status = 'COMPLETED'
-        demand.updatedAt = now()
-      }
-      this.notifications.unshift({
-        id: nextId('n'),
-        receiverId: order.requesterId,
-        type: 'STATUS_CHANGED',
-        content: `你的订单“${order.demandTitle}”已经完成，可以进行评价。`,
-        isRead: false,
-        createdAt: now(),
-        relatedId: order.id
-      })
-      return order
+      const mapped = mapOrderRecord(order)
+      await this.fetchDemands()
+      await this.fetchOrders()
+      await this.fetchNotifications()
+      return mapped
     },
 
-    cancelOrder(orderId: string): OrderRecord {
-      const order = this.orders.find((item) => item.id === orderId)
-      if (!order) {
-        throw new Error('未找到订单')
-      }
+    async cancelOrder(orderId: string): Promise<OrderRecord> {
+      const order = await requestJson<any>(`/orders/${encodeURIComponent(orderId)}`, {
+        method: 'PUT',
+        body: JSON.stringify({ targetStatus: 'CANCELLED' })
+      }, this.token)
 
-      if (order.status === 'COMPLETED' || order.status === 'CANCELLED') {
-        throw new Error('当前状态不能取消订单')
-      }
-
-      order.status = 'CANCELLED'
-      order.updatedAt = now()
-      order.timeline.unshift({ at: now(), label: '订单已取消' })
-      const demand = this.demands.find((item) => item.id === order.demandId)
-      if (demand) {
-        demand.status = 'PENDING'
-        demand.updatedAt = now()
-      }
-      this.notifications.unshift({
-        id: nextId('n'),
-        receiverId: order.requesterId,
-        type: 'STATUS_CHANGED',
-        content: `你的订单“${order.demandTitle}”已取消。`,
-        isRead: false,
-        createdAt: now(),
-        relatedId: order.id
-      })
-      return order
+      const mapped = mapOrderRecord(order)
+      await this.fetchDemands()
+      await this.fetchOrders()
+      await this.fetchNotifications()
+      return mapped
     },
 
-    submitReview(orderId: string, rating: number, comment: string): ReviewRecord {
-      const order = this.orders.find((item) => item.id === orderId)
-      const reviewer = this.accounts.find((account) => account.id === this.currentUserId)
+    async submitReview(orderId: string, rating: number, comment: string): Promise<ReviewRecord> {
+      const review = await requestJson<any>(`/orders/${encodeURIComponent(orderId)}/reviews`, {
+        method: 'POST',
+        body: JSON.stringify({ rating, comment: comment.trim() })
+      }, this.token)
 
-      if (!order) {
-        throw new Error('未找到订单')
+      const mapped: ReviewRecord = {
+        id: String(review.id ?? nextId('r')),
+        orderId: String(review.orderId ?? orderId),
+        reviewerId: String(review.author?.id ?? this.currentUserId),
+        reviewerName: String(review.author?.nickname ?? this.currentUser?.nickname ?? '匿名'),
+        targetId: String(review.targetId ?? ''),
+        targetName: String(review.targetName ?? review.author?.nickname ?? ''),
+        rating: Number(review.rating ?? rating),
+        comment: String(review.comment ?? comment.trim()),
+        createdAt: String(review.createdAt ?? now())
       }
 
-      if (!reviewer) {
-        throw new Error('请先登录后再提交评价')
-      }
-
-      if (rating < 1 || rating > 5) {
-        throw new Error('评分必须在 1 到 5 之间')
-      }
-
-      if (order.status !== 'COMPLETED') {
-        throw new Error('只有已完成的订单才能评价')
-      }
-
-      const targetId = reviewer.id === order.requesterId ? order.serviceProviderId : order.requesterId
-      const target = this.accounts.find((account) => account.id === targetId)
-      if (!target) {
-        throw new Error('未找到被评价用户')
-      }
-
-      const review: ReviewRecord = {
-        id: nextId('r'),
-        orderId,
-        reviewerId: reviewer.id,
-        reviewerName: reviewer.nickname,
-        targetId,
-        targetName: target.nickname,
-        rating,
-        comment: comment.trim(),
-        createdAt: now()
-      }
-
-      this.reviews.unshift(review)
-      recalculateCredit(this.accounts, targetId, this.reviews)
-      this.notifications.unshift({
-        id: nextId('n'),
-        receiverId: targetId,
-        type: 'REVIEW_RECEIVED',
-        content: `${reviewer.nickname} 给你提交了 ${rating} 星评价。`,
-        isRead: false,
-        createdAt: now(),
-        relatedId: review.id
-      })
-
-      return review
+      this.reviews.unshift(mapped)
+      await this.fetchOrders()
+      await this.fetchNotifications()
+      return mapped
     },
 
     markNotificationRead(notificationId: string): void {
@@ -876,186 +489,67 @@ export const useCampusHubStore = defineStore('campusHub', {
         })
     },
 
-    resetDemoState(): void {
-      this.accounts = createAccounts()
-      this.demands = createDemands(this.accounts)
-      this.orders = createOrders()
-      this.reviews = createReviews()
-      this.notifications = createNotifications()
-      this.currentUserId = 'u-chen'
-      this.token = 'demo-token'
-    },
-
     async fetchDemands(): Promise<void> {
-      const base = import.meta.env.VITE_API_BASE || '/api/v1'
       try {
-        const response = await fetch(`${base}/demands`)
-        if (!response.ok) throw new Error('network')
-        const payload = await response.json()
-        this.demands = (Array.isArray(payload) ? payload : payload?.items ?? []).map((item: any) => ({
-          id: String(item.id ?? item.demandId ?? ''),
-          title: String(item.title ?? item.demandTitle ?? ''),
-          description: String(item.description ?? ''),
-          category: (item.category ?? 'OTHER') as DemandCategoryCode,
-          campusZone: (item.campusZone ?? 'GULOU') as CampusZone,
-          location: String(item.location ?? ''),
-          startTime: String(item.startTime ?? item.startTime ?? now()),
-          endTime: String(item.endTime ?? item.endTime ?? now()),
-          reward: Number(item.reward ?? 0),
-          status: (item.status ?? item.state ?? 'PENDING') as DemandStatus,
-          anonymous: Boolean(item.anonymous),
-          anonymousCode: item.anonymousCode ?? null,
-          // backend uses publisherDisplayName and publisherId (may be null when anonymous)
-          // publisherId may be null for anonymous; normalize to empty string
-          publisherId: item.publisherId == null ? '' : String(item.publisherId),
-          publisherName: String(item.publisherDisplayName ?? item.publisherName ?? item.publisherNick ?? '匿名'),
-          publisherAvatar: String(item.publisherAvatar ?? buildAvatar(String(item.publisherDisplayName ?? item.publisherName ?? item.publisherNick ?? '匿名'))),
-          tags: Array.isArray(item.tags) ? item.tags.map((tag: string) => String(tag)) : [],
-          createdAt: String(item.createdAt ?? item.createdAt ?? now()),
-          updatedAt: String(item.updatedAt ?? item.updatedAt ?? now()),
-          distanceKm: Number(item.distanceKm ?? 0)
-        }))
+        const payload = await requestJson<any>('/demands?page=1&size=100', {}, this.token)
+        const items = Array.isArray(payload?.items) ? payload.items : Array.isArray(payload) ? payload : payload?.data?.items ?? []
+        this.demands = items.map((item: any) => mapDemandRecord(item))
       } catch {
-        this.demands = createDemands(this.accounts)
+        this.demands = []
       }
     },
 
     async fetchOrders(): Promise<void> {
-      const base = import.meta.env.VITE_API_BASE || '/api/v1'
       try {
-        const response = await fetch(`${base}/orders`)
-        if (!response.ok) throw new Error('network')
-        const payload = await response.json()
-        const remoteOrders = (Array.isArray(payload) ? payload : payload?.items ?? []).map((item: any) => ({
-          id: String(item.orderId ?? item.id ?? ''),
-          demandId: String(item.demandId ?? item.demand?.id ?? item.demandId ?? ''),
-          demandTitle: String(item.demandTitle ?? item.demand?.title ?? ''),
-          // backend OrderSummaryResponse uses publisherId/accepterId
-          requesterId: String(item.publisherId ?? item.requesterId ?? item.demand?.publisherId ?? ''),
-          requesterName: String(item.publisherName ?? item.requesterName ?? item.demand?.publisherDisplayName ?? ''),
-          requesterAvatar: String(item.requesterAvatar ?? item.publisherAvatar ?? buildAvatar(String(item.requesterName ?? item.publisherName ?? item.demand?.publisherDisplayName ?? ''))),
-          serviceProviderId: String(item.accepterId ?? item.serviceProviderId ?? ''),
-          serviceProviderName: String(item.accepterName ?? item.serviceProviderName ?? ''),
-          serviceProviderAvatar: String(item.serviceProviderAvatar ?? buildAvatar(String(item.serviceProviderName ?? ''))),
-          status: (item.status ?? item.orderStatus ?? 'ACCEPTED') as OrderStatus,
-          note: String(item.acceptNote ?? item.note ?? ''),
-          proofSubmitted: Boolean(item.proofSubmitted),
-          proofImageCount: Number(item.proofImageCount ?? 0),
-          createdAt: String(item.createdAt ?? item.createdAt ?? now()),
-          updatedAt: String(item.updatedAt ?? item.updatedAt ?? now()),
-          completedAt: String(item.completedAt ?? item.completedAt ?? ''),
-          timeline: Array.isArray(item.timeline)
-            ? item.timeline.map((entry: any) => ({ at: String(entry.at ?? now()), label: String(entry.label ?? '') }))
-            : []
-        }))
-
-        const localOrderMap = new Map(this.orders.map((order) => [order.id, order]))
-        remoteOrders.forEach((order: OrderRecord) => {
-          localOrderMap.set(order.id, order)
-        })
-
-        this.orders = Array.from(localOrderMap.values())
+        const payload = await requestJson<any>('/orders?page=1&size=100', {}, this.token)
+        const items = Array.isArray(payload?.items) ? payload.items : Array.isArray(payload) ? payload : payload?.data?.items ?? []
+        this.orders = items.map((item: any) => mapOrderRecord(item))
       } catch {
-        if (!this.orders.length) {
-          this.orders = createOrders()
-        }
+        this.orders = []
       }
     },
 
     async fetchNotifications(): Promise<void> {
-      const base = import.meta.env.VITE_API_BASE || '/api/v1'
       try {
-        const response = await fetch(`${base}/notifications`)
-        if (!response.ok) throw new Error('network')
-        const payload = await response.json()
-        const remoteNotifications = (Array.isArray(payload) ? payload : payload?.items ?? []).map((item: any) => ({
-          id: String(item.id),
-          // backend NotificationResponse does not include receiverId (endpoint is per-user); fallback to currentUserId
-          receiverId: String(item.receiverId ?? this.currentUserId),
-          type: (item.type ?? 'STATUS_CHANGED') as NotificationType,
-          // backend may provide title + content
-          content: String(item.content ?? item.title ?? ''),
-          isRead: Boolean(item.read ?? item.isRead),
-          createdAt: String(item.createdAt ?? now()),
-          relatedId: String(item.relatedId ?? item.relatedId ?? '')
-        }))
-
-        const localNotificationMap = new Map(this.notifications.map((notification) => [notification.id, notification]))
-        remoteNotifications.forEach((notification: NotificationRecord) => {
-          localNotificationMap.set(notification.id, notification)
-        })
-
-        this.notifications = Array.from(localNotificationMap.values())
+        const payload = await requestJson<any>('/notifications?page=1&size=100', {}, this.token)
+        const items = Array.isArray(payload?.items) ? payload.items : Array.isArray(payload) ? payload : payload?.data?.items ?? []
+        this.notifications = items.map((item: any) => mapNotificationRecord(item, this.currentUserId))
       } catch {
-        if (!this.notifications.length) {
-          this.notifications = createNotifications()
-        }
+        this.notifications = []
       }
     },
 
     async fetchProfile(): Promise<void> {
-      const base = import.meta.env.VITE_API_BASE || '/api/v1'
       try {
-        const response = await fetch(`${base}/users/me`)
-        if (!response.ok) throw new Error('network')
-        const payload = await response.json()
-        const account = this.accounts.find((item) => item.id === this.currentUserId)
-        if (account) {
-          // backend UserProfileResponse: id, email, studentId, nickname, avatarUrl, role, status, creditScore
-          account.nickname = String(payload.nickname ?? account.nickname)
-          account.avatarUrl = String(payload.avatarUrl ?? account.avatarUrl)
-          account.email = String(payload.email ?? account.email)
-          account.studentId = String(payload.studentId ?? account.studentId)
-          account.role = String(payload.role ?? account.role) as any
-          account.status = String(payload.status ?? account.status) as any
-          account.creditScore = Number(payload.creditScore ?? account.creditScore)
-        }
+        const payload = await requestJson<any>('/users/me', {}, this.token)
+        const profile = mapUserSummary(payload)
+        this.currentProfile = profile
+        this.currentUserId = profile.id || this.currentUserId
       } catch {
         // keep demo profile
       }
     },
 
+    async fetchAdminUsers(): Promise<void> {
+      try {
+        const payload = await requestJson<any>('/admin/users?page=1&size=100', {}, this.token)
+        const items = Array.isArray(payload?.items) ? payload.items : Array.isArray(payload) ? payload : payload?.data?.items ?? []
+        this.adminUsers = items.map((item: any) => mapUserSummary(item))
+      } catch {
+        this.adminUsers = []
+      }
+    },
+
     async fetchRecommendations(page = 1, size = 20): Promise<DemandRecord[]> {
-      const base = import.meta.env.VITE_API_BASE || '/api/v1'
       if (!this.currentUserId) {
         return []
       }
 
       try {
-        const response = await fetch(`${base}/recommendations?page=${page}&size=${size}`)
-        if (!response.ok) throw new Error('network')
+        const payload = await requestJson<any>(`/recommendations?page=${page}&size=${size}`, {}, this.token)
+        const items = Array.isArray(payload?.items) ? payload.items : Array.isArray(payload?.data?.items) ? payload.data.items : []
 
-        const payload = await response.json()
-        const items = Array.isArray(payload?.data?.items)
-          ? payload.data.items
-          : Array.isArray(payload?.items)
-            ? payload.items
-            : []
-
-        return items
-          .map((item: any) => item.demand ?? item)
-          .filter(Boolean)
-          .map((item: any) => ({
-            id: String(item.id ?? item.demandId ?? ''),
-            title: String(item.title ?? ''),
-            description: String(item.description ?? ''),
-            category: (item.category ?? 'OTHER') as DemandCategoryCode,
-            campusZone: (item.campusZone ?? 'GULOU') as CampusZone,
-            location: String(item.location ?? ''),
-            startTime: String(item.startTime ?? now()),
-            endTime: String(item.endTime ?? now()),
-            reward: Number(item.reward ?? 0),
-            status: (item.status ?? 'PENDING') as DemandStatus,
-            anonymous: Boolean(item.anonymous),
-            anonymousCode: item.anonymousCode ?? null,
-            publisherId: String(item.publisherId ?? ''),
-            publisherName: String(item.publisherName ?? item.creator?.nickname ?? '匿名'),
-            publisherAvatar: String(item.publisherAvatar ?? item.creator?.avatarUrl ?? buildAvatar(String(item.publisherName ?? item.creator?.nickname ?? '匿名'))),
-            tags: Array.isArray(item.tags) ? item.tags.map((tag: string) => String(tag)) : [],
-            createdAt: String(item.createdAt ?? now()),
-            updatedAt: String(item.updatedAt ?? now()),
-            distanceKm: Number(item.distanceKm ?? 0)
-          }))
+        return items.map((item: any) => mapDemandRecord(item.demand ?? item))
       } catch {
         return []
       }

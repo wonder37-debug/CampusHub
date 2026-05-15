@@ -17,16 +17,16 @@ function goBack(): void {
   router.back()
 }
 
-function startOrder(): void {
-  if (order.value) store.startOrder(order.value.id)
+async function startOrder(): Promise<void> {
+  if (order.value) await store.startOrder(order.value.id)
 }
 
-function completeOrder(): void {
-  if (order.value) store.completeOrder(order.value.id)
+async function completeOrder(): Promise<void> {
+  if (order.value) await store.completeOrder(order.value.id)
 }
 
-function cancelOrder(): void {
-  if (order.value) store.cancelOrder(order.value.id)
+async function cancelOrder(): Promise<void> {
+  if (order.value) await store.cancelOrder(order.value.id)
 }
 </script>
 
