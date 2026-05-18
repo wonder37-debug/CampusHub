@@ -178,6 +178,7 @@ class OrderApplicationServiceImplTest {
             new PublishDemandCommand(
                 "第二个需求",
                 "第二个描述",
+                null,
                 "OTHER",
                 "GULOU",
                 "鼓楼",
@@ -209,6 +210,7 @@ class OrderApplicationServiceImplTest {
             new PublishDemandCommand(
                 "帮拿快递",
                 "下午帮忙拿个快递",
+                null,
                 "EXPRESS",
                 "XIANLIN",
                 "菜鸟驿站",

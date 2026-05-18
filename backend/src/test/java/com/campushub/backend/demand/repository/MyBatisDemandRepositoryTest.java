@@ -142,6 +142,7 @@ class MyBatisDemandRepositoryTest {
         Demand demand = newDemand("仙林取件", DemandCategory.EXPRESS);
         demand.setCampusZone(CampusZone.XIANLIN);
         demand.setLocation("仙林快递站");
+        demand.setNote("请送到宿舍楼下");
         demand.setReward(new BigDecimal("15.50"));
 
         repository.save(demand);
@@ -149,6 +150,7 @@ class MyBatisDemandRepositoryTest {
         Demand reloaded = repository.findById(demand.getId()).orElseThrow();
         assertThat(reloaded.getCampusZone()).isEqualTo(CampusZone.XIANLIN);
         assertThat(reloaded.getLocation()).isEqualTo("仙林快递站");
+        assertThat(reloaded.getNote()).isEqualTo("请送到宿舍楼下");
         assertThat(reloaded.getReward()).isEqualByComparingTo(new BigDecimal("15.50"));
     }
 

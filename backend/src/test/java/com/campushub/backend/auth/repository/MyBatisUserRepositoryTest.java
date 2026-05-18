@@ -55,11 +55,14 @@ class MyBatisUserRepositoryTest {
 
         user.setNickname("Bob-Updated");
         user.setCreditScore(88);
+        LocalDateTime updatedAt = LocalDateTime.of(2026, 5, 18, 21, 30);
+        user.setUpdatedAt(updatedAt);
         repository.save(user);
 
         User reloaded = repository.findById(user.getId()).orElseThrow();
         assertThat(reloaded.getNickname()).isEqualTo("Bob-Updated");
         assertThat(reloaded.getCreditScore()).isEqualTo(88);
+        assertThat(reloaded.getUpdatedAt()).isEqualTo(updatedAt);
         // 仅一条记录，更新而非插入。
         assertThat(repository.findAll()).hasSize(1);
     }

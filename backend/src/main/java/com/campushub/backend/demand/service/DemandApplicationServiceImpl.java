@@ -58,6 +58,7 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
             publisher.getNickname(),
             command.title().trim(),
             trimToNull(command.description()),
+            trimToNull(command.note()),
             parseCategory(command.category()),
             parseCampusZone(command.campusZone()),
             trimToNull(command.location()),
@@ -126,6 +127,9 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
         if (command.description() != null) {
             validateDescription(command.description());
             demand.setDescription(trimToNull(command.description()));
+        }
+        if (command.note() != null) {
+            demand.setNote(trimToNull(command.note()));
         }
         if (command.category() != null) {
             demand.setCategory(parseCategory(command.category()));

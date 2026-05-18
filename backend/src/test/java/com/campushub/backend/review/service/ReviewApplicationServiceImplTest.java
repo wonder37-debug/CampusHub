@@ -185,6 +185,7 @@ class ReviewApplicationServiceImplTest {
             new PublishDemandCommand(
                 "帮拿快递",
                 "下午帮忙拿快递",
+                null,
                 "EXPRESS",
                 "XIANLIN",
                 "菜鸟驿站",

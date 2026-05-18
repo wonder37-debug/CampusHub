@@ -71,6 +71,7 @@ class DemandApplicationServiceImplTest {
             new PublishDemandCommand(
                 "帮忙取快递",
                 "今天下午帮我去菜鸟拿快递",
+                "轻拿轻放",
                 "EXPRESS",
                 "XIANLIN",
                 "仙林菜鸟驿站",
@@ -83,6 +84,7 @@ class DemandApplicationServiceImplTest {
         );
 
         assertEquals("REVIEWING", response.status());
+        assertEquals("轻拿轻放", response.note());
         assertTrue(response.anonymous());
         assertTrue(response.publisherDisplayName().startsWith("匿名校友"));
     }
@@ -96,6 +98,7 @@ class DemandApplicationServiceImplTest {
                 new PublishDemandCommand(
                     "求代课",
                     "帮我代课一节",
+                    null,
                     "STUDY_TUTORING",
                     "GULOU",
                     "鼓楼教学楼",
@@ -118,6 +121,7 @@ class DemandApplicationServiceImplTest {
             new PublishDemandCommand(
                 "学习辅导",
                 "线代答疑",
+                null,
                 "STUDY_TUTORING",
                 "XIANLIN",
                 "教学楼",
@@ -133,6 +137,7 @@ class DemandApplicationServiceImplTest {
             new PublishDemandCommand(
                 "二手书出售",
                 "出售教材",
+                null,
                 "SECOND_HAND",
                 "GULOU",
                 "宿舍区",
@@ -168,6 +173,7 @@ class DemandApplicationServiceImplTest {
             new PublishDemandCommand(
                 "匿名求助",
                 "匿名发布一条需求",
+                null,
                 "OTHER",
                 "SUZHOU",
                 "苏州校区",
@@ -192,6 +198,7 @@ class DemandApplicationServiceImplTest {
             new PublishDemandCommand(
                 "帮忙组队",
                 "找队友",
+                null,
                 "TEAM_UP",
                 "XIANLIN",
                 "操场",
@@ -208,7 +215,7 @@ class DemandApplicationServiceImplTest {
             () -> demandApplicationService.update(
                 999L,
                 published.id(),
-                new UpdateDemandCommand("改标题", null, null, null, null, null, null, null, null, null)
+                new UpdateDemandCommand("改标题", null, null, null, null, null, null, null, null, null, null)
             )
         );
 
@@ -222,6 +229,7 @@ class DemandApplicationServiceImplTest {
             new PublishDemandCommand(
                 "旧标题",
                 "旧描述",
+                "旧备注",
                 "OTHER",
                 "GULOU",
                 "原地点",
@@ -239,6 +247,7 @@ class DemandApplicationServiceImplTest {
             new UpdateDemandCommand(
                 "新标题",
                 "新描述",
+                "新备注",
                 "SECOND_HAND",
                 "XIANLIN",
                 "新地点",
@@ -251,6 +260,7 @@ class DemandApplicationServiceImplTest {
         );
 
         assertEquals("新标题", updated.title());
+        assertEquals("新备注", updated.note());
         assertEquals("SECOND_HAND", updated.category());
         assertEquals("XIANLIN", updated.campusZone());
         assertTrue(updated.anonymous());
@@ -264,6 +274,7 @@ class DemandApplicationServiceImplTest {
             "郑嘉鸿",
             "已完成任务",
             "不可编辑",
+            null,
             DemandCategory.OTHER,
             com.campushub.backend.demand.domain.CampusZone.XIANLIN,
             "仙林",
@@ -285,7 +296,7 @@ class DemandApplicationServiceImplTest {
             () -> demandApplicationService.update(
                 publisherId,
                 saved.getId(),
-                new UpdateDemandCommand("改不了", null, null, null, null, null, null, null, null, null)
+                new UpdateDemandCommand("改不了", null, null, null, null, null, null, null, null, null, null)
             )
         );
 
