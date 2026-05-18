@@ -1,11 +1,14 @@
 package com.campushub.backend.demand.repository;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.campushub.backend.demand.domain.Demand;
+import com.campushub.backend.demand.domain.DemandStatus;
 import com.campushub.backend.demand.repository.entity.DemandEntity;
 import com.campushub.backend.demand.repository.mapper.DemandMapper;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Repository;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -54,6 +57,18 @@ public class MyBatisDemandRepository implements DemandRepository {
     @Override
     public List<Demand> findAll() {
         List<DemandEntity> entities = demandMapper.selectList(null);
+        return entities.stream().map(DemandEntity::toDomain).toList();
+    }
+
+    @Override
+    public List<Demand> findByStatus(DemandStatus status) {
+        if (status == null) {
+            return new ArrayList<>();
+        }
+        List<DemandEntity> entities = demandMapper.selectList(
+            new LambdaQueryWrapper<DemandEntity>()
+                .eq(DemandEntity::getStatus, status.name())
+        );
         return entities.stream().map(DemandEntity::toDomain).toList();
     }
 }

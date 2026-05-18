@@ -66,6 +66,7 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
             normalizeReward(command.reward()),
             command.tags(),
             DemandStatus.REVIEWING,
+            false,
             command.anonymous(),
             command.anonymous() ? generateAnonymousCode() : null,
             now,

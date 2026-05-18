@@ -92,6 +92,30 @@ class MyBatisUserRepositoryTest {
     }
 
     @Test
+    void findByStatus_returns_users_with_matching_status() {
+        repository.save(newUser("active@test.edu.cn", "20261001", UserRole.USER, UserStatus.ACTIVE));
+        repository.save(newUser("banned@test.edu.cn", "20261002", UserRole.USER, UserStatus.BANNED));
+
+        List<User> activeUsers = repository.findByStatus(UserStatus.ACTIVE);
+
+        assertThat(activeUsers).hasSize(1);
+        assertThat(activeUsers.get(0).getStatus()).isEqualTo(UserStatus.ACTIVE);
+        assertThat(repository.findByStatus(null)).isEmpty();
+    }
+
+    @Test
+    void findByRole_returns_users_with_matching_role() {
+        repository.save(newUser("admin@test.edu.cn", "ADM001", UserRole.ADMIN, UserStatus.ACTIVE));
+        repository.save(newUser("user@test.edu.cn", "20261003", UserRole.USER, UserStatus.ACTIVE));
+
+        List<User> admins = repository.findByRole(UserRole.ADMIN);
+
+        assertThat(admins).hasSize(1);
+        assertThat(admins.get(0).getRole()).isEqualTo(UserRole.ADMIN);
+        assertThat(repository.findByRole(null)).isEmpty();
+    }
+
+    @Test
     void duplicate_email_triggers_DataIntegrityViolationException() {
         repository.save(newUser("dup@campus.edu", "2026010"));
 
@@ -114,13 +138,17 @@ class MyBatisUserRepositoryTest {
     }
 
     private static User newUser(String email, String studentId) {
+        return newUser(email, studentId, UserRole.USER, UserStatus.ACTIVE);
+    }
+
+    private static User newUser(String email, String studentId, UserRole role, UserStatus status) {
         User user = new User();
         user.setEmail(email);
         user.setStudentId(studentId);
         user.setPasswordHash("$2a$10$dummyBcryptHashForTestUseOnly.................");
         user.setNickname("tester");
-        user.setRole(UserRole.USER);
-        user.setStatus(UserStatus.ACTIVE);
+        user.setRole(role);
+        user.setStatus(status);
         user.setCreditScore(100);
         user.setCreatedAt(LocalDateTime.now());
         return user;

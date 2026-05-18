@@ -272,6 +272,7 @@ class DemandApplicationServiceImplTest {
             BigDecimal.ZERO,
             List.of(),
             DemandStatus.COMPLETED,
+            true,
             false,
             null,
             LocalDateTime.now(),

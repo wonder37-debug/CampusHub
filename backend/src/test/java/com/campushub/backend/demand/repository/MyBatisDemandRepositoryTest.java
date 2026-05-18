@@ -45,6 +45,7 @@ class MyBatisDemandRepositoryTest {
         assertThat(loaded.get().getTitle()).isEqualTo("取快递帮拿");
         assertThat(loaded.get().getCategory()).isEqualTo(DemandCategory.EXPRESS);
         assertThat(loaded.get().getStatus()).isEqualTo(DemandStatus.PENDING);
+        assertThat(loaded.get().getIsApproved()).isFalse();
     }
 
     @Test
@@ -53,11 +54,13 @@ class MyBatisDemandRepositoryTest {
 
         demand.setTitle("辅导线代");
         demand.setReward(new BigDecimal("50.00"));
+        demand.setIsApproved(true);
         repository.save(demand);
 
         Demand reloaded = repository.findById(demand.getId()).orElseThrow();
         assertThat(reloaded.getTitle()).isEqualTo("辅导线代");
         assertThat(reloaded.getReward()).isEqualByComparingTo(new BigDecimal("50.00"));
+        assertThat(reloaded.getIsApproved()).isTrue();
         assertThat(repository.findAll()).hasSize(1);
     }
 
@@ -71,6 +74,21 @@ class MyBatisDemandRepositoryTest {
     void findAll_returns_empty_list_not_null_when_no_data() {
         List<Demand> all = repository.findAll();
         assertThat(all).isNotNull().isEmpty();
+    }
+
+    @Test
+    void findByStatus_returns_demands_with_matching_status() {
+        Demand pending = newDemand("待接单需求", DemandCategory.EXPRESS);
+        Demand reviewing = newDemand("待审核需求", DemandCategory.STUDY_TUTORING);
+        reviewing.setStatus(DemandStatus.REVIEWING);
+        repository.save(pending);
+        repository.save(reviewing);
+
+        List<Demand> reviewingDemands = repository.findByStatus(DemandStatus.REVIEWING);
+
+        assertThat(reviewingDemands).hasSize(1);
+        assertThat(reviewingDemands.get(0).getStatus()).isEqualTo(DemandStatus.REVIEWING);
+        assertThat(repository.findByStatus(null)).isEmpty();
     }
 
     @Test
@@ -145,6 +163,7 @@ class MyBatisDemandRepositoryTest {
         demand.setCampusZone(CampusZone.XIANLIN);
         demand.setReward(BigDecimal.ZERO);
         demand.setStatus(DemandStatus.PENDING);
+        demand.setIsApproved(false);
         demand.setAnonymous(false);
         demand.setCreatedAt(LocalDateTime.now());
         return demand;

@@ -152,6 +152,7 @@ class AdminApplicationServiceImplTest {
             new AdminDemandReviewCommand("approve", "通过审核")
         );
         assertEquals(DemandStatus.PENDING.name(), approved.status());
+        assertTrue(demandRepository.findById(reviewingDemand.id()).orElseThrow().getIsApproved());
     }
 
     @Test

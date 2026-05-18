@@ -106,8 +106,7 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "admin demand query must not be null");
         }
 
-        List<Demand> filtered = demandRepository.findAll().stream()
-            .filter(demand -> demand.getStatus() == DemandStatus.REVIEWING)
+        List<Demand> filtered = demandRepository.findByStatus(DemandStatus.REVIEWING).stream()
             .filter(demand -> matchesDemandKeyword(demand, query.q()))
             .filter(demand -> matchesDemandCategory(demand, query.category()))
             .sorted(Comparator.comparing(Demand::getCreatedAt, Comparator.nullsLast(LocalDateTime::compareTo)).reversed())
@@ -140,8 +139,10 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
         String action = command.action().trim().toLowerCase(Locale.ROOT);
         if ("approve".equals(action)) {
             demand.setStatus(DemandStatus.PENDING);
+            demand.setIsApproved(true);
         } else if ("reject".equals(action)) {
             demand.setStatus(DemandStatus.CANCELLED);
+            demand.setIsApproved(false);
         } else {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "unsupported review action: " + command.action());
         }
@@ -161,9 +162,7 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
         long dailyActiveUsers = users.stream()
             .filter(user -> isActiveToday(user, today))
             .count();
-        long pendingReviewDemands = demands.stream()
-            .filter(demand -> demand.getStatus() == DemandStatus.REVIEWING)
-            .count();
+        long pendingReviewDemands = demandRepository.findByStatus(DemandStatus.REVIEWING).size();
         long completedOrders = orders.stream()
             .filter(order -> order.getStatus() == OrderStatus.COMPLETED)
             .count();
