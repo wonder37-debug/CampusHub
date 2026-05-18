@@ -71,6 +71,9 @@ public class DemandEntity {
     @TableField("status")
     private String status;
 
+    @TableField("is_approved")
+    private Boolean isApproved;
+
     @TableField("note")
     private String note;
 
@@ -113,6 +116,7 @@ public class DemandEntity {
         entity.reward = demand.getReward();
         entity.tags = demand.getTags();
         entity.status = demand.getStatus() == null ? null : demand.getStatus().name();
+        entity.isApproved = demand.getIsApproved();
         entity.anonymous = demand.isAnonymous();
         entity.anonymousCode = demand.getAnonymousCode();
         entity.note = null; // note 属于接单留言，领域模型不含此字段
@@ -137,6 +141,7 @@ public class DemandEntity {
         demand.setReward(this.reward);
         demand.setTags(this.tags == null ? new ArrayList<>() : new ArrayList<>(this.tags));
         demand.setStatus(this.status == null ? null : DemandStatus.valueOf(this.status));
+        demand.setIsApproved(this.isApproved != null && this.isApproved);
         demand.setAnonymous(this.anonymous != null && this.anonymous);
         demand.setAnonymousCode(this.anonymousCode);
         demand.setCreatedAt(this.createdAt);
@@ -246,6 +251,14 @@ public class DemandEntity {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public Boolean getIsApproved() {
+        return isApproved;
+    }
+
+    public void setIsApproved(Boolean isApproved) {
+        this.isApproved = isApproved;
     }
 
     public String getNote() {

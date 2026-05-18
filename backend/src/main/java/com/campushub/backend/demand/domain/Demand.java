@@ -20,6 +20,7 @@ public class Demand {
     private BigDecimal reward;
     private List<String> tags;
     private DemandStatus status;
+    private boolean isApproved;
     private boolean anonymous;
     private String anonymousCode;
     private LocalDateTime createdAt;
@@ -43,6 +44,7 @@ public class Demand {
         BigDecimal reward,
         List<String> tags,
         DemandStatus status,
+        boolean isApproved,
         boolean anonymous,
         String anonymousCode,
         LocalDateTime createdAt,
@@ -61,6 +63,7 @@ public class Demand {
         this.reward = reward;
         this.tags = tags == null ? new ArrayList<>() : new ArrayList<>(tags);
         this.status = status;
+        this.isApproved = isApproved;
         this.anonymous = anonymous;
         this.anonymousCode = anonymousCode;
         this.createdAt = createdAt;
@@ -175,6 +178,14 @@ public class Demand {
 
     public void setStatus(DemandStatus status) {
         this.status = status;
+    }
+
+    public boolean getIsApproved() {
+        return isApproved;
+    }
+
+    public void setIsApproved(boolean isApproved) {
+        this.isApproved = isApproved;
     }
 
     public boolean isAnonymous() {

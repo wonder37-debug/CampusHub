@@ -2,11 +2,14 @@ package com.campushub.backend.auth.repository;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.campushub.backend.auth.domain.User;
+import com.campushub.backend.auth.domain.UserRole;
+import com.campushub.backend.auth.domain.UserStatus;
 import com.campushub.backend.auth.repository.entity.UserEntity;
 import com.campushub.backend.auth.repository.mapper.UserMapper;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Repository;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -80,6 +83,26 @@ public class MyBatisUserRepository implements UserRepository {
     public List<User> findAll() {
         List<UserEntity> entities = userMapper.selectList(null);
         return entities.stream().map(UserEntity::toDomain).toList();
+    }
+
+    @Override
+    public List<User> findByStatus(UserStatus status) {
+        if (status == null) {
+            return new ArrayList<>();
+        }
+        LambdaQueryWrapper<UserEntity> wrapper = new LambdaQueryWrapper<UserEntity>()
+            .eq(UserEntity::getStatus, status.name());
+        return userMapper.selectList(wrapper).stream().map(UserEntity::toDomain).toList();
+    }
+
+    @Override
+    public List<User> findByRole(UserRole role) {
+        if (role == null) {
+            return new ArrayList<>();
+        }
+        LambdaQueryWrapper<UserEntity> wrapper = new LambdaQueryWrapper<UserEntity>()
+            .eq(UserEntity::getRole, role.name());
+        return userMapper.selectList(wrapper).stream().map(UserEntity::toDomain).toList();
     }
 
     @Override

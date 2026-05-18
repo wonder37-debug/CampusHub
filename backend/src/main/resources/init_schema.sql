@@ -104,7 +104,9 @@ CREATE TABLE `ord_demand` (
 
   `anonymous_code` varchar(64) DEFAULT NULL COMMENT '匿名识别码',
 
-  `status` varchar(32) NOT NULL DEFAULT 'PENDING' COMMENT '状态机',
+  `status` varchar(32) NOT NULL DEFAULT 'PENDING' COMMENT '状态机: REVIEWING/PENDING/IN_PROGRESS/COMPLETED/CANCELLED',
+
+  `is_approved` tinyint(1) NOT NULL DEFAULT 0 COMMENT '0待审核 1已通过',
 
   `note` varchar(500) DEFAULT NULL COMMENT '需求补充说明',
 
