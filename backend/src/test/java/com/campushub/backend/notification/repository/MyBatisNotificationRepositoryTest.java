@@ -1,14 +1,12 @@
 package com.campushub.backend.notification.repository;
 
 import com.baomidou.mybatisplus.test.autoconfigure.MybatisPlusTest;
-import com.campushub.backend.BackendApplication;
 import com.campushub.backend.notification.domain.Notification;
 import com.campushub.backend.notification.domain.NotificationType;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.jdbc.Sql;
 
 import java.time.LocalDateTime;
@@ -26,7 +24,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 @MybatisPlusTest
 @ActiveProfiles("local")
 @Import(MyBatisNotificationRepository.class)
-@ContextConfiguration(classes = BackendApplication.class)
 @Sql(scripts = "classpath:schema-notification.sql")
 class MyBatisNotificationRepositoryTest {
 
