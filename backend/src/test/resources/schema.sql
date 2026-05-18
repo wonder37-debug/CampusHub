@@ -15,6 +15,7 @@ CREATE TABLE sys_user (
     frozen_balance  DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     created_at      TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     email_verified_at TIMESTAMP  DEFAULT NULL,
+    updated_at      TIMESTAMP    DEFAULT NULL,
     CONSTRAINT uk_user_email      UNIQUE (email),
     CONSTRAINT uk_user_student_id UNIQUE (student_id),
     CONSTRAINT chk_user_role   CHECK (role IN ('USER','ADMIN')),

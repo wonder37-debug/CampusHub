@@ -49,8 +49,7 @@ public class UserEntity {
     @TableField("created_at")
     private LocalDateTime createdAt;
 
-    /** 数据库列名 updated_at；当前 sys_user 暂未建该列时该字段保持 null 即可。 */
-    @TableField(value = "updated_at", exist = false)
+    @TableField("updated_at")
     private LocalDateTime updatedAt;
 
     public UserEntity() {

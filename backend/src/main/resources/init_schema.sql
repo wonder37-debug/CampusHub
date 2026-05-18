@@ -48,6 +48,8 @@ CREATE TABLE `sys_user` (
 
   `email_verified_at` datetime DEFAULT NULL COMMENT '邮箱验证完成时间',
 
+  `updated_at` datetime DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+
   CONSTRAINT `chk_user_role` CHECK (`role` IN ('USER','ADMIN')),
 
   CONSTRAINT `chk_user_status` CHECK (`status` IN ('ACTIVE','BANNED'))
@@ -104,7 +106,7 @@ CREATE TABLE `ord_demand` (
 
   `anonymous_code` varchar(64) DEFAULT NULL COMMENT '匿名识别码',
 
-  `status` varchar(32) NOT NULL DEFAULT 'PENDING' COMMENT '状态机: REVIEWING/PENDING/IN_PROGRESS/COMPLETED/CANCELLED',
+  `status` varchar(32) NOT NULL DEFAULT 'REVIEWING' COMMENT '状态机: REVIEWING→PENDING→IN_PROGRESS→COMPLETED/CANCELLED',
 
   `is_approved` tinyint(1) NOT NULL DEFAULT 0 COMMENT '0待审核 1已通过',
 

@@ -24,8 +24,7 @@ import java.util.List;
  *       通过 {@link CommaSeparatedStringTypeHandler} 与 {@code List<String>} 自动转换。</li>
  *   <li>{@code category / status / campus_zone}：数据库存储枚举的英文名，
  *       实体中以 {@code String} 持有，转换时与领域枚举互转。</li>
- *   <li>{@code receiverId}：数据库 ord_demand 无此列，标记 {@code exist=false}；
- *       该字段由 Order 模块管理，Demand 侧不持久化。</li>
+ *   <li>{@code note}：需求补充说明，由发布者填写。</li>
  * </ul>
  */
 @TableName(value = "ord_demand", autoResultMap = true)
@@ -36,10 +35,6 @@ public class DemandEntity {
 
     @TableField("publisher_id")
     private Long publisherId;
-
-    /** 数据库无此列；receiver_id 由 Order 模块管理，Demand 侧不持久化。 */
-    @TableField(value = "receiver_id", exist = false)
-    private Long receiverId;
 
     @TableField("title")
     private String title;
@@ -104,10 +99,10 @@ public class DemandEntity {
         DemandEntity entity = new DemandEntity();
         entity.id = demand.getId();
         entity.publisherId = demand.getPublisherId();
-        entity.receiverId = null; // receiverId 在 Demand 领域模型中不存在，由 Order 模块管理
         entity.publisherDisplayName = demand.getPublisherDisplayName();
         entity.title = demand.getTitle();
         entity.description = demand.getDescription();
+        entity.note = demand.getNote();
         entity.category = demand.getCategory() == null ? null : demand.getCategory().name();
         entity.campusZone = demand.getCampusZone() == null ? null : demand.getCampusZone().name();
         entity.location = demand.getLocation();
@@ -119,7 +114,6 @@ public class DemandEntity {
         entity.isApproved = demand.getIsApproved();
         entity.anonymous = demand.isAnonymous();
         entity.anonymousCode = demand.getAnonymousCode();
-        entity.note = null; // note 属于接单留言，领域模型不含此字段
         entity.createdAt = demand.getCreatedAt();
         entity.updatedAt = demand.getUpdatedAt();
         return entity;
@@ -133,6 +127,7 @@ public class DemandEntity {
         demand.setPublisherDisplayName(this.publisherDisplayName);
         demand.setTitle(this.title);
         demand.setDescription(this.description);
+        demand.setNote(this.note);
         demand.setCategory(this.category == null ? null : DemandCategory.valueOf(this.category));
         demand.setCampusZone(this.campusZone == null ? null : CampusZone.valueOf(this.campusZone));
         demand.setLocation(this.location);
@@ -163,14 +158,6 @@ public class DemandEntity {
 
     public void setPublisherId(Long publisherId) {
         this.publisherId = publisherId;
-    }
-
-    public Long getReceiverId() {
-        return receiverId;
-    }
-
-    public void setReceiverId(Long receiverId) {
-        this.receiverId = receiverId;
     }
 
     public String getTitle() {

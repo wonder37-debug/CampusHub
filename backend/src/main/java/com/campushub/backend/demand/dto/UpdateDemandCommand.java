@@ -7,6 +7,7 @@ import java.util.List;
 public record UpdateDemandCommand(
     String title,
     String description,
+    String note,
     String category,
     String campusZone,
     String location,

@@ -223,6 +223,7 @@ class AdminApplicationServiceImplTest {
             new PublishDemandCommand(
                 title,
                 title + " 描述",
+                null,
                 category,
                 "XIANLIN",
                 "仙林",

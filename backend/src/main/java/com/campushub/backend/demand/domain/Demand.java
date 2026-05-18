@@ -12,6 +12,7 @@ public class Demand {
     private String publisherDisplayName;
     private String title;
     private String description;
+    private String note;
     private DemandCategory category;
     private CampusZone campusZone;
     private String location;
@@ -36,6 +37,7 @@ public class Demand {
         String publisherDisplayName,
         String title,
         String description,
+        String note,
         DemandCategory category,
         CampusZone campusZone,
         String location,
@@ -55,6 +57,7 @@ public class Demand {
         this.publisherDisplayName = publisherDisplayName;
         this.title = title;
         this.description = description;
+        this.note = note;
         this.category = category;
         this.campusZone = campusZone;
         this.location = location;
@@ -114,6 +117,14 @@ public class Demand {
 
     public void setDescription(String description) {
         this.description = description;
+    }
+
+    public String getNote() {
+        return note;
+    }
+
+    public void setNote(String note) {
+        this.note = note;
     }
 
     public DemandCategory getCategory() {
