@@ -24,7 +24,7 @@ const roleLabel = computed(() => (store.currentUser ? formatUserRole(store.curre
       <div class="brand-block">
         <div class="brand-mark">CH</div>
         <div>
-          <p class="eyebrow">CampusHub</p>
+          <p class="eyebrow">校园互助</p>
           <h1 class="brand-title">校园互助平台</h1>
         </div>
       </div>
@@ -46,7 +46,7 @@ const roleLabel = computed(() => (store.currentUser ? formatUserRole(store.curre
           <span>{{ roleLabel }}</span>
           <strong>{{ store.currentUser?.nickname ?? '访客' }}</strong>
         </div>
-        <RouterLink class="nav-button ghost" to="/notifications">未读 {{ store.unreadNotificationCount }}</RouterLink>
+        <RouterLink class="nav-button ghost" to="/notifications">未读消息 {{ store.unreadNotificationCount }}</RouterLink>
       </div>
     </header>
 

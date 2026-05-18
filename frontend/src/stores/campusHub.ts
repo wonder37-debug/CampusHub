@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 
 import type {
+  AdminDashboardSummary,
   AccountRecord,
   AuthFormInput,
   CategoryStat,
@@ -169,6 +170,8 @@ export const useCampusHubStore = defineStore('campusHub', {
     reviews: [] as ReviewRecord[],
     notifications: [] as NotificationRecord[],
     adminUsers: [] as PublicUser[],
+    adminDashboard: null as AdminDashboardSummary | null,
+    adminPendingDemands: [] as DemandRecord[],
     verificationCodes: {} as Record<string, EmailVerificationRecord>,
     appMessage: '校园互助平台已加载基础业务数据。'
   }),
@@ -407,8 +410,33 @@ export const useCampusHubStore = defineStore('campusHub', {
       }, this.token)
 
       const mapped = mapDemandRecord(demand)
+      await this.fetchAdminDashboard()
+      await this.fetchAdminPendingDemands()
       await this.fetchDemands()
       await this.fetchNotifications()
+      return mapped
+    },
+
+    async banUser(userId: string, reason = ''): Promise<PublicUser> {
+      const payload = await requestJson<any>(`/admin/users/${encodeURIComponent(userId)}/ban`, {
+        method: 'POST',
+        body: JSON.stringify(reason ? { reason: reason.trim() } : {})
+      }, this.token)
+
+      const mapped = mapUserSummary(payload)
+      await this.fetchAdminUsers()
+      await this.fetchAdminDashboard()
+      return mapped
+    },
+
+    async unbanUser(userId: string): Promise<PublicUser> {
+      const payload = await requestJson<any>(`/admin/users/${encodeURIComponent(userId)}/unban`, {
+        method: 'POST'
+      }, this.token)
+
+      const mapped = mapUserSummary(payload)
+      await this.fetchAdminUsers()
+      await this.fetchAdminDashboard()
       return mapped
     },
 
@@ -544,13 +572,56 @@ export const useCampusHubStore = defineStore('campusHub', {
       }
     },
 
-    async fetchAdminUsers(): Promise<void> {
+    async fetchAdminUsers(query = ''): Promise<void> {
       try {
-        const payload = await requestJson<any>('/admin/users?page=1&size=100', {}, this.token)
+        const params = new URLSearchParams({ page: '1', size: '100' })
+        if (query.trim()) {
+          params.set('q', query.trim())
+        }
+        const payload = await requestJson<any>(`/admin/users?${params.toString()}`, {}, this.token)
         const items = Array.isArray(payload?.items) ? payload.items : Array.isArray(payload) ? payload : payload?.data?.items ?? []
         this.adminUsers = items.map((item: any) => mapUserSummary(item))
       } catch {
         this.adminUsers = []
+      }
+    },
+
+    async fetchAdminPendingDemands(query = '', category = ''): Promise<void> {
+      try {
+        const params = new URLSearchParams({ page: '1', size: '100' })
+        if (query.trim()) {
+          params.set('q', query.trim())
+        }
+        if (category.trim()) {
+          params.set('category', category.trim())
+        }
+        const payload = await requestJson<any>(`/admin/demands/pending?${params.toString()}`, {}, this.token)
+        const items = Array.isArray(payload?.items) ? payload.items : Array.isArray(payload) ? payload : payload?.data?.items ?? []
+        this.adminPendingDemands = items.map((item: any) => mapDemandRecord(item))
+      } catch {
+        this.adminPendingDemands = []
+      }
+    },
+
+    async fetchAdminDashboard(): Promise<void> {
+      try {
+        const payload = await requestJson<any>('/admin/dashboard', {}, this.token)
+        this.adminDashboard = {
+          dailyActiveUsers: Number(payload?.dailyActiveUsers ?? 0),
+          totalUsers: Number(payload?.totalUsers ?? 0),
+          totalDemands: Number(payload?.totalDemands ?? 0),
+          pendingReviewDemands: Number(payload?.pendingReviewDemands ?? 0),
+          totalOrders: Number(payload?.totalOrders ?? 0),
+          completedOrders: Number(payload?.completedOrders ?? 0),
+          categoryDistribution: Array.isArray(payload?.categoryDistribution)
+            ? payload.categoryDistribution.map((item: any) => ({
+                category: String(item.category ?? ''),
+                total: Number(item.total ?? 0)
+              }))
+            : []
+        }
+      } catch {
+        this.adminDashboard = null
       }
     },
 

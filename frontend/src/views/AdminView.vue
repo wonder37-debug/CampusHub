@@ -1,21 +1,49 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 
 import { useCampusHubStore } from '@/stores/campusHub'
+import { DEMAND_CATEGORY_OPTIONS, type DemandCategory } from '@/types/campushub'
 import { formatDemandCategory, formatDemandStatus, formatScore, formatUserRole, formatUserStatus, statusToneClass } from '@/utils/format'
 
 const store = useCampusHubStore()
 const message = ref('')
 const error = ref('')
+const userQuery = ref('')
+const demandQuery = ref('')
+const demandCategory = ref('')
 
 const isAdmin = computed(() => store.currentUser?.role === 'ADMIN')
+const adminDashboard = computed(() => store.adminDashboard)
+const pendingDemands = computed(() => store.adminPendingDemands)
+const adminCategoryOptions = DEMAND_CATEGORY_OPTIONS.map((category) => ({
+  value: category,
+  label: formatDemandCategory(category)
+}))
 
-void store.fetchAdminUsers()
+async function refreshAdminData(): Promise<void> {
+  if (!isAdmin.value) {
+    return
+  }
+
+  message.value = ''
+  error.value = ''
+
+  await Promise.all([
+    store.fetchAdminDashboard(),
+    store.fetchAdminUsers(userQuery.value),
+    store.fetchAdminPendingDemands(demandQuery.value, demandCategory.value)
+  ])
+}
+
+onMounted(() => {
+  void refreshAdminData()
+})
 
 async function approveDemand(demandId: string): Promise<void> {
   try {
     await store.approveDemand(demandId, true)
     message.value = '需求已通过审核。'
+    await refreshAdminData()
   } catch (approveError) {
     error.value = approveError instanceof Error ? approveError.message : '审核失败'
   }
@@ -25,8 +53,24 @@ async function rejectDemand(demandId: string): Promise<void> {
   try {
     await store.approveDemand(demandId, false)
     message.value = '需求已拒绝。'
+    await refreshAdminData()
   } catch (rejectError) {
     error.value = rejectError instanceof Error ? rejectError.message : '审核失败'
+  }
+}
+
+async function toggleUserStatus(userId: string, banned: boolean): Promise<void> {
+  try {
+    if (banned) {
+      await store.unbanUser(userId)
+      message.value = '用户已启用。'
+    } else {
+      await store.banUser(userId)
+      message.value = '用户已禁用。'
+    }
+    await refreshAdminData()
+  } catch (toggleError) {
+    error.value = toggleError instanceof Error ? toggleError.message : '用户状态更新失败'
   }
 }
 </script>
@@ -43,10 +87,10 @@ async function rejectDemand(demandId: string): Promise<void> {
       </div>
 
       <div class="stats-grid four-column">
-        <div class="metric"><span>平均信用分</span><strong>{{ store.dashboardSummary.averageCredit }}</strong></div>
-        <div class="metric"><span>待审核需求</span><strong>{{ store.dashboardSummary.pendingApprovals }}</strong></div>
-        <div class="metric"><span>开放需求</span><strong>{{ store.dashboardSummary.openDemands }}</strong></div>
-        <div class="metric"><span>活跃订单</span><strong>{{ store.dashboardSummary.activeOrders }}</strong></div>
+        <div class="metric"><span>今日活跃用户</span><strong>{{ adminDashboard?.dailyActiveUsers ?? 0 }}</strong></div>
+        <div class="metric"><span>用户总数</span><strong>{{ adminDashboard?.totalUsers ?? 0 }}</strong></div>
+        <div class="metric"><span>待审需求</span><strong>{{ adminDashboard?.pendingReviewDemands ?? 0 }}</strong></div>
+        <div class="metric"><span>已完成订单</span><strong>{{ adminDashboard?.completedOrders ?? 0 }}</strong></div>
       </div>
     </section>
 
@@ -57,10 +101,18 @@ async function rejectDemand(demandId: string): Promise<void> {
             <p class="eyebrow">审核队列</p>
             <h2 class="section-title">待审核需求</h2>
           </div>
+          <div class="inline-actions">
+            <input v-model="demandQuery" class="input" type="search" placeholder="搜索标题/地点" @keyup.enter="refreshAdminData" />
+            <select v-model="demandCategory" class="input" @change="refreshAdminData">
+              <option value="">全部分类</option>
+              <option v-for="option in adminCategoryOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+            </select>
+            <button type="button" class="button secondary" @click="refreshAdminData">刷新</button>
+          </div>
         </div>
 
-        <div v-if="store.pendingApprovals.length" class="section-grid">
-          <div v-for="demand in store.pendingApprovals" :key="demand.id" class="list-card">
+        <div v-if="pendingDemands.length" class="section-grid">
+          <div v-for="demand in pendingDemands" :key="demand.id" class="list-card">
             <div class="status-row">
               <span class="chip" :class="statusToneClass(demand.status)">{{ formatDemandStatus(demand.status) }}</span>
               <span class="chip">{{ formatDemandCategory(demand.category) }}</span>
@@ -85,6 +137,10 @@ async function rejectDemand(demandId: string): Promise<void> {
             <p class="eyebrow">用户管理</p>
             <h2 class="section-title">平台用户列表</h2>
           </div>
+          <div class="inline-actions">
+            <input v-model="userQuery" class="input" type="search" placeholder="搜索学号/邮箱/昵称" @keyup.enter="refreshAdminData" />
+            <button type="button" class="button secondary" @click="refreshAdminData">查询</button>
+          </div>
         </div>
 
         <div class="table-wrap">
@@ -97,6 +153,7 @@ async function rejectDemand(demandId: string): Promise<void> {
                 <th>信用分</th>
                 <th>角色</th>
                 <th>状态</th>
+                <th>操作</th>
               </tr>
             </thead>
             <tbody>
@@ -112,6 +169,16 @@ async function rejectDemand(demandId: string): Promise<void> {
                 <td>{{ formatScore(user.creditScore) }}</td>
                 <td><span class="chip" :class="user.role === 'ADMIN' ? 'is-neutral' : 'is-success'">{{ formatUserRole(user.role) }}</span></td>
                 <td><span class="chip" :class="statusToneClass(user.status)">{{ formatUserStatus(user.status) }}</span></td>
+                <td>
+                  <button
+                    v-if="user.role !== 'ADMIN'"
+                    type="button"
+                    class="button secondary"
+                    @click="toggleUserStatus(user.id, user.status === 'BANNED')"
+                  >
+                    {{ user.status === 'BANNED' ? '启用' : '禁用' }}
+                  </button>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -128,8 +195,8 @@ async function rejectDemand(demandId: string): Promise<void> {
       </div>
 
       <div class="chart-list">
-        <div v-for="stat in store.categoryStats" :key="stat.category" class="chart-row">
-          <strong>{{ stat.category }}</strong>
+        <div v-for="stat in adminDashboard?.categoryDistribution ?? []" :key="stat.category" class="chart-row">
+          <strong>{{ formatDemandCategory(stat.category as DemandCategory) }}</strong>
           <div class="progress-bar"><span :style="{ width: `${Math.max(stat.total * 18, 8)}%` }"></span></div>
           <span>{{ stat.total }}</span>
         </div>

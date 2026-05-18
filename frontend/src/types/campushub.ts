@@ -143,6 +143,21 @@ export interface DashboardSummary {
   averageCredit: number
 }
 
+export interface AdminCategoryStat {
+  category: string
+  total: number
+}
+
+export interface AdminDashboardSummary {
+  dailyActiveUsers: number
+  totalUsers: number
+  totalDemands: number
+  pendingReviewDemands: number
+  totalOrders: number
+  completedOrders: number
+  categoryDistribution: AdminCategoryStat[]
+}
+
 export interface CategoryStat {
   category: DemandCategory
   total: number
