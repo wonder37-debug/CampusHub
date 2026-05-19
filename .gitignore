@@ -43,3 +43,4 @@ CLAUDE.md
 # Spring Boot 本地配置文件（包含敏感信息）
 backend/src/main/resources/application-local.properties
 application-local.properties
+AGENTS.md
