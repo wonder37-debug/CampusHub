@@ -10,11 +10,11 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
-import org.springframework.context.annotation.Primary;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Repository;
 
 @Repository
-@Primary
+@Profile("!local")
 public class InMemoryUserRepository implements UserRepository {
 
     private final AtomicLong sequence = new AtomicLong(1);
