@@ -20,7 +20,7 @@ USE campushub;
 
 -- ==========================================================
 
-CREATE TABLE `sys_user` (
+CREATE TABLE IF NOT EXISTS`sys_user` (
 
   `id` bigint NOT NULL AUTO_INCREMENT PRIMARY KEY,
 
@@ -76,7 +76,7 @@ ON DUPLICATE KEY UPDATE id=id;
 
 -- ==========================================================
 
-CREATE TABLE `ord_demand` (
+CREATE TABLE IF NOT EXISTS`ord_demand` (
 
   `id` bigint NOT NULL AUTO_INCREMENT PRIMARY KEY,
 
@@ -130,7 +130,7 @@ CREATE TABLE `ord_demand` (
 
 -- ==========================================================
 
-CREATE TABLE `ord_order` (
+CREATE TABLE IF NOT EXISTS`ord_order` (
 
   `id` bigint NOT NULL AUTO_INCREMENT PRIMARY KEY,
 
@@ -172,7 +172,7 @@ CREATE TABLE `ord_order` (
 
 -- ==========================================================
 
-CREATE TABLE `ord_order_status_log` (
+CREATE TABLE IF NOT EXISTS`ord_order_status_log` (
 
   `id` bigint NOT NULL AUTO_INCREMENT PRIMARY KEY,
 
@@ -200,7 +200,7 @@ CREATE TABLE `ord_order_status_log` (
 
 -- ==========================================================
 
-CREATE TABLE `ord_review` (
+CREATE TABLE IF NOT EXISTS`ord_review` (
 
   `id` bigint NOT NULL AUTO_INCREMENT PRIMARY KEY,
 
@@ -232,7 +232,7 @@ CREATE TABLE `ord_review` (
 
 -- ==========================================================
 
-CREATE TABLE `ast_ledger` (
+CREATE TABLE IF NOT EXISTS`ast_ledger` (
 
   `id` bigint NOT NULL AUTO_INCREMENT PRIMARY KEY,
 
@@ -258,7 +258,7 @@ CREATE TABLE `ast_ledger` (
 
 -- ==========================================================
 
-CREATE TABLE `sys_notification` (
+CREATE TABLE IF NOT EXISTS`sys_notification` (
 
   `id` bigint NOT NULL AUTO_INCREMENT PRIMARY KEY,
 
@@ -290,7 +290,7 @@ CREATE TABLE `sys_notification` (
 
 -- ==========================================================
 
-CREATE TABLE `rec_user_action_log` (
+CREATE  TABLE IF NOT EXISTS `rec_user_action_log` (
 
   `id` bigint NOT NULL AUTO_INCREMENT PRIMARY KEY,
 
