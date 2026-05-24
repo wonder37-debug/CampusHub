@@ -7,6 +7,10 @@ import { formatUserRole, formatUserStatus } from '@/utils/format'
 
 const store = useCampusHubStore()
 const router = useRouter()
+const emailDomainOptions = [
+  { label: '@nju.edu.cn', value: 'nju.edu.cn' },
+  { label: '@smail.nju.edu.cn', value: 'smail.nju.edu.cn' }
+]
 const activeTab = ref<'login' | 'register'>('login')
 const message = ref('')
 const error = ref('')
@@ -23,13 +27,34 @@ const loginForm = reactive({
 const registerForm = reactive({
   studentId: '',
   password: '',
-  email: '',
+  emailPrefix: '',
+  emailDomain: emailDomainOptions[0].value,
   verificationCode: '',
   nickname: '',
   avatarUrl: ''
 })
 
 const currentUser = computed(() => store.currentUser)
+
+const registrationEmail = computed(() => {
+  const prefix = registerForm.emailPrefix.trim()
+  return prefix ? `${prefix}@${registerForm.emailDomain}` : ''
+})
+
+function validateEmailPrefix(): boolean {
+  const prefix = registerForm.emailPrefix.trim()
+  if (!prefix) {
+    error.value = '请先输入邮箱前缀'
+    return false
+  }
+
+  if (!/^\d+$/.test(prefix)) {
+    error.value = '邮箱前缀只能包含数字'
+    return false
+  }
+
+  return true
+}
 
 async function submitLogin(): Promise<void> {
   error.value = ''
@@ -48,8 +73,14 @@ async function sendVerificationCode(): Promise<void> {
   error.value = ''
   message.value = ''
 
+  if (!validateEmailPrefix()) {
+    return
+  }
+
+  const email = registrationEmail.value
+
   try {
-    verificationCodeHint.value = await store.sendRegistrationCode(registerForm.email)
+    verificationCodeHint.value = await store.sendRegistrationCode(email)
     codeSent.value = true
     codeCountdown.value = 60
 
@@ -75,7 +106,7 @@ async function sendVerificationCode(): Promise<void> {
 
     message.value = verificationCodeHint.value
       ? `验证码接口暂未落地，已生成演示码：${verificationCodeHint.value}`
-      : `验证码已发送到 ${registerForm.email}。请查收邮箱后完成注册。`
+      : `验证码已发送到 ${email}。请查收邮箱后完成注册。`
   } catch (sendError) {
     error.value = sendError instanceof Error ? sendError.message : '验证码发送失败'
   }
@@ -85,8 +116,17 @@ async function submitRegister(): Promise<void> {
   error.value = ''
   message.value = ''
 
+  if (!validateEmailPrefix()) {
+    return
+  }
+
+  const email = registrationEmail.value
+
   try {
-    const user = await store.register(registerForm)
+    const user = await store.register({
+      ...registerForm,
+      email
+    })
     message.value = `注册成功，${user.nickname} 已自动登录。`
     activeTab.value = 'login'
     registerForm.verificationCode = ''
@@ -143,8 +183,23 @@ async function submitRegister(): Promise<void> {
         </div>
         <div class="field" style="grid-column: 1 / -1;">
           <label for="register-email">邮箱</label>
-          <input id="register-email" v-model="registerForm.email" type="email" placeholder="请输入接收验证码的邮箱" />
-          <span class="input-help">填写邮箱后就能收到验证码，输入后即可完成注册。</span>
+          <div class="inline-actions" style="align-items: stretch;">
+            <input
+              id="register-email-prefix"
+              v-model="registerForm.emailPrefix"
+              inputmode="numeric"
+              pattern="[0-9]*"
+              placeholder="241880515"
+              style="flex: 1 1 220px;"
+            />
+            <span class="chip is-neutral" style="padding-inline: 14px;">@</span>
+            <select id="register-email-domain" v-model="registerForm.emailDomain" style="flex: 0 0 180px;">
+              <option v-for="option in emailDomainOptions" :key="option.value" :value="option.value">
+                {{ option.label }}
+              </option>
+            </select>
+          </div>
+          <span class="input-help">请输入邮箱前缀，右侧选择学校邮箱后缀。</span>
         </div>
         <div class="field" style="grid-column: 1 / -1;">
           <label for="register-code">邮箱验证码</label>
