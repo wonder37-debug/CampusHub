@@ -161,9 +161,19 @@ function nextId(prefix: string): string {
 
 export const useCampusHubStore = defineStore('campusHub', {
   state: () => ({
-    currentUserId: '',
-    token: '',
-    currentProfile: null as PublicUser | null,
+    // 尝试从 localStorage 恢复登录态以持久化会话
+    currentUserId: (typeof window !== 'undefined' && localStorage.getItem('campushub.userId')) || '',
+    token: (typeof window !== 'undefined' && localStorage.getItem('campushub.token')) || '',
+    currentProfile: ((): PublicUser | null => {
+      if (typeof window === 'undefined') return null
+      const raw = localStorage.getItem('campushub.profile')
+      if (!raw) return null
+      try {
+        return JSON.parse(raw) as PublicUser
+      } catch {
+        return null
+      }
+    })(),
     accounts: [] as AccountRecord[],
     demands: [] as DemandRecord[],
     orders: [] as OrderRecord[],
@@ -261,6 +271,28 @@ export const useCampusHubStore = defineStore('campusHub', {
       await this.fetchNotifications()
     },
 
+    async initializeFromStorage(): Promise<void> {
+      if (typeof window === 'undefined') return
+      const token = localStorage.getItem('campushub.token') || ''
+      if (!token) return
+      this.token = token
+      const profileRaw = localStorage.getItem('campushub.profile')
+      if (profileRaw) {
+        try {
+          this.currentProfile = JSON.parse(profileRaw)
+          this.currentUserId = this.currentProfile?.id || ''
+        } catch {
+          // ignore
+        }
+      }
+
+      try {
+        await this.hydrateAuthenticatedState()
+      } catch {
+        // ignore hydrate errors on startup
+      }
+    },
+
     getDemandById(demandId: string): DemandRecord | undefined {
       return this.demands.find((demand) => demand.id === demandId)
     },
@@ -278,6 +310,13 @@ export const useCampusHubStore = defineStore('campusHub', {
       this.currentUserId = ''
       this.token = ''
       this.currentProfile = null
+      try {
+        localStorage.removeItem('campushub.token')
+        localStorage.removeItem('campushub.userId')
+        localStorage.removeItem('campushub.profile')
+      } catch {
+        // ignore
+      }
     },
 
     async login(form: AuthFormInput): Promise<PublicUser> {
@@ -294,6 +333,13 @@ export const useCampusHubStore = defineStore('campusHub', {
       this.currentUserId = user.id
       this.currentProfile = user
       this.token = String(authData.token ?? '')
+      try {
+        localStorage.setItem('campushub.token', this.token)
+        localStorage.setItem('campushub.userId', user.id)
+        localStorage.setItem('campushub.profile', JSON.stringify(user))
+      } catch {
+        // ignore storage errors
+      }
       await this.hydrateAuthenticatedState()
       return user
     },
@@ -338,10 +384,7 @@ export const useCampusHubStore = defineStore('campusHub', {
       const profile = mapUserSummary(registeredUser)
 
       try {
-        return await this.login({
-          studentId: form.studentId,
-          password: form.password
-        })
+        return await this.login({ studentId: form.studentId, password: form.password })
       } catch (error) {
         this.currentUserId = ''
         this.currentProfile = null
