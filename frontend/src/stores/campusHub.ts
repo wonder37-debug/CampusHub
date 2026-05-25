@@ -713,12 +713,14 @@ export const useCampusHubStore = defineStore('campusHub', {
     },
 
     async markAllNotificationsRead(): Promise<void> {
-      const unreadNotifications = this.notifications.filter(
-        (notification) => notification.receiverId === this.currentUserId && !notification.isRead
-      )
+      const unreadNotifications = this.currentUserNotifications.filter((notification) => !notification.isRead)
 
       for (const notification of unreadNotifications) {
-        await this.markNotificationRead(notification.id)
+        try {
+          await this.markNotificationRead(notification.id)
+        } catch {
+          continue
+        }
       }
 
       await this.fetchNotifications()

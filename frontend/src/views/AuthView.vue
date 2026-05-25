@@ -36,16 +36,12 @@ const registerForm = reactive({
   avatarUrl: ''
 })
 
-const avatarFileInput = ref<HTMLInputElement | null>(null)
-
 const currentUser = computed(() => store.currentUser)
 
 const registrationEmail = computed(() => {
   const prefix = registerForm.emailPrefix.trim()
   return prefix ? `${prefix}@${registerForm.emailDomain}` : ''
 })
-
-const registrationAvatar = computed(() => registerForm.avatarUrl || '')
 
 function validateEmailPrefix(): boolean {
   const prefix = registerForm.emailPrefix.trim()
@@ -60,27 +56,6 @@ function validateEmailPrefix(): boolean {
   }
 
   return true
-}
-
-function onAvatarFileSelected(event: Event): void {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (!file) {
-    return
-  }
-
-  if (!file.type.startsWith('image/')) {
-    error.value = '请选择图片文件'
-    input.value = ''
-    return
-  }
-
-  const reader = new FileReader()
-  reader.onload = () => {
-    registerForm.avatarUrl = String(reader.result || '')
-    error.value = ''
-  }
-  reader.readAsDataURL(file)
 }
 
 async function submitLogin(): Promise<void> {
@@ -170,9 +145,6 @@ async function submitRegister(): Promise<void> {
     registerForm.verificationCode = ''
     registerForm.avatarUrl = ''
     verificationCodeHint.value = ''
-    if (avatarFileInput.value) {
-      avatarFileInput.value.value = ''
-    }
     router.replace('/profile')
   } catch (registerError) {
     error.value = registerError instanceof Error ? registerError.message : '注册失败'
@@ -268,20 +240,18 @@ async function submitRegister(): Promise<void> {
           <input id="register-nickname" v-model="registerForm.nickname" placeholder="你的校园昵称" />
         </div>
         <div class="field" style="grid-column: 1 / -1;">
-          <label for="register-avatar-file">本地头像图片</label>
+          <label for="register-avatar">头像链接</label>
           <input
-            id="register-avatar-file"
-            ref="avatarFileInput"
-            type="file"
-            accept="image/*"
-            @change="onAvatarFileSelected"
+            id="register-avatar"
+            v-model="registerForm.avatarUrl"
+            placeholder="https://..."
           />
-          <span class="input-help">选择本地图片后会直接作为头像提交，注册后即可使用。</span>
-          <div v-if="registrationAvatar" class="avatar-row" style="margin-top: 12px;">
-            <img :src="registrationAvatar" alt="头像预览" class="avatar" />
+          <span class="input-help">请输入可访问的头像图片链接，注册后会直接保存该地址。</span>
+          <div v-if="registerForm.avatarUrl.trim()" class="avatar-row" style="margin-top: 12px;">
+            <img :src="registerForm.avatarUrl" alt="头像预览" class="avatar" />
             <div>
               <strong>头像预览</strong>
-              <p class="subtle">图片会随注册信息一并保存。</p>
+              <p class="subtle">将使用当前填写的图片链接。</p>
             </div>
           </div>
         </div>
