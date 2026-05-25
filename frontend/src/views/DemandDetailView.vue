@@ -12,6 +12,7 @@ const reviewRating = ref('5')
 const reviewComment = ref('')
 const message = ref('')
 const error = ref('')
+const completionSubmitted = ref(false)
 
 const demand = computed(() => store.getDemandById(String(route.params.id)))
 const relatedOrder = computed(() => store.orders.find((order) => order.demandId === demand.value?.id))
@@ -52,8 +53,11 @@ async function completeOrder(): Promise<void> {
   }
 
   try {
-    await store.completeOrder(relatedOrder.value.id)
-    message.value = '订单已完成，可以提交评价。'
+    const updatedOrder = await store.completeOrder(relatedOrder.value.id)
+    completionSubmitted.value = updatedOrder.status !== 'COMPLETED'
+    message.value = updatedOrder.status === 'COMPLETED'
+      ? '双方都已确认完成，订单已完成。'
+      : '已提交完成确认，等待对方确认。'
   } catch (completeError) {
     error.value = completeError instanceof Error ? completeError.message : '操作失败'
   }
@@ -134,7 +138,23 @@ async function submitReview(): Promise<void> {
           <span v-else class="chip is-warning">当前需求暂时不可接单</span>
 
           <button v-if="relatedOrder?.status === 'ACCEPTED'" type="button" class="button secondary" @click="startOrder">开始执行</button>
-          <button v-if="relatedOrder?.status === 'IN_PROGRESS'" type="button" class="button secondary" @click="completeOrder">完成确认</button>
+          <button
+            v-if="relatedOrder?.status === 'IN_PROGRESS' && store.currentUser?.id === relatedOrder.serviceProviderId && !completionSubmitted"
+            type="button"
+            class="button secondary"
+            @click="completeOrder"
+          >
+            提交完成确认
+          </button>
+          <button
+            v-else-if="relatedOrder?.status === 'IN_PROGRESS' && store.currentUser?.id === relatedOrder.requesterId && !completionSubmitted"
+            type="button"
+            class="button secondary"
+            @click="completeOrder"
+          >
+            确认完成
+          </button>
+          <span v-else-if="relatedOrder?.status === 'IN_PROGRESS'" class="chip is-warning">等待对方确认完成</span>
         </div>
       </div>
 

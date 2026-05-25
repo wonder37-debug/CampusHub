@@ -152,7 +152,7 @@ onMounted(() => {
             class="button primary"
             @click.stop="completeOrder(order.id)"
           >
-            确认完成
+            提交完成确认
           </button>
         </div>
       </article>

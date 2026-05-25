@@ -141,12 +141,12 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         notificationApplicationService.notifyStatusChanged(
             order.getPublisherId(),
             order.getId(),
-            "订单状态已更新为 " + targetStatus.name()
+            "订单进度已更新为“" + formatOrderStatus(targetStatus) + "”"
         );
         notificationApplicationService.notifyStatusChanged(
             order.getAccepterId(),
             order.getId(),
-            "订单状态已更新为 " + targetStatus.name()
+            "订单进度已更新为“" + formatOrderStatus(targetStatus) + "”"
         );
         return OrderDetailResponse.from(order, DemandDetailResponse.from(demand));
     }
@@ -162,7 +162,7 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         }
 
         if (hasCompletionConfirmation(order, operatorId)) {
-            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "order is already in target status");
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "completion already confirmed by this user");
         }
 
         LocalDateTime now = LocalDateTime.now();
@@ -313,5 +313,17 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
 
     private String trimToNull(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private String formatOrderStatus(OrderStatus status) {
+        if (status == null) {
+            return "未知状态";
+        }
+        return switch (status) {
+            case ACCEPTED -> "已接单";
+            case IN_PROGRESS -> "进行中";
+            case COMPLETED -> "已完成";
+            case CANCELLED -> "已取消";
+        };
     }
 }

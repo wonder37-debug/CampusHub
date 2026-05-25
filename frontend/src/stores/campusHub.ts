@@ -24,6 +24,7 @@ import {
   DEMAND_CATEGORY_OPTIONS,
   type DemandCategory as DemandCategoryCode
 } from '@/types/campushub'
+import { formatOrderStatus } from '@/utils/format'
 
 function buildAvatar(seed: string): string {
   return `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(seed)}`
@@ -105,6 +106,7 @@ function translateApiError(payload: any): string {
     'only participants can review this order': '只有订单参与者才能评价',
     'only completed orders can be reviewed': '只有已完成的订单才能评价',
     'review already submitted for this order': '该订单已经提交过评价',
+    'completion already confirmed by this user': '你已经提交过完成确认，请等待对方确认',
     'admin cannot ban self': '不能封禁自己',
     'user is already banned': '该用户已经被封禁',
     'user is already active': '该用户已经是正常状态',
@@ -285,7 +287,7 @@ function mapOrderRecord(raw: any): OrderRecord {
     timeline: Array.isArray(raw.statusHistory)
       ? raw.statusHistory.map((entry: any) => ({
           at: String(entry.changedAt ?? entry.createdAt ?? now()),
-          label: String(entry.note ?? entry.toStatus ?? '')
+          label: String(entry.note ?? formatOrderStatus(String(entry.toStatus ?? 'ACCEPTED') as OrderStatus))
         }))
       : []
   }

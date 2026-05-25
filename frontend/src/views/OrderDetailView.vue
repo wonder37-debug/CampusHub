@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { useCampusHubStore } from '@/stores/campusHub'
@@ -12,6 +12,9 @@ const store = useCampusHubStore()
 const order = computed(() => store.getOrderById(String(route.params.id)))
 const isRequester = computed(() => order.value && store.currentUser?.id === order.value.requesterId)
 const isProvider = computed(() => order.value && store.currentUser?.id === order.value.serviceProviderId)
+const message = ref('')
+const error = ref('')
+const completionSubmitted = ref(false)
 
 function goBack(): void {
   router.back()
@@ -22,7 +25,20 @@ async function startOrder(): Promise<void> {
 }
 
 async function completeOrder(): Promise<void> {
-  if (order.value) await store.completeOrder(order.value.id)
+  if (!order.value) return
+
+  message.value = ''
+  error.value = ''
+
+  try {
+    const updatedOrder = await store.completeOrder(order.value.id)
+    completionSubmitted.value = updatedOrder.status !== 'COMPLETED'
+    message.value = updatedOrder.status === 'COMPLETED'
+      ? '双方都已确认完成，订单已完成。'
+      : '已提交完成确认，等待对方确认。'
+  } catch (completeError) {
+    error.value = completeError instanceof Error ? completeError.message : '操作失败'
+  }
 }
 
 async function cancelOrder(): Promise<void> {
@@ -52,6 +68,9 @@ async function cancelOrder(): Promise<void> {
         <div class="mini-stat"><span class="subtle">留言</span><strong>{{ order.note || '无' }}</strong></div>
       </div>
 
+      <p v-if="message" class="hero-badge">{{ message }}</p>
+      <p v-if="error" class="hero-badge" style="background: rgba(181, 71, 71, 0.14); color: var(--danger)">{{ error }}</p>
+
       <div class="timeline" style="margin-top: 16px;">
         <div v-for="entry in order.timeline" :key="`${entry.at}-${entry.label}`" class="timeline-item">
           <span>{{ entry.label }}</span>
@@ -64,7 +83,23 @@ async function cancelOrder(): Promise<void> {
       <p class="eyebrow">操作</p>
       <div class="card-actions">
         <button v-if="order.status === 'ACCEPTED' && isProvider" type="button" class="button secondary" @click="startOrder">开始执行</button>
-        <button v-if="order.status === 'IN_PROGRESS' && isProvider" type="button" class="button primary" @click="completeOrder">确认完成</button>
+        <button
+          v-if="order.status === 'IN_PROGRESS' && isProvider && !completionSubmitted"
+          type="button"
+          class="button primary"
+          @click="completeOrder"
+        >
+          提交完成确认
+        </button>
+        <button
+          v-else-if="order.status === 'IN_PROGRESS' && isRequester && !completionSubmitted"
+          type="button"
+          class="button primary"
+          @click="completeOrder"
+        >
+          确认完成
+        </button>
+        <span v-else-if="order.status === 'IN_PROGRESS'" class="chip is-warning">等待对方确认完成</span>
         <button v-if="order.status === 'ACCEPTED' && isRequester" type="button" class="button secondary" @click="cancelOrder">取消订单</button>
       </div>
     </section>
