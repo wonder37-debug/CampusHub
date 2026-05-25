@@ -27,17 +27,23 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 class AuthApplicationServiceImplTest {
 
     private static final BCryptPasswordEncoder PASSWORD_ENCODER = new BCryptPasswordEncoder();
+    private static final CampusEmailPolicy CAMPUS_EMAIL_POLICY = new CampusEmailPolicy(
+        "example.edu.cn,campus.edu,test.edu.cn,edu.cn"
+    );
 
     private UserRepository userRepository;
     private AuthApplicationService authApplicationService;
+    private RecordingVerificationEmailSender verificationEmailSender;
 
     @BeforeEach
     void setUp() {
         userRepository = new InMemoryUserRepository();
+        verificationEmailSender = new RecordingVerificationEmailSender();
         authApplicationService = new AuthApplicationServiceImpl(
             userRepository,
-            new InMemoryVerificationCodeService(),
-            new SimpleTokenService()
+            new InMemoryVerificationCodeService(CAMPUS_EMAIL_POLICY, verificationEmailSender),
+            new SimpleTokenService(),
+            CAMPUS_EMAIL_POLICY
         );
     }
 
@@ -50,7 +56,7 @@ class AuthApplicationServiceImplTest {
                 issue.verificationCode(),
                 "20260001",
                 "Password1",
-                "嘉鸿",
+                "tester",
                 null
             )
         );
@@ -76,20 +82,9 @@ class AuthApplicationServiceImplTest {
             )
         );
 
-        EmailVerificationIssue secondIssue = authApplicationService.sendRegistrationCode("two@example.edu.cn", null);
-
         BusinessException exception = assertThrows(
             BusinessException.class,
-            () -> authApplicationService.register(
-                new RegisterCommand(
-                    "two@example.edu.cn",
-                    secondIssue.verificationCode(),
-                    "20260001",
-                    "Password2",
-                    "two",
-                    null
-                )
-            )
+            () -> authApplicationService.sendRegistrationCode("two@example.edu.cn", "20260001")
         );
 
         assertEquals(ErrorCode.BUSINESS_CONFLICT, exception.getErrorCode());
@@ -104,7 +99,7 @@ class AuthApplicationServiceImplTest {
                 issue.verificationCode(),
                 "20260001",
                 "Password1",
-                "嘉鸿",
+                "tester",
                 null
             )
         );
@@ -125,7 +120,7 @@ class AuthApplicationServiceImplTest {
                 issue.verificationCode(),
                 "20260001",
                 "Password1",
-                "嘉鸿",
+                "tester",
                 null
             )
         );
@@ -172,7 +167,7 @@ class AuthApplicationServiceImplTest {
                 issue.verificationCode(),
                 "20260001",
                 "Password1",
-                "嘉鸿",
+                "tester",
                 null
             )
         );
@@ -194,7 +189,7 @@ class AuthApplicationServiceImplTest {
                 issue.verificationCode(),
                 "20260001",
                 "Password1",
-                "嘉鸿",
+                "tester",
                 null
             )
         );
@@ -202,10 +197,88 @@ class AuthApplicationServiceImplTest {
         UserProfileResponse updated = authApplicationService.updateProfile(
             user.id(),
             user.id(),
-            new UpdateProfileCommand("新昵称", "https://example.com/avatar.png")
+            new UpdateProfileCommand("new-name", "https://example.com/avatar.png")
         );
 
-        assertEquals("新昵称", updated.nickname());
+        assertEquals("new-name", updated.nickname());
         assertEquals("https://example.com/avatar.png", updated.avatarUrl());
+    }
+
+    @Test
+    void shouldRejectNonCampusEmailWhenSendingCode() {
+        BusinessException exception = assertThrows(
+            BusinessException.class,
+            () -> authApplicationService.sendRegistrationCode("user@gmail.com", "20260001")
+        );
+
+        assertEquals(ErrorCode.VALIDATION_FAILED, exception.getErrorCode());
+        assertEquals(0, verificationEmailSender.sendCount);
+    }
+
+    @Test
+    void shouldSendVerificationEmailWhenIssuingCode() {
+        EmailVerificationIssue issue = authApplicationService.sendRegistrationCode("zheng@example.edu.cn", "20260001");
+
+        assertEquals("zheng@example.edu.cn", verificationEmailSender.lastEmail);
+        assertEquals(issue.verificationCode(), verificationEmailSender.lastCode);
+        assertTrue(verificationEmailSender.lastExpiresInSeconds > 0);
+    }
+
+    @Test
+    void shouldNotEnterCooldownWhenEmailSendingFails() {
+        VerificationCodeService failingService = new InMemoryVerificationCodeService(
+            CAMPUS_EMAIL_POLICY,
+            (email, verificationCode, expiresInSeconds) -> {
+                throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "failed to send verification email");
+            }
+        );
+
+        BusinessException firstException = assertThrows(
+            BusinessException.class,
+            () -> failingService.issueCode("zheng@example.edu.cn", "20260001")
+        );
+        BusinessException secondException = assertThrows(
+            BusinessException.class,
+            () -> failingService.issueCode("zheng@example.edu.cn", "20260001")
+        );
+
+        assertEquals("failed to send verification email", firstException.getMessage());
+        assertEquals("failed to send verification email", secondException.getMessage());
+    }
+
+    @Test
+    void shouldRejectRegisterWhenStudentIdDoesNotMatchIssuedCode() {
+        EmailVerificationIssue issue = authApplicationService.sendRegistrationCode("zheng@example.edu.cn", "20260001");
+
+        BusinessException exception = assertThrows(
+            BusinessException.class,
+            () -> authApplicationService.register(
+                new RegisterCommand(
+                    "zheng@example.edu.cn",
+                    issue.verificationCode(),
+                    "20269999",
+                    "Password1",
+                    "tester",
+                    null
+                )
+            )
+        );
+
+        assertEquals(ErrorCode.AUTH_FAILED, exception.getErrorCode());
+    }
+
+    private static class RecordingVerificationEmailSender implements VerificationEmailSender {
+        private String lastEmail;
+        private String lastCode;
+        private long lastExpiresInSeconds;
+        private int sendCount;
+
+        @Override
+        public void sendRegistrationCode(String email, String verificationCode, long expiresInSeconds) {
+            this.lastEmail = email;
+            this.lastCode = verificationCode;
+            this.lastExpiresInSeconds = expiresInSeconds;
+            this.sendCount++;
+        }
     }
 }

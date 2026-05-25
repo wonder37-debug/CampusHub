@@ -29,49 +29,62 @@ public class AuthApplicationServiceImpl implements AuthApplicationService {
     private final UserRepository userRepository;
     private final VerificationCodeService verificationCodeService;
     private final TokenService tokenService;
+    private final CampusEmailPolicy campusEmailPolicy;
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
     public AuthApplicationServiceImpl(
         UserRepository userRepository,
         VerificationCodeService verificationCodeService,
-        TokenService tokenService
+        TokenService tokenService,
+        CampusEmailPolicy campusEmailPolicy
     ) {
         this.userRepository = userRepository;
         this.verificationCodeService = verificationCodeService;
         this.tokenService = tokenService;
+        this.campusEmailPolicy = campusEmailPolicy;
     }
 
     @Override
     public EmailVerificationIssue sendRegistrationCode(String email, String studentId) {
-        validateEmail(email);
-        if (!isBlank(studentId) && userRepository.findByStudentId(studentId.trim()).isPresent()) {
+        String normalizedEmail = normalizeEmail(email);
+        validateEmail(normalizedEmail);
+
+        String normalizedStudentId = normalizeStudentId(studentId);
+        if (normalizedStudentId != null && userRepository.findByStudentId(normalizedStudentId).isPresent()) {
             throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "studentId already registered");
         }
-        if (userRepository.findByEmail(email.trim()).isPresent()) {
+        if (userRepository.findByEmail(normalizedEmail).isPresent()) {
             throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "email already registered");
         }
-        return verificationCodeService.issueCode(email.trim(), emptyToNull(studentId));
+
+        return verificationCodeService.issueCode(normalizedEmail, normalizedStudentId);
     }
 
     @Override
     public UserProfileResponse register(RegisterCommand command) {
         validateRegisterCommand(command);
 
-        if (!verificationCodeService.verify(command.email(), command.verificationCode())) {
+        String normalizedEmail = normalizeEmail(command.email());
+        String normalizedStudentId = normalizeStudentId(command.studentId());
+
+        if (!verificationCodeService.matchesStudentId(normalizedEmail, normalizedStudentId)) {
+            throw new BusinessException(ErrorCode.AUTH_FAILED, "verification code does not match studentId");
+        }
+        if (!verificationCodeService.verify(normalizedEmail, command.verificationCode())) {
             throw new BusinessException(ErrorCode.AUTH_FAILED, "verification code is invalid");
         }
-        if (userRepository.findByStudentId(command.studentId()).isPresent()) {
+        if (userRepository.findByStudentId(normalizedStudentId).isPresent()) {
             throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "studentId already registered");
         }
-        if (userRepository.findByEmail(command.email()).isPresent()) {
+        if (userRepository.findByEmail(normalizedEmail).isPresent()) {
             throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "email already registered");
         }
 
         LocalDateTime now = LocalDateTime.now();
         User user = new User(
             null,
-            command.email().trim(),
-            command.studentId().trim(),
+            normalizedEmail,
+            normalizedStudentId,
             passwordEncoder.encode(command.password()),
             resolveNickname(command.nickname()),
             emptyToNull(command.avatarUrl()),
@@ -148,8 +161,14 @@ public class AuthApplicationServiceImpl implements AuthApplicationService {
         if (isBlank(command.studentId())) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "studentId must not be blank");
         }
+        if (command.studentId().trim().length() < 3 || command.studentId().trim().length() > 64) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "studentId length must be between 3 and 64");
+        }
         if (isBlank(command.password()) || command.password().length() < 8) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "password must be at least 8 characters");
+        }
+        if (!isBlank(command.nickname()) && command.nickname().trim().length() > 64) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "nickname length must not exceed 64");
         }
     }
 
@@ -162,14 +181,22 @@ public class AuthApplicationServiceImpl implements AuthApplicationService {
         }
     }
 
+    private void validateEmail(String email) {
+        if (!campusEmailPolicy.isValidCampusEmail(email)) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "email must be a valid campus email");
+        }
+    }
+
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
     }
 
-    private void validateEmail(String email) {
-        if (isBlank(email) || !email.contains("@")) {
-            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "email must be a valid address");
-        }
+    private String normalizeEmail(String email) {
+        return campusEmailPolicy.normalize(email);
+    }
+
+    private String normalizeStudentId(String studentId) {
+        return emptyToNull(studentId);
     }
 
     private String resolveNickname(String nickname) {

@@ -11,6 +11,7 @@ const emailDomainOptions = [
   { label: '@nju.edu.cn', value: 'nju.edu.cn' },
   { label: '@smail.nju.edu.cn', value: 'smail.nju.edu.cn' }
 ]
+
 const activeTab = ref<'login' | 'register'>('login')
 const message = ref('')
 const error = ref('')
@@ -80,7 +81,8 @@ async function sendVerificationCode(): Promise<void> {
   const email = registrationEmail.value
 
   try {
-    verificationCodeHint.value = await store.sendRegistrationCode(email)
+    verificationCodeHint.value = ''
+    await store.sendRegistrationCode(email, registerForm.studentId)
     codeSent.value = true
     codeCountdown.value = 60
 
@@ -104,9 +106,7 @@ async function sendVerificationCode(): Promise<void> {
       codeCountdown.value -= 1
     }, 1000)
 
-    message.value = verificationCodeHint.value
-      ? `验证码接口暂未落地，已生成演示码：${verificationCodeHint.value}`
-      : `验证码已发送到 ${email}。请查收邮箱后完成注册。`
+    message.value = `验证码已发送到 ${email}，请查收邮箱后完成注册。`
   } catch (sendError) {
     error.value = sendError instanceof Error ? sendError.message : '验证码发送失败'
   }
@@ -182,7 +182,7 @@ async function submitRegister(): Promise<void> {
           <input id="register-password" v-model="registerForm.password" type="password" placeholder="至少 8 位" />
         </div>
         <div class="field" style="grid-column: 1 / -1;">
-          <label for="register-email">邮箱</label>
+          <label for="register-email-prefix">邮箱</label>
           <div class="inline-actions" style="align-items: stretch;">
             <input
               id="register-email-prefix"
@@ -199,17 +199,22 @@ async function submitRegister(): Promise<void> {
               </option>
             </select>
           </div>
-          <span class="input-help">请输入邮箱前缀，右侧选择学校邮箱后缀。</span>
+          <span class="input-help">请输入邮箱前缀，并在右侧选择学校邮箱域名。</span>
         </div>
         <div class="field" style="grid-column: 1 / -1;">
           <label for="register-code">邮箱验证码</label>
           <div class="inline-actions" style="align-items: stretch;">
-            <input id="register-code" v-model="registerForm.verificationCode" placeholder="输入 6 位验证码" style="flex: 1 1 220px;" />
+            <input
+              id="register-code"
+              v-model="registerForm.verificationCode"
+              placeholder="输入 6 位验证码"
+              style="flex: 1 1 220px;"
+            />
             <button type="button" class="button secondary" :disabled="codeCountdown > 0" @click="sendVerificationCode">
               {{ codeCountdown > 0 ? `${codeCountdown}s 后重发` : '发送验证码' }}
             </button>
           </div>
-          <span v-if="verificationCodeHint" class="input-help">验证码已发送，请填写示例码完成注册：{{ verificationCodeHint }}</span>
+          <span v-if="verificationCodeHint" class="input-help">请使用收到的验证码完成注册：{{ verificationCodeHint }}</span>
         </div>
         <div class="field">
           <label for="register-nickname">昵称</label>
@@ -238,7 +243,7 @@ async function submitRegister(): Promise<void> {
         <img :src="currentUser.avatarUrl" :alt="currentUser.nickname" class="avatar large" />
         <div>
           <h3>{{ currentUser.nickname }}</h3>
-          <p class="subtle">{{ currentUser.studentId }} · {{ currentUser.email }}</p>
+          <p class="subtle">{{ currentUser.studentId }} / {{ currentUser.email }}</p>
           <div class="stats-row">
             <span class="chip is-neutral">{{ formatUserRole(currentUser.role) }}</span>
             <span class="chip is-success">{{ formatUserStatus(currentUser.status) }}</span>
@@ -250,11 +255,11 @@ async function submitRegister(): Promise<void> {
       <div class="section-grid">
         <div class="list-card">
           <strong>使用说明</strong>
-          <p>注册完成后就能直接登录，继续使用发布、接单和消息功能。</p>
+          <p>注册完成后就可以直接登录，继续使用发布、接单和消息功能。</p>
         </div>
         <div class="list-card">
           <strong>账号提示</strong>
-          <p>登录后会自动带出当前账号信息，方便继续使用平台。</p>
+          <p>登录后会自动展示当前账号信息，方便继续使用平台。</p>
         </div>
       </div>
     </section>

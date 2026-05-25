@@ -7,4 +7,6 @@ public interface VerificationCodeService {
     EmailVerificationIssue issueCode(String email, String studentId);
 
     boolean verify(String email, String verificationCode);
+
+    boolean matchesStudentId(String email, String studentId);
 }

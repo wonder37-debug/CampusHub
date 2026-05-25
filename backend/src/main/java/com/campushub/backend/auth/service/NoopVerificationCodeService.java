@@ -17,4 +17,9 @@ public class NoopVerificationCodeService implements VerificationCodeService {
     public boolean verify(String email, String verificationCode) {
         return verificationCode != null && !verificationCode.isBlank();
     }
+
+    @Override
+    public boolean matchesStudentId(String email, String studentId) {
+        return studentId != null && !studentId.isBlank();
+    }
 }

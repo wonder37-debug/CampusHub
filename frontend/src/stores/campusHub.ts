@@ -33,10 +33,6 @@ function normalizeEmail(email: string): string {
   return email.trim().toLowerCase()
 }
 
-function generateVerificationCodeLocal(): string {
-  return `${Math.floor(100000 + Math.random() * 900000)}`
-}
-
 function now(offsetMinutes = 0): string {
   return new Date(Date.now() + offsetMinutes * 60_000).toISOString()
 }
@@ -298,28 +294,24 @@ export const useCampusHubStore = defineStore('campusHub', {
       return user
     },
 
-    async sendRegistrationCode(email: string): Promise<string> {
+    async sendRegistrationCode(email: string, studentId: string): Promise<string> {
       const normalizedEmail = normalizeEmail(email)
+      const normalizedStudentId = studentId.trim()
       if (!normalizedEmail || !normalizedEmail.includes('@')) {
         throw new Error('请输入有效的邮箱地址')
       }
-
-      try {
-        await requestJson<void>('/auth/email-code', {
-          method: 'POST',
-          body: JSON.stringify({ email: normalizedEmail })
-        })
-        return ''
-      } catch {
-        const code = generateVerificationCodeLocal()
-        this.verificationCodes[normalizedEmail] = {
-          code,
-          email: normalizedEmail,
-          expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
-          sender: 'noreply@campushub.edu.cn'
-        }
-        return code
+      if (!normalizedStudentId) {
+        throw new Error('请先输入学号再获取邮箱验证码')
       }
+
+      await requestJson<void>('/auth/email-code', {
+        method: 'POST',
+        body: JSON.stringify({
+          email: normalizedEmail,
+          studentId: normalizedStudentId
+        })
+      })
+      return ''
     },
 
     async register(form: AuthFormInput): Promise<PublicUser> {
