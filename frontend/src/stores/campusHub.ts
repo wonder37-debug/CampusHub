@@ -224,6 +224,8 @@ function mapUserSummary(raw: any): PublicUser {
     nickname: String(raw.nickname ?? '匿名校友'),
     avatarUrl: String(raw.avatarUrl ?? buildAvatar(String(raw.nickname ?? raw.studentId ?? '用户'))),
     creditScore: Number(raw.creditScore ?? 0),
+    balance: Number(raw.balance ?? 0),
+    frozenBalance: Number(raw.frozenBalance ?? 0),
     role: String(raw.role ?? 'USER') as AccountRecord['role'],
     status: String(raw.status ?? 'ACTIVE') as AccountRecord['status']
   }
@@ -231,6 +233,7 @@ function mapUserSummary(raw: any): PublicUser {
 
 function mapDemandRecord(raw: any): DemandRecord {
   const publisherDisplayName = raw.publisherDisplayName ?? raw.publisherName ?? raw.creator?.nickname ?? '匿名'
+  const publisher = raw.publisher ? mapUserSummary(raw.publisher) : null
   return {
     id: String(raw.id ?? raw.demandId ?? ''),
     title: String(raw.title ?? ''),
@@ -247,6 +250,7 @@ function mapDemandRecord(raw: any): DemandRecord {
     publisherId: raw.publisherId == null ? '' : String(raw.publisherId),
     publisherName: String(publisherDisplayName),
     publisherAvatar: String(raw.publisherAvatar ?? buildAvatar(String(publisherDisplayName))),
+    publisher,
     tags: Array.isArray(raw.tags) ? raw.tags.map((tag: any) => String(tag)) : [],
     createdAt: String(raw.createdAt ?? now()),
     updatedAt: String(raw.updatedAt ?? raw.createdAt ?? now()),
@@ -266,9 +270,11 @@ function mapOrderRecord(raw: any): OrderRecord {
     requesterId: String(requester.id ?? raw.publisherId ?? raw.requesterId ?? demand.publisherId ?? ''),
     requesterName: String(requester.nickname ?? raw.publisherDisplayName ?? raw.requesterName ?? demand.publisherDisplayName ?? ''),
     requesterAvatar: String(requester.avatarUrl ?? raw.requesterAvatar ?? raw.publisherAvatar ?? buildAvatar(String(requester.nickname ?? raw.publisherDisplayName ?? ''))),
+    requesterCreditScore: Number(requester.creditScore ?? raw.requesterCreditScore ?? 0),
     serviceProviderId: String(provider.id ?? raw.accepterId ?? raw.serviceProviderId ?? ''),
     serviceProviderName: String(provider.nickname ?? raw.accepterName ?? raw.serviceProviderName ?? ''),
     serviceProviderAvatar: String(provider.avatarUrl ?? raw.serviceProviderAvatar ?? buildAvatar(String(provider.nickname ?? raw.accepterName ?? ''))),
+    serviceProviderCreditScore: Number(provider.creditScore ?? raw.serviceProviderCreditScore ?? 0),
     status: String(raw.status ?? 'ACCEPTED') as OrderStatus,
     note: String(raw.acceptNote ?? raw.note ?? ''),
     proofSubmitted: Boolean(raw.proofSubmitted ?? false),
@@ -294,6 +300,21 @@ function mapNotificationRecord(raw: any, fallbackReceiverId = ''): NotificationR
     isRead: Boolean(raw.read ?? raw.isRead ?? false),
     createdAt: String(raw.createdAt ?? now()),
     relatedId: String(raw.relatedId ?? '')
+  }
+}
+
+function mapReviewRecord(raw: any): ReviewRecord {
+  const author = raw.author ?? {}
+  return {
+    id: String(raw.id ?? nextId('r')),
+    orderId: String(raw.orderId ?? ''),
+    reviewerId: String(author.id ?? raw.authorId ?? ''),
+    reviewerName: String(author.nickname ?? raw.reviewerName ?? '匿名'),
+    targetId: String(raw.targetId ?? ''),
+    targetName: String(raw.targetName ?? ''),
+    rating: Number(raw.rating ?? 0),
+    comment: String(raw.comment ?? ''),
+    createdAt: String(raw.createdAt ?? now())
   }
 }
 
@@ -408,6 +429,7 @@ export const useCampusHubStore = defineStore('campusHub', {
       }
 
       await this.fetchProfile()
+      await this.fetchCurrentUserReviews()
       await this.fetchDemands()
       await this.fetchOrders()
       await this.fetchNotifications()
@@ -549,6 +571,7 @@ export const useCampusHubStore = defineStore('campusHub', {
       const mapped = mapUserSummary(profile)
       this.currentProfile = mapped
       await this.fetchProfile()
+      await this.fetchCurrentUserReviews()
       return mapped
     },
 
@@ -679,22 +702,39 @@ export const useCampusHubStore = defineStore('campusHub', {
         body: JSON.stringify({ rating, comment: comment.trim() })
       }, this.token)
 
-      const mapped: ReviewRecord = {
-        id: String(review.id ?? nextId('r')),
-        orderId: String(review.orderId ?? orderId),
-        reviewerId: String(review.author?.id ?? this.currentUserId),
-        reviewerName: String(review.author?.nickname ?? this.currentUser?.nickname ?? '匿名'),
-        targetId: String(review.targetId ?? ''),
-        targetName: String(review.targetName ?? review.author?.nickname ?? ''),
-        rating: Number(review.rating ?? rating),
-        comment: String(review.comment ?? comment.trim()),
-        createdAt: String(review.createdAt ?? now())
-      }
+      const mapped: ReviewRecord = mapReviewRecord(review)
 
       this.reviews.unshift(mapped)
       await this.fetchOrders()
       await this.fetchNotifications()
       return mapped
+    },
+
+    async fetchUserReviews(userId: string): Promise<void> {
+      if (!userId || !this.token) {
+        this.reviews = []
+        return
+      }
+
+      try {
+        const payload = await requestJson<any>(`/users/${encodeURIComponent(userId)}/reviews?page=1&size=100`, {}, this.token)
+        const items = Array.isArray(payload?.items) ? payload.items : Array.isArray(payload) ? payload : payload?.data?.items ?? []
+        const merged = new Map<string, ReviewRecord>()
+        this.reviews.forEach((review) => merged.set(review.id, review))
+        items.map((item: any) => mapReviewRecord(item)).forEach((review: ReviewRecord) => merged.set(review.id, review))
+        this.reviews = Array.from(merged.values()).sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+      } catch {
+        this.reviews = []
+      }
+    },
+
+    async fetchCurrentUserReviews(): Promise<void> {
+      if (!this.currentUserId) {
+        this.reviews = []
+        return
+      }
+
+      await this.fetchUserReviews(this.currentUserId)
     },
 
     async markNotificationRead(notificationId: string): Promise<void> {
@@ -763,7 +803,7 @@ export const useCampusHubStore = defineStore('campusHub', {
         this.currentProfile = profile
         this.currentUserId = profile.id || this.currentUserId
       } catch {
-        // keep demo profile
+        this.currentProfile = null
       }
     },
 

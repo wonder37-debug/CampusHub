@@ -99,10 +99,10 @@ async function submitReview(): Promise<void> {
       </div>
 
       <div class="avatar-row">
-        <img :src="demand.publisherAvatar" :alt="demand.publisherName" class="avatar large" />
+        <img :src="demand.publisher?.avatarUrl ?? demand.publisherAvatar" :alt="demand.publisher?.nickname ?? demand.publisherName" class="avatar large" />
         <div>
-          <strong>{{ demand.anonymous ? demand.anonymousCode ?? '匿名发布' : demand.publisherName }}</strong>
-          <p class="subtle">发布者编号 {{ demand.publisherId || '匿名' }} · {{ formatScore(store.getUserById(demand.publisherId || '')?.creditScore ?? 0) }}</p>
+          <strong>{{ demand.anonymous ? demand.anonymousCode ?? '匿名发布' : (demand.publisher?.nickname ?? demand.publisherName) }}</strong>
+          <p class="subtle">发布者编号 {{ demand.publisherId || '匿名' }} · {{ demand.publisher ? formatScore(demand.publisher.creditScore) : '未知' }}</p>
           <p class="meta">{{ demand.location }} · {{ formatDateTime(demand.createdAt) }}</p>
         </div>
       </div>
@@ -156,9 +156,10 @@ async function submitReview(): Promise<void> {
             <img :src="relatedOrder.serviceProviderAvatar" :alt="relatedOrder.serviceProviderName" class="avatar" />
             <div>
               <strong>{{ relatedOrder.serviceProviderName }}</strong>
-              <div class="meta">接单方</div>
+              <div class="meta">接单方 · 信用分 {{ formatScore(relatedOrder.serviceProviderCreditScore) }}</div>
             </div>
           </div>
+          <div class="meta" style="margin-top: 8px;">需求方 · 信用分 {{ formatScore(relatedOrder.requesterCreditScore) }}</div>
           <p>{{ relatedOrder.note || '暂无留言' }}</p>
         </div>
 

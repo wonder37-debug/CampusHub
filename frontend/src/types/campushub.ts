@@ -23,6 +23,8 @@ export interface PublicUser {
   nickname: string
   phone?: string
   creditScore: number
+  balance: number
+  frozenBalance: number
   role: UserRole
   status: UserStatus
   avatarUrl: string
@@ -48,6 +50,7 @@ export interface DemandRecord {
   publisherId: string
   publisherName: string
   publisherAvatar: string
+  publisher?: PublicUser | null
   tags: string[]
   createdAt: string
   updatedAt: string
@@ -66,9 +69,11 @@ export interface OrderRecord {
   requesterId: string
   requesterName: string
   requesterAvatar: string
+  requesterCreditScore: number
   serviceProviderId: string
   serviceProviderName: string
   serviceProviderAvatar: string
+  serviceProviderCreditScore: number
   status: OrderStatus
   note: string
   proofSubmitted: boolean

@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { useCampusHubStore } from '@/stores/campusHub'
-import { formatOrderStatus, formatRelativeTime, statusToneClass } from '@/utils/format'
+import { formatOrderStatus, formatRelativeTime, formatScore, statusToneClass } from '@/utils/format'
 
 const route = useRoute()
 const router = useRouter()
@@ -47,8 +47,8 @@ async function cancelOrder(): Promise<void> {
       </div>
 
       <div class="mini-grid">
-        <div class="mini-stat"><span class="subtle">需求方</span><strong>{{ order.requesterName }}</strong></div>
-        <div class="mini-stat"><span class="subtle">接单方</span><strong>{{ order.serviceProviderName }}</strong></div>
+        <div class="mini-stat"><span class="subtle">需求方</span><strong>{{ order.requesterName }}</strong><div class="meta">信用分 {{ formatScore(order.requesterCreditScore) }}</div></div>
+        <div class="mini-stat"><span class="subtle">接单方</span><strong>{{ order.serviceProviderName }}</strong><div class="meta">信用分 {{ formatScore(order.serviceProviderCreditScore) }}</div></div>
         <div class="mini-stat"><span class="subtle">留言</span><strong>{{ order.note || '无' }}</strong></div>
       </div>
 

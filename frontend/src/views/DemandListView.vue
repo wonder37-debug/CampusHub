@@ -249,10 +249,10 @@ onBeforeUnmount(() => {
         <p>{{ truncateText(demand.description, 86) }}</p>
 
         <div class="avatar-row">
-          <img :src="demand.publisherAvatar" :alt="demand.publisherName" class="avatar" />
+          <img :src="demand.publisher?.avatarUrl ?? demand.publisherAvatar" :alt="demand.publisher?.nickname ?? demand.publisherName" class="avatar" />
           <div>
-            <strong>{{ demand.anonymous ? demand.anonymousCode ?? '匿名用户' : demand.publisherName }}</strong>
-            <div class="meta">信用分 {{ formatScore(store.getUserById(demand.publisherId)?.creditScore ?? 0) }}</div>
+            <strong>{{ demand.anonymous ? demand.anonymousCode ?? '匿名用户' : (demand.publisher?.nickname ?? demand.publisherName) }}</strong>
+            <div class="meta">信用分 {{ demand.publisher ? formatScore(demand.publisher.creditScore) : '未知' }}</div>
           </div>
         </div>
 

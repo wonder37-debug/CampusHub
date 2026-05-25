@@ -1,16 +1,20 @@
 package com.campushub.backend.api;
 
 import com.campushub.backend.api.view.OrderView;
+import com.campushub.backend.api.view.ReviewView;
+import com.campushub.backend.api.view.UserSummaryView;
 import com.campushub.backend.common.api.ApiResponse;
 import com.campushub.backend.common.api.PageResponse;
 import com.campushub.backend.common.model.PageQuery;
 import com.campushub.backend.common.security.CurrentUser;
 import com.campushub.backend.common.security.RequestUserExtractor;
+import com.campushub.backend.auth.repository.UserRepository;
 import com.campushub.backend.order.dto.OrderHistoryQuery;
 import com.campushub.backend.order.dto.OrderSummaryResponse;
 import com.campushub.backend.order.dto.UpdateOrderStatusCommand;
 import com.campushub.backend.order.repository.OrderRepository;
 import com.campushub.backend.order.service.OrderApplicationService;
+import com.campushub.backend.review.dto.ReviewResponse;
 import com.campushub.backend.review.dto.SubmitReviewCommand;
 import com.campushub.backend.review.service.ReviewApplicationService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -31,6 +35,7 @@ public class OrderController {
     private final OrderApplicationService orderApplicationService;
     private final OrderRepository orderRepository;
     private final ReviewApplicationService reviewApplicationService;
+    private final UserRepository userRepository;
     private final RequestUserExtractor requestUserExtractor;
     private final ApiViewMapper apiViewMapper;
 
@@ -38,12 +43,14 @@ public class OrderController {
         OrderApplicationService orderApplicationService,
         OrderRepository orderRepository,
         ReviewApplicationService reviewApplicationService,
+        UserRepository userRepository,
         RequestUserExtractor requestUserExtractor,
         ApiViewMapper apiViewMapper
     ) {
         this.orderApplicationService = orderApplicationService;
         this.orderRepository = orderRepository;
         this.reviewApplicationService = reviewApplicationService;
+        this.userRepository = userRepository;
         this.requestUserExtractor = requestUserExtractor;
         this.apiViewMapper = apiViewMapper;
     }
@@ -93,12 +100,32 @@ public class OrderController {
     }
 
     @PostMapping("/{orderId}/reviews")
-    public ApiResponse<?> submitReview(
+    public ApiResponse<ReviewView> submitReview(
         HttpServletRequest request,
         @PathVariable Long orderId,
         @RequestBody SubmitReviewCommand command
     ) {
         CurrentUser currentUser = requestUserExtractor.requireCurrentUser(request);
-        return ApiResponse.success(reviewApplicationService.submit(currentUser.userId(), orderId, command));
+        ReviewResponse review = reviewApplicationService.submit(currentUser.userId(), orderId, command);
+        return ApiResponse.success(toReviewView(review, currentUser.userId()));
+    }
+
+    private ReviewView toReviewView(ReviewResponse review, Long currentUserId) {
+        var author = userRepository.findById(review.authorId()).orElse(null);
+        var target = userRepository.findById(review.targetId()).orElse(null);
+        UserSummaryView authorView = author == null ? null : UserSummaryView.from(author);
+        if (authorView == null && currentUserId != null && currentUserId.equals(review.authorId())) {
+            authorView = UserSummaryView.from(userRepository.findById(currentUserId).orElseThrow());
+        }
+        return new ReviewView(
+            review.id(),
+            review.orderId(),
+            review.rating(),
+            review.comment(),
+            review.targetId(),
+            target == null ? null : target.getNickname(),
+            authorView,
+            review.createdAt()
+        );
     }
 }

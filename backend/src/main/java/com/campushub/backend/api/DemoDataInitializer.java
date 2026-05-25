@@ -4,6 +4,7 @@ import com.campushub.backend.auth.domain.User;
 import com.campushub.backend.auth.domain.UserRole;
 import com.campushub.backend.auth.domain.UserStatus;
 import com.campushub.backend.auth.repository.UserRepository;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
@@ -29,6 +30,8 @@ public class DemoDataInitializer {
                     UserRole.ADMIN,
                     UserStatus.ACTIVE,
                     100,
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
                     now,
                     now
                 ));

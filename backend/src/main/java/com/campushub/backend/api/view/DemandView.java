@@ -8,6 +8,7 @@ public record DemandView(
     Long id,
     Long publisherId,
     String publisherDisplayName,
+    UserSummaryView publisher,
     String title,
     String description,
     String category,
