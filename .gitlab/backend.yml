@@ -1,11 +1,89 @@
-stages:
-  - build
-
-backend-build:
-  stage: build
-  image: maven:3.9.6-eclipse-temurin-21
-  script:
+.backend-template:
+  image: maven:3.9.9-eclipse-temurin-21
+  variables:
+    MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
+    MAVEN_CLI_OPTS: "-B -ntp"
+    SPRING_PROFILES_ACTIVE: "default"
+  cache:
+    key: "maven-$CI_COMMIT_REF_SLUG"
+    paths:
+      - .m2/repository/
+  before_script:
     - cd backend
-    - mvn clean package -DskipTests -B
+
+backend:dependencies:
+  extends: .backend-template
+  stage: deps
+  script:
+    - mvn $MAVEN_CLI_OPTS dependency:go-offline
   rules:
-    - when: always
+    - changes:
+        - backend/**/*
+        - .gitlab/backend.yml
+        - .gitlab-ci.yml
+    - when: manual
+      allow_failure: true
+
+backend:static-check:
+  extends: .backend-template
+  stage: static-check
+  script:
+    - mvn $MAVEN_CLI_OPTS -DskipTests compile
+  rules:
+    - changes:
+        - backend/**/*
+        - .gitlab/backend.yml
+        - .gitlab-ci.yml
+
+backend:unit-test:
+  extends: .backend-template
+  stage: unit-test
+  script:
+    - mvn $MAVEN_CLI_OPTS -Dtest='*Test,!FrontendIntegrationFlowTest' test
+  artifacts:
+    when: always
+    reports:
+      junit:
+        - backend/target/surefire-reports/TEST-*.xml
+    paths:
+      - backend/target/surefire-reports/
+    expire_in: 7 days
+  rules:
+    - changes:
+        - backend/**/*
+        - .gitlab/backend.yml
+        - .gitlab-ci.yml
+
+backend:integration-test:
+  extends: .backend-template
+  stage: integration-test
+  script:
+    - mvn $MAVEN_CLI_OPTS -Dtest=FrontendIntegrationFlowTest test
+  artifacts:
+    when: always
+    reports:
+      junit:
+        - backend/target/surefire-reports/TEST-*.xml
+    paths:
+      - backend/target/surefire-reports/
+    expire_in: 7 days
+  rules:
+    - changes:
+        - backend/**/*
+        - .gitlab/backend.yml
+        - .gitlab-ci.yml
+
+backend:build:
+  extends: .backend-template
+  stage: build
+  script:
+    - mvn $MAVEN_CLI_OPTS -DskipTests package
+  artifacts:
+    paths:
+      - backend/target/*.jar
+    expire_in: 7 days
+  rules:
+    - changes:
+        - backend/**/*
+        - .gitlab/backend.yml
+        - .gitlab-ci.yml
