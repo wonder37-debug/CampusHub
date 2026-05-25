@@ -113,6 +113,7 @@ export interface AuthFormInput {
 export interface EmailVerificationRecord {
   code: string
   email: string
+  studentId: string
   expiresAt: string
   sender: string
 }
