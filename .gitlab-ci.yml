@@ -1,20 +1,15 @@
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH'
+
 stages:
-  - trigger
+  - deps
+  - static-check
+  - unit-test
+  - integration-test
+  - build
 
-backend:
-  stage: trigger
-  trigger:
-    include:
-      - local: .gitlab/backend.yml
-  rules:
-    - changes:
-        - backend/**/*
-
-frontend:
-  stage: trigger
-  trigger:
-    include:
-      - local: .gitlab/frontend.yml
-  rules:
-    - changes:
-        - frontend/**/*
+include:
+  - local: .gitlab/backend.yml
+  - local: .gitlab/frontend.yml
