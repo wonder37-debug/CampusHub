@@ -20,8 +20,8 @@ function iconFor(type: string): string {
   return '🔔'
 }
 
-function openNotification(notificationId: string, relatedId: string): void {
-  store.markNotificationRead(notificationId)
+async function openNotification(notificationId: string, relatedId: string): Promise<void> {
+  await store.markNotificationRead(notificationId)
   if (relatedId.startsWith('d-')) {
     router.push(`/demands/${relatedId}`)
     return

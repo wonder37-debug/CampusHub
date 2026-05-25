@@ -697,19 +697,31 @@ export const useCampusHubStore = defineStore('campusHub', {
       return mapped
     },
 
-    markNotificationRead(notificationId: string): void {
+    async markNotificationRead(notificationId: string): Promise<void> {
+      if (!notificationId || !this.token) {
+        return
+      }
+
+      await requestJson<void>(`/notifications/${notificationId}/read`, {
+        method: 'POST'
+      }, this.token)
+
       const notification = this.notifications.find((item) => item.id === notificationId)
       if (notification) {
         notification.isRead = true
       }
     },
 
-    markAllNotificationsRead(): void {
-      this.notifications
-        .filter((notification) => notification.receiverId === this.currentUserId)
-        .forEach((notification) => {
-          notification.isRead = true
-        })
+    async markAllNotificationsRead(): Promise<void> {
+      const unreadNotifications = this.notifications.filter(
+        (notification) => notification.receiverId === this.currentUserId && !notification.isRead
+      )
+
+      for (const notification of unreadNotifications) {
+        await this.markNotificationRead(notification.id)
+      }
+
+      await this.fetchNotifications()
     },
 
     async fetchDemands(): Promise<void> {
