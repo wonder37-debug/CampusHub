@@ -18,6 +18,7 @@ const error = ref('')
 const verificationCodeHint = ref('')
 const codeCountdown = ref(0)
 const codeSent = ref(false)
+const codeSending = ref(false)
 let countdownTimer: number | undefined
 
 const loginForm = reactive({
@@ -35,12 +36,16 @@ const registerForm = reactive({
   avatarUrl: ''
 })
 
+const avatarFileInput = ref<HTMLInputElement | null>(null)
+
 const currentUser = computed(() => store.currentUser)
 
 const registrationEmail = computed(() => {
   const prefix = registerForm.emailPrefix.trim()
   return prefix ? `${prefix}@${registerForm.emailDomain}` : ''
 })
+
+const registrationAvatar = computed(() => registerForm.avatarUrl || '')
 
 function validateEmailPrefix(): boolean {
   const prefix = registerForm.emailPrefix.trim()
@@ -55,6 +60,27 @@ function validateEmailPrefix(): boolean {
   }
 
   return true
+}
+
+function onAvatarFileSelected(event: Event): void {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) {
+    return
+  }
+
+  if (!file.type.startsWith('image/')) {
+    error.value = '请选择图片文件'
+    input.value = ''
+    return
+  }
+
+  const reader = new FileReader()
+  reader.onload = () => {
+    registerForm.avatarUrl = String(reader.result || '')
+    error.value = ''
+  }
+  reader.readAsDataURL(file)
 }
 
 async function submitLogin(): Promise<void> {
@@ -74,6 +100,15 @@ async function sendVerificationCode(): Promise<void> {
   error.value = ''
   message.value = ''
 
+  if (codeSending.value || codeCountdown.value > 0) {
+    return
+  }
+
+  if (!registerForm.emailPrefix.trim()) {
+    error.value = '请先输入邮箱'
+    return
+  }
+
   if (!validateEmailPrefix()) {
     return
   }
@@ -81,6 +116,7 @@ async function sendVerificationCode(): Promise<void> {
   const email = registrationEmail.value
 
   try {
+    codeSending.value = true
     verificationCodeHint.value = ''
     await store.sendRegistrationCode(email, registerForm.studentId)
     codeSent.value = true
@@ -109,6 +145,8 @@ async function sendVerificationCode(): Promise<void> {
     message.value = `验证码已发送到 ${email}，请查收邮箱后完成注册。`
   } catch (sendError) {
     error.value = sendError instanceof Error ? sendError.message : '验证码发送失败'
+  } finally {
+    codeSending.value = false
   }
 }
 
@@ -130,7 +168,11 @@ async function submitRegister(): Promise<void> {
     message.value = `注册成功，${user.nickname} 已自动登录。`
     activeTab.value = 'login'
     registerForm.verificationCode = ''
+    registerForm.avatarUrl = ''
     verificationCodeHint.value = ''
+    if (avatarFileInput.value) {
+      avatarFileInput.value.value = ''
+    }
     router.replace('/profile')
   } catch (registerError) {
     error.value = registerError instanceof Error ? registerError.message : '注册失败'
@@ -160,7 +202,7 @@ async function submitRegister(): Promise<void> {
         </button>
       </div>
 
-      <div v-if="activeTab === 'login'" class="field-grid">
+      <form v-if="activeTab === 'login'" class="field-grid" @submit.prevent="submitLogin">
         <div class="field">
           <label for="login-student-id">学号</label>
           <input id="login-student-id" v-model="loginForm.studentId" placeholder="20260001" />
@@ -169,10 +211,10 @@ async function submitRegister(): Promise<void> {
           <label for="login-password">密码</label>
           <input id="login-password" v-model="loginForm.password" type="password" placeholder="campus123" />
         </div>
-        <button type="button" class="button primary" @click="submitLogin">登录到平台</button>
-      </div>
+        <button type="submit" class="button primary">登录到平台</button>
+      </form>
 
-      <div v-else class="form-grid two-column">
+      <form v-else class="form-grid two-column" @submit.prevent="submitRegister">
         <div class="field">
           <label for="register-student-id">学号</label>
           <input id="register-student-id" v-model="registerForm.studentId" placeholder="例如 20260012" />
@@ -210,8 +252,13 @@ async function submitRegister(): Promise<void> {
               placeholder="输入 6 位验证码"
               style="flex: 1 1 220px;"
             />
-            <button type="button" class="button secondary" :disabled="codeCountdown > 0" @click="sendVerificationCode">
-              {{ codeCountdown > 0 ? `${codeCountdown}s 后重发` : '发送验证码' }}
+            <button
+              type="button"
+              class="button secondary"
+              :disabled="codeSending || codeCountdown > 0"
+              @click="sendVerificationCode"
+            >
+              {{ codeSending ? '发送中...' : codeCountdown > 0 ? `${codeCountdown}s 后重发` : '发送验证码' }}
             </button>
           </div>
           <span v-if="verificationCodeHint" class="input-help">请使用收到的验证码完成注册：{{ verificationCodeHint }}</span>
@@ -220,12 +267,26 @@ async function submitRegister(): Promise<void> {
           <label for="register-nickname">昵称</label>
           <input id="register-nickname" v-model="registerForm.nickname" placeholder="你的校园昵称" />
         </div>
-        <div class="field">
-          <label for="register-avatar">头像链接</label>
-          <input id="register-avatar" v-model="registerForm.avatarUrl" placeholder="可选" />
+        <div class="field" style="grid-column: 1 / -1;">
+          <label for="register-avatar-file">本地头像图片</label>
+          <input
+            id="register-avatar-file"
+            ref="avatarFileInput"
+            type="file"
+            accept="image/*"
+            @change="onAvatarFileSelected"
+          />
+          <span class="input-help">选择本地图片后会直接作为头像提交，注册后即可使用。</span>
+          <div v-if="registrationAvatar" class="avatar-row" style="margin-top: 12px;">
+            <img :src="registrationAvatar" alt="头像预览" class="avatar" />
+            <div>
+              <strong>头像预览</strong>
+              <p class="subtle">图片会随注册信息一并保存。</p>
+            </div>
+          </div>
         </div>
-        <button type="button" class="button primary" style="grid-column: 1 / -1;" @click="submitRegister">注册并进入平台</button>
-      </div>
+        <button type="submit" class="button primary" style="grid-column: 1 / -1;">注册并进入平台</button>
+      </form>
 
       <p v-if="message" class="hero-badge">{{ message }}</p>
       <p v-if="error" class="hero-badge" style="background: rgba(181, 71, 71, 0.14); color: var(--danger)">{{ error }}</p>
