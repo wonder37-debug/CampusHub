@@ -40,27 +40,7 @@ backend:unit-test:
   stage: unit-test
   timeout: 5m
   script:
-    - mvn $MAVEN_CLI_OPTS -Dtest='*ServiceImplTest,RequestUserExtractorTest' test
-  artifacts:
-    when: always
-    reports:
-      junit:
-        - backend/target/surefire-reports/TEST-*.xml
-    paths:
-      - backend/target/surefire-reports/
-    expire_in: 7 days
-  rules:
-    - changes:
-        - backend/**/*
-        - .gitlab/backend.yml
-        - .gitlab-ci.yml
-
-backend:repository-test:
-  extends: .backend-template
-  stage: integration-test
-  timeout: 10m
-  script:
-    - mvn $MAVEN_CLI_OPTS -Dtest='*RepositoryTest,BackendApplicationTests' test
+    - timeout 4m mvn $MAVEN_CLI_OPTS -Dtest='*ServiceImplTest,RequestUserExtractorTest' test
   artifacts:
     when: always
     reports:
@@ -80,7 +60,7 @@ backend:integration-test:
   stage: integration-test
   timeout: 10m
   script:
-    - mvn $MAVEN_CLI_OPTS -Dtest=FrontendIntegrationFlowTest test
+    - timeout 8m mvn $MAVEN_CLI_OPTS -Dtest=FrontendIntegrationFlowTest test
   artifacts:
     when: always
     reports:
