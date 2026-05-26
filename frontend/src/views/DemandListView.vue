@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 
 import { DEMAND_CATEGORY_OPTIONS, type CampusZone, type DemandRecord, type DemandSortMode } from '@/types/campushub'
 import { useCampusHubStore } from '@/stores/campusHub'
-import { campusZoneOptions, formatCampusZone, formatDemandCategory, formatDemandStatus, formatMoney, formatRelativeTime, formatScore, statusToneClass, truncateText } from '@/utils/format'
+import { campusZoneOptions, formatCampusZone, formatDemandCategory, formatDemandStatus, formatMoney, formatRelativeTime, formatScore, statusToneClass, truncateText, formatDateTime } from '@/utils/format'
 
 const store = useCampusHubStore()
 const router = useRouter()
@@ -130,7 +130,8 @@ async function syncRecommendations(): Promise<void> {
 }
 
 onMounted(() => {
-  void store.fetchDemands()
+  // 首页仅请求 PENDING 的需求以减小数据量并符合展示目的
+  void store.fetchDemands('PENDING')
   if (filters.sort === 'recommend') {
     void syncRecommendations()
   }
@@ -252,6 +253,10 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="meta">{{ demand.location }}</div>
+
+        <div class="meta" style="margin-top:6px">
+          <span v-if="demand.startTime || demand.endTime">时间：{{ formatDateTime(demand.startTime || '') }} - {{ formatDateTime(demand.endTime || '') }}</span>
+        </div>
 
         <div class="tag-row">
           <span class="badge is-neutral">{{ formatCampusZone(demand.campusZone) }}</span>

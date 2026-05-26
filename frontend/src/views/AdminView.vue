@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 
 import { useCampusHubStore } from '@/stores/campusHub'
 import { DEMAND_CATEGORY_OPTIONS, type DemandCategory } from '@/types/campushub'
@@ -20,6 +21,10 @@ const adminCategoryOptions = DEMAND_CATEGORY_OPTIONS.map((category) => ({
   label: formatDemandCategory(category)
 }))
 
+const route = useRoute()
+
+const focusedDemandId = ref<string | null>(null)
+
 async function refreshAdminData(): Promise<void> {
   if (!isAdmin.value) {
     return
@@ -36,7 +41,19 @@ async function refreshAdminData(): Promise<void> {
 }
 
 onMounted(() => {
-  void refreshAdminData()
+  void refreshAdminData().then(() => {
+    // 如果路由指定了管理员 review 跳转，则聚焦对应待审需求
+    const tab = String(route.query.tab ?? '')
+    const demandId = String(route.query.demandId ?? '')
+    if (tab === 'review' && demandId) {
+      focusedDemandId.value = demandId
+      // 尝试滚动到该元素
+      setTimeout(() => {
+        const el = document.getElementById(`pending-${demandId}`)
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }, 200)
+    }
+  })
 })
 
 async function approveDemand(demandId: string): Promise<void> {
@@ -71,6 +88,26 @@ async function toggleUserStatus(userId: string, banned: boolean): Promise<void> 
     await refreshAdminData()
   } catch (toggleError) {
     error.value = toggleError instanceof Error ? toggleError.message : '用户状态更新失败'
+  }
+}
+
+async function promoteToAdmin(userId: string): Promise<void> {
+  try {
+    await store.changeUserRole(userId, 'ADMIN')
+    message.value = '用户已提升为管理员'
+    await refreshAdminData()
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : '操作失败'
+  }
+}
+
+async function demoteFromAdmin(userId: string): Promise<void> {
+  try {
+    await store.changeUserRole(userId, 'USER')
+    message.value = '用户已降级为普通用户'
+    await refreshAdminData()
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : '操作失败'
   }
 }
 </script>
@@ -112,7 +149,7 @@ async function toggleUserStatus(userId: string, banned: boolean): Promise<void> 
         </div>
 
         <div v-if="pendingDemands.length" class="section-grid">
-          <div v-for="demand in pendingDemands" :key="demand.id" class="list-card">
+          <div v-for="demand in pendingDemands" :key="demand.id" :id="`pending-${demand.id}`" class="list-card" :style="demand.id === focusedDemandId ? 'box-shadow: 0 0 0 3px rgba(66,133,244,0.12)' : ''">
             <div class="status-row">
               <span class="chip" :class="statusToneClass(demand.status)">{{ formatDemandStatus(demand.status) }}</span>
               <span class="chip">{{ formatDemandCategory(demand.category) }}</span>
@@ -122,7 +159,7 @@ async function toggleUserStatus(userId: string, banned: boolean): Promise<void> 
               <strong>{{ demand.reward }} 元</strong>
             </div>
             <p>{{ demand.description }}</p>
-            <div class="card-actions">
+              <div class="card-actions">
               <button type="button" class="button primary" @click="approveDemand(demand.id)">通过</button>
               <button type="button" class="button secondary" @click="rejectDemand(demand.id)">拒绝</button>
             </div>
@@ -177,6 +214,24 @@ async function toggleUserStatus(userId: string, banned: boolean): Promise<void> 
                     @click="toggleUserStatus(user.id, user.status === 'BANNED')"
                   >
                     {{ user.status === 'BANNED' ? '启用' : '禁用' }}
+                  </button>
+                  <button
+                    v-if="user.role !== 'ADMIN'"
+                    type="button"
+                    class="button primary"
+                    style="margin-left:8px"
+                    @click="promoteToAdmin(user.id)"
+                  >
+                    设为管理员
+                  </button>
+                  <button
+                    v-else-if="user.role === 'ADMIN' && user.id !== store.currentUser?.id"
+                    type="button"
+                    class="button secondary"
+                    style="margin-left:8px"
+                    @click="demoteFromAdmin(user.id)"
+                  >
+                    降级为普通用户
                   </button>
                 </td>
               </tr>

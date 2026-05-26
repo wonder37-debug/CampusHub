@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { useCampusHubStore } from '@/stores/campusHub'
-import { formatOrderStatus, formatRelativeTime, statusToneClass, formatDemandStatus } from '@/utils/format'
+import { formatOrderStatus, formatRelativeTime, statusToneClass, formatDemandStatus, formatMoney, formatDateTime } from '@/utils/format'
 
 const store = useCampusHubStore()
 const router = useRouter()
@@ -44,6 +44,11 @@ const visibleOrders = computed(() => {
     proofImageCount: 0,
     createdAt: d.createdAt,
     updatedAt: d.updatedAt,
+    // include demand fields so the UI can show reward/time/location for placeholders
+    demandStartTime: d.startTime,
+    demandEndTime: d.endTime,
+    demandReward: d.reward,
+    demandLocation: d.location,
     completedAt: '',
     timeline: [],
     isPlaceholder: true
@@ -127,6 +132,14 @@ onMounted(() => {
         <div class="card-head">
           <h3>{{ order.demandTitle }}</h3>
           <span class="meta">{{ formatRelativeTime(order.createdAt) }}</span>
+        </div>
+
+        <div class="meta">
+          <span v-if="order.demandReward">报酬：{{ formatMoney(order.demandReward) }}</span>
+          <span v-if="order.demandStartTime || order.demandEndTime" style="margin-left:12px">
+            时间：{{ formatDateTime(order.demandStartTime || '') }} - {{ formatDateTime(order.demandEndTime || '') }}
+          </span>
+          <span v-if="order.demandLocation" style="display:block;margin-top:6px">地点：{{ order.demandLocation }}</span>
         </div>
 
         <div class="meta">对方：{{ otherPartyName(order) }}</div>

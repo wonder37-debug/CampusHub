@@ -19,7 +19,8 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/demands/new',
     name: 'DemandPublish',
-    component: () => import('@/views/DemandPublishView.vue')
+    component: () => import('@/views/DemandPublishView.vue'),
+    meta: { requiresAuth: true }
   },
   {
     path: '/demands/:id',
@@ -30,7 +31,8 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/orders',
     name: 'Orders',
-    component: () => import('@/views/OrdersView.vue')
+    component: () => import('@/views/OrdersView.vue'),
+    meta: { requiresAuth: true }
   },
   {
     path: '/orders/:id',
@@ -41,22 +43,26 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/notifications',
     name: 'Notifications',
-    component: () => import('@/views/NotificationsView.vue')
+    component: () => import('@/views/NotificationsView.vue'),
+    meta: { requiresAuth: true }
   },
   {
     path: '/profile',
     name: 'Profile',
-    component: () => import('@/views/ProfileView.vue')
+    component: () => import('@/views/ProfileView.vue'),
+    meta: { requiresAuth: true }
   },
   {
     path: '/profile/edit',
     name: 'ProfileEdit',
-    component: () => import('@/views/ProfileEditView.vue')
+    component: () => import('@/views/ProfileEditView.vue'),
+    meta: { requiresAuth: true }
   },
   {
     path: '/admin',
     name: 'Admin',
-    component: () => import('@/views/AdminView.vue')
+    component: () => import('@/views/AdminView.vue'),
+    meta: { requiresAuth: true }
   },
   {
     path: '/about',
@@ -76,6 +82,37 @@ const router = createRouter({
   scrollBehavior() {
     return { top: 0 }
   }
+})
+
+// 全局路由守卫：未登录用户访问受保护页面时跳转到 /auth 并带上 redirect 查询
+router.beforeEach(async (to) => {
+  const requiresAuth = to.meta?.requiresAuth as boolean | undefined
+  if (!requiresAuth) return true
+  try {
+    const { useCampusHubStore } = await import('@/stores/campusHub')
+    const store = useCampusHubStore()
+    if (!store.currentUser) {
+      return { path: '/auth', query: { redirect: to.fullPath } }
+    }
+    return true
+  } catch {
+    // 如果无法获取 store，则保守处理，允许路由继续（避免阻塞应用）
+    return true
+  }
+})
+// 额外：管理员不允许访问 /orders，自动重定向到 /admin
+router.beforeResolve(async (to) => {
+  if (to.path !== '/orders') return true
+  try {
+    const { useCampusHubStore } = await import('@/stores/campusHub')
+    const store = useCampusHubStore()
+    if (store.currentUser?.role === 'ADMIN') {
+      return { path: '/admin' }
+    }
+  } catch {
+    // ignore
+  }
+  return true
 })
 
 export default router

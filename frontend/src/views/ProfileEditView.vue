@@ -7,6 +7,8 @@ import { useCampusHubStore } from '@/stores/campusHub'
 const store = useCampusHubStore()
 const router = useRouter()
 const saving = ref(false)
+const message = ref('')
+const error = ref('')
 const profileForm = reactive({
   nickname: store.currentUser?.nickname ?? '',
   avatarUrl: store.currentUser?.avatarUrl ?? ''
@@ -26,9 +28,15 @@ function onAvatarFileSelected(event: Event): void {
 
 async function save(): Promise<void> {
   saving.value = true
+  message.value = ''
+  error.value = ''
   try {
     await store.updateProfile(profileForm)
-    router.push('/profile')
+    message.value = '已保存个人资料'
+    // 0.8s 后返回个人页
+    setTimeout(() => {
+      router.push('/profile')
+    }, 800)
   } finally {
     saving.value = false
   }
@@ -70,6 +78,8 @@ onMounted(() => {
         <button type="button" class="button primary" :disabled="saving" @click="save">保存</button>
         <button type="button" class="button secondary" @click="router.push('/profile')">返回</button>
       </div>
+      <p v-if="message" class="hero-badge">{{ message }}</p>
+      <p v-if="error" class="hero-badge" style="background: rgba(181, 71, 71, 0.14); color: var(--danger)">{{ error }}</p>
     </section>
   </div>
 

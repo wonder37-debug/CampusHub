@@ -15,6 +15,18 @@ const isProvider = computed(() => order.value && store.currentUser?.id === order
 const message = ref('')
 const error = ref('')
 const completionSubmitted = ref(false)
+const reviewRating = ref('5')
+const reviewComment = ref('')
+
+const relatedReviews = computed(() => {
+  if (!order.value) return []
+  return store.reviews.filter((r) => r.orderId === order.value!.id)
+})
+
+const hasSubmittedReview = computed(() => {
+  if (!order.value || !store.currentUser) return false
+  return relatedReviews.value.some((r) => r.reviewerId === store.currentUser?.id)
+})
 
 function goBack(): void {
   router.back()
@@ -43,6 +55,19 @@ async function completeOrder(): Promise<void> {
 
 async function cancelOrder(): Promise<void> {
   if (order.value) await store.cancelOrder(order.value.id)
+}
+
+async function submitReview(): Promise<void> {
+  if (!order.value) return
+  message.value = ''
+  error.value = ''
+  try {
+    await store.submitReview(order.value.id, Number(reviewRating.value), reviewComment.value)
+    message.value = '评价已提交。'
+    reviewComment.value = ''
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : '评价失败'
+  }
 }
 
 // (no automatic demand enrichment) keep original simple behavior
@@ -84,6 +109,40 @@ async function cancelOrder(): Promise<void> {
         <div v-for="entry in order.timeline" :key="`${entry.at}-${entry.label}`" class="timeline-item">
           <span>{{ entry.label }}</span>
           <span class="meta">{{ formatRelativeTime(entry.at) }}</span>
+        </div>
+      </div>
+      <div v-if="order.status === 'COMPLETED'" class="section-grid" style="margin-top: 16px;">
+        <div class="list-card">
+          <strong>相关评价</strong>
+          <div class="review-grid">
+            <div v-if="relatedReviews.length === 0" class="empty-state">暂无评价记录</div>
+            <div v-for="review in relatedReviews" :key="review.id" class="timeline-item">
+              <div>
+                <strong>{{ review.reviewerName }} → {{ review.targetName }}</strong>
+                <div class="meta">{{ review.comment }}</div>
+              </div>
+              <span class="chip is-success">{{ review.rating }} 星</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="list-card" v-if="!hasSubmittedReview && (isRequester || isProvider)">
+          <strong>提交评价</strong>
+          <div class="field">
+            <label for="review-rating">评分</label>
+            <select id="review-rating" v-model="reviewRating">
+              <option value="5">5 分</option>
+              <option value="4">4 分</option>
+              <option value="3">3 分</option>
+              <option value="2">2 分</option>
+              <option value="1">1 分</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="review-comment">评价</label>
+            <textarea id="review-comment" v-model="reviewComment" placeholder="分享你的体验"></textarea>
+          </div>
+          <button type="button" class="button primary" @click="submitReview">提交评价</button>
         </div>
       </div>
     </section>

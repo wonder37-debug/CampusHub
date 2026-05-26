@@ -512,6 +512,49 @@ export const useCampusHubStore = defineStore('campusHub', {
       return mapped
     },
 
+    async changeUserRole(userId: string, role: string): Promise<PublicUser> {
+      // Try primary endpoint first, then fall back to promote/demote endpoints for compatibility
+      const id = encodeURIComponent(userId)
+      try {
+        const payload = await requestJson<any>(`/admin/users/${id}/role`, {
+          method: 'PUT',
+          body: JSON.stringify({ role })
+        }, this.token)
+        const mapped = mapUserSummary(payload)
+        await this.fetchAdminUsers()
+        await this.fetchAdminDashboard()
+        return mapped
+      } catch (err) {
+        // Try promote/demote style endpoints as fallback
+        try {
+          if (role === 'ADMIN') {
+            const payload = await requestJson<any>(`/admin/users/${id}/promote`, { method: 'POST' }, this.token)
+            const mapped = mapUserSummary(payload)
+            await this.fetchAdminUsers()
+            await this.fetchAdminDashboard()
+            return mapped
+          }
+
+          if (role === 'USER') {
+            const payload = await requestJson<any>(`/admin/users/${id}/demote`, { method: 'POST' }, this.token)
+            const mapped = mapUserSummary(payload)
+            await this.fetchAdminUsers()
+            await this.fetchAdminDashboard()
+            return mapped
+          }
+        } catch (err2) {
+          // Log both errors for debugging, then rethrow the second (or first) error
+          // eslint-disable-next-line no-console
+          console.error('changeUserRole primary error:', err)
+          // eslint-disable-next-line no-console
+          console.error('changeUserRole fallback error:', err2)
+          throw err2 instanceof Error ? err2 : err
+        }
+        // If role is neither ADMIN nor USER, rethrow original
+        throw err
+      }
+    },
+
     async acceptDemand(demandId: string, note = ''): Promise<OrderRecord> {
       try {
         const order = await requestJson<any>(`/demands/${encodeURIComponent(demandId)}/accept`, {
@@ -648,9 +691,14 @@ export const useCampusHubStore = defineStore('campusHub', {
       await this.fetchNotifications()
     },
 
-    async fetchDemands(): Promise<void> {
+    /**
+     * Fetch demands from backend. If status is provided, include it as a query param.
+     */
+    async fetchDemands(status?: string): Promise<void> {
       try {
-        const payload = await requestJson<any>('/demands?page=1&size=100', {}, this.token)
+        const params = new URLSearchParams({ page: '1', size: '100' })
+        if (status) params.set('status', status)
+        const payload = await requestJson<any>(`/demands?${params.toString()}`, {}, this.token)
         const items = Array.isArray(payload?.items) ? payload.items : Array.isArray(payload) ? payload : payload?.data?.items ?? []
         this.demands = items.map((item: any) => mapDemandRecord(item))
       } catch {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { reactive, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { DEMAND_CATEGORY_OPTIONS, type CampusZone } from '@/types/campushub'
@@ -13,6 +13,7 @@ const error = ref('')
 const rewardError = ref('')
 const submitting = ref(false)
 const published = ref(false)
+const forbiddenForAdmin = computed(() => store.currentUser?.role === 'ADMIN')
 
 const form = reactive({
   title: '',
@@ -82,7 +83,18 @@ async function checkRewardBalance(): Promise<void> {
 <template>
   <div class="page-grid two-column">
     <section class="form-panel">
-      <template v-if="published">
+      <template v-if="forbiddenForAdmin">
+        <div class="page-head">
+          <div>
+            <p class="eyebrow">发布需求</p>
+            <p class="page-summary">管理员账号无法发布需求</p>
+          </div>
+        </div>
+        <div style="padding:24px">
+          <p class="hero-badge">管理员账号不能发布需求。如需执行管理操作，请前往管理后台。</p>
+        </div>
+      </template>
+      <template v-else-if="published">
         <div class="page-head">
           <div>
             <p class="eyebrow">发布需求</p>
