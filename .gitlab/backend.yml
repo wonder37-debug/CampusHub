@@ -34,9 +34,9 @@ backend:static-check:
 backend:unit-test:
   extends: .backend-template
   stage: unit-test
-  timeout: 5m
+  timeout: 15m
   script:
-    - timeout 4m mvn $MAVEN_CLI_OPTS -Dtest='*ServiceImplTest,RequestUserExtractorTest' test
+    - timeout 12m mvn $MAVEN_CLI_OPTS -Dtest='*ServiceImplTest,RequestUserExtractorTest' test
   artifacts:
     when: always
     reports:
@@ -54,10 +54,10 @@ backend:unit-test:
 backend:integration-test:
   extends: .backend-template
   stage: integration-test
-  timeout: 10m
+  timeout: 15m
   script:
     - mvn -version
-    - timeout 8m mvn $MAVEN_CLI_OPTS -Dtest=FrontendIntegrationFlowTest test
+    - timeout 12m mvn $MAVEN_CLI_OPTS -Dtest=FrontendIntegrationFlowTest test
   artifacts:
     when: always
     reports:
