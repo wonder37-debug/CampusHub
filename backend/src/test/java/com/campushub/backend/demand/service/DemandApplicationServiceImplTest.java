@@ -14,6 +14,7 @@ import com.campushub.backend.common.api.PageResponse;
 import com.campushub.backend.common.exception.BusinessException;
 import com.campushub.backend.common.exception.ErrorCode;
 import com.campushub.backend.common.model.PageQuery;
+import com.campushub.backend.demand.domain.CampusZone;
 import com.campushub.backend.demand.domain.Demand;
 import com.campushub.backend.demand.domain.DemandCategory;
 import com.campushub.backend.demand.domain.DemandSort;
@@ -58,6 +59,8 @@ class DemandApplicationServiceImplTest {
             UserRole.USER,
             UserStatus.ACTIVE,
             100,
+            new BigDecimal("100.00"),
+            BigDecimal.ZERO,
             LocalDateTime.now(),
             LocalDateTime.now()
         );
@@ -116,7 +119,7 @@ class DemandApplicationServiceImplTest {
 
     @Test
     void shouldFilterDemandListByCategoryAndCampusZone() {
-        demandApplicationService.publish(
+        DemandDetailResponse first = demandApplicationService.publish(
             publisherId,
             new PublishDemandCommand(
                 "学习辅导",
@@ -132,7 +135,7 @@ class DemandApplicationServiceImplTest {
                 false
             )
         );
-        demandApplicationService.publish(
+        DemandDetailResponse second = demandApplicationService.publish(
             publisherId,
             new PublishDemandCommand(
                 "二手书出售",
@@ -148,6 +151,8 @@ class DemandApplicationServiceImplTest {
                 false
             )
         );
+        makePending(first.id());
+        makePending(second.id());
 
         PageResponse<DemandSummaryResponse> response = demandApplicationService.list(
             new DemandQuery(
@@ -276,7 +281,7 @@ class DemandApplicationServiceImplTest {
             "不可编辑",
             null,
             DemandCategory.OTHER,
-            com.campushub.backend.demand.domain.CampusZone.XIANLIN,
+            CampusZone.XIANLIN,
             "仙林",
             null,
             null,
@@ -301,5 +306,12 @@ class DemandApplicationServiceImplTest {
         );
 
         assertEquals(ErrorCode.PERMISSION_DENIED, exception.getErrorCode());
+    }
+
+    private void makePending(Long demandId) {
+        demandRepository.findById(demandId).ifPresent(demand -> {
+            demand.setStatus(DemandStatus.PENDING);
+            demandRepository.save(demand);
+        });
     }
 }

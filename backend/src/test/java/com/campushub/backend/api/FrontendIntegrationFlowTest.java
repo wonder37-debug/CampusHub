@@ -36,7 +36,6 @@ class FrontendIntegrationFlowTest {
     @Autowired
     private AuthApplicationService authApplicationService;
 
-    // 正常主流程：模拟前端完整调用链，从注册登录到发布需求、管理员审核、接单、完成订单和评价。
     @Test
     void shouldCompleteHappyPathAcrossFrontendApis() throws Exception {
         TestUser publisher = registerAndLogin("publisher-flow");
@@ -98,14 +97,12 @@ class FrontendIntegrationFlowTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.status").value("IN_PROGRESS"));
 
-        // 接单方提交完成并上传凭证，订单仍为进行中，但凭证已提交，等待发布者确认
         updateOrder(accepter.token(), orderId, "COMPLETED", "delivered", 2)
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.status").value("IN_PROGRESS"))
             .andExpect(jsonPath("$.data.proofSubmitted").value(true))
             .andExpect(jsonPath("$.data.proofImageCount").value(2));
 
-        // 发布者确认完成，订单变为已完成
         updateOrder(publisher.token(), orderId, "COMPLETED", "confirm", null)
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.status").value("COMPLETED"));
@@ -120,7 +117,6 @@ class FrontendIntegrationFlowTest {
             .andExpect(jsonPath("$.data.rating").value(5));
     }
 
-    // 异常流程：未携带 Bearer token 访问订单列表，应被鉴权层拒绝。
     @Test
     void shouldRejectUnauthenticatedProtectedApi() throws Exception {
         mockMvc.perform(get("/api/v1/orders"))
@@ -128,7 +124,6 @@ class FrontendIntegrationFlowTest {
             .andExpect(jsonPath("$.code").value(1001));
     }
 
-    // 异常流程：一个需求被接单后，其他用户再次接同一单，应触发业务冲突。
     @Test
     void shouldRejectDuplicateAcceptingDemand() throws Exception {
         TestUser publisher = registerAndLogin("publisher-duplicate");
@@ -149,7 +144,6 @@ class FrontendIntegrationFlowTest {
             .andExpect(jsonPath("$.code").value(1005));
     }
 
-    // 异常流程：注册验证码接口只允许南大邮箱域名，非校园邮箱应被参数校验拒绝。
     @Test
     void shouldRejectNonCampusEmailVerificationRequest() throws Exception {
         mockMvc.perform(post("/api/v1/auth/email-code")
@@ -159,7 +153,6 @@ class FrontendIntegrationFlowTest {
             .andExpect(jsonPath("$.code").value(1002));
     }
 
-    // 异常流程：发布需求时传入非法参数，验证后端不会创建不合法需求。
     @Test
     void shouldRejectPublishingDemandWithInvalidParameters() throws Exception {
         TestUser publisher = registerAndLogin("publisher-invalid-demand");
@@ -181,7 +174,6 @@ class FrontendIntegrationFlowTest {
             .andExpect(jsonPath("$.code").value(1002));
     }
 
-    // 异常流程：需求发布者不能接自己的需求，验证接单权限控制。
     @Test
     void shouldRejectPublisherAcceptingOwnDemand() throws Exception {
         TestUser publisher = registerAndLogin("publisher-own-accept");
@@ -197,7 +189,6 @@ class FrontendIntegrationFlowTest {
             .andExpect(jsonPath("$.code").value(1004));
     }
 
-    // 异常流程：订单详情只能由订单参与者或管理员查看，第三方用户应被拒绝。
     @Test
     void shouldRejectOutsiderViewingOrderDetail() throws Exception {
         TestUser publisher = registerAndLogin("publisher-outsider");
@@ -215,7 +206,6 @@ class FrontendIntegrationFlowTest {
             .andExpect(jsonPath("$.code").value(1004));
     }
 
-    // 测试辅助方法：创建一个符合南大邮箱白名单的用户，完成验证码注册并登录，返回用户 token。
     private TestUser registerAndLogin(String prefix) throws Exception {
         String suffix = Long.toString(System.nanoTime());
         String email = prefix + "-" + suffix + "@smail.nju.edu.cn";
@@ -238,7 +228,6 @@ class FrontendIntegrationFlowTest {
         return new TestUser(session.userId(), studentId, session.token());
     }
 
-    // 测试辅助方法：通过真实登录接口换取 token，后续请求统一使用 Bearer token 调用。
     private LoginSession login(String loginId, String password) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/v1/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -253,7 +242,6 @@ class FrontendIntegrationFlowTest {
         );
     }
 
-    // 测试辅助方法：发布一条待审核需求，覆盖前端发布需求接口的请求体结构。
     private Long publishDemand(String token) throws Exception {
         Map<String, Object> body = new java.util.LinkedHashMap<>();
         body.put("title", "Pickup express package");
@@ -264,7 +252,7 @@ class FrontendIntegrationFlowTest {
         body.put("location", "Package station");
         body.put("startTime", LocalDateTime.now().plusHours(1).toString());
         body.put("endTime", LocalDateTime.now().plusHours(3).toString());
-        body.put("reward", new BigDecimal("6.50"));
+        body.put("reward", BigDecimal.ZERO);
         body.put("tags", List.of("express", "pickup"));
         body.put("anonymous", false);
 
@@ -278,7 +266,6 @@ class FrontendIntegrationFlowTest {
         return readJson(result).at("/data/id").asLong();
     }
 
-    // 测试辅助方法：调用接单接口，返回生成的订单 id。
     private Long acceptDemand(String token, Long demandId) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/v1/demands/{demandId}/accept", demandId)
                 .header("Authorization", bearer(token))
@@ -290,7 +277,6 @@ class FrontendIntegrationFlowTest {
         return readJson(result).at("/data/orderId").asLong();
     }
 
-    // 测试辅助方法：管理员审核通过需求，使需求从 REVIEWING 进入可接单的 PENDING 状态。
     private void approveDemand(String adminToken, Long demandId) throws Exception {
         mockMvc.perform(post("/api/v1/admin/demands/{demandId}/review", demandId)
                 .header("Authorization", bearer(adminToken))
@@ -300,7 +286,6 @@ class FrontendIntegrationFlowTest {
             .andExpect(jsonPath("$.data.status").value("PENDING"));
     }
 
-    // 测试辅助方法：更新订单状态，用于模拟开始执行、完成订单等前端操作。
     private ResultActions updateOrder(
         String token,
         Long orderId,

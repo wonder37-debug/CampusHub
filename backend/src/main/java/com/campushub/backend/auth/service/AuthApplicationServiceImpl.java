@@ -14,18 +14,19 @@ import com.campushub.backend.common.exception.BusinessException;
 import com.campushub.backend.common.exception.ErrorCode;
 import com.campushub.backend.common.security.TokenPayload;
 import com.campushub.backend.common.security.TokenService;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.Objects;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
-import java.math.BigDecimal;
 
 @Service
 public class AuthApplicationServiceImpl implements AuthApplicationService {
 
     private static final int DEFAULT_CREDIT_SCORE = 100;
     private static final long TOKEN_EXPIRES_IN_SECONDS = 3600L;
+    private static final String DEFAULT_NICKNAME = "匿名校友";
 
     private final UserRepository userRepository;
     private final VerificationCodeService verificationCodeService;
@@ -80,6 +81,7 @@ public class AuthApplicationServiceImpl implements AuthApplicationService {
         if (userRepository.findByEmail(normalizedEmail).isPresent()) {
             throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "email already registered");
         }
+        assertNicknameAvailable(command.nickname(), null);
 
         LocalDateTime now = LocalDateTime.now();
         User user = new User(
@@ -136,6 +138,7 @@ public class AuthApplicationServiceImpl implements AuthApplicationService {
         }
 
         User user = findUserById(targetUserId);
+        assertNicknameAvailable(command.nickname(), targetUserId);
         user.setNickname(resolveNickname(command.nickname()));
         user.setAvatarUrl(emptyToNull(command.avatarUrl()));
         user.setUpdatedAt(LocalDateTime.now());
@@ -190,6 +193,19 @@ public class AuthApplicationServiceImpl implements AuthApplicationService {
         }
     }
 
+    private void assertNicknameAvailable(String nickname, Long currentUserId) {
+        if (isBlank(nickname)) {
+            return;
+        }
+        String normalizedNickname = nickname.trim();
+        boolean exists = userRepository.findAll().stream()
+            .anyMatch(user -> !Objects.equals(user.getId(), currentUserId)
+                && normalizedNickname.equalsIgnoreCase(user.getNickname()));
+        if (exists) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "nickname already in use");
+        }
+    }
+
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
     }
@@ -203,7 +219,7 @@ public class AuthApplicationServiceImpl implements AuthApplicationService {
     }
 
     private String resolveNickname(String nickname) {
-        return isBlank(nickname) ? "匿名校友" : nickname.trim();
+        return isBlank(nickname) ? DEFAULT_NICKNAME : nickname.trim();
     }
 
     private String emptyToNull(String value) {

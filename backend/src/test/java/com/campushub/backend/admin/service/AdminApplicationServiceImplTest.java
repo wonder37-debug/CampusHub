@@ -80,16 +80,49 @@ class AdminApplicationServiceImplTest {
         );
 
         adminId = userRepository.save(new User(
-            null, "admin@example.edu.cn", "20260000", "hash", "管理员", null,
-            UserRole.ADMIN, UserStatus.ACTIVE, 100, LocalDateTime.now(), LocalDateTime.now()
+            null,
+            "admin@example.edu.cn",
+            "20260000",
+            "hash",
+            "管理员",
+            null,
+            UserRole.ADMIN,
+            UserStatus.ACTIVE,
+            100,
+            new BigDecimal("100.00"),
+            BigDecimal.ZERO,
+            LocalDateTime.now(),
+            LocalDateTime.now()
         )).getId();
         publisherId = userRepository.save(new User(
-            null, "publisher@example.edu.cn", "20260001", "hash", "发布者", null,
-            UserRole.USER, UserStatus.ACTIVE, 100, LocalDateTime.now(), LocalDateTime.now()
+            null,
+            "publisher@example.edu.cn",
+            "20260001",
+            "hash",
+            "发布者",
+            null,
+            UserRole.USER,
+            UserStatus.ACTIVE,
+            100,
+            new BigDecimal("100.00"),
+            BigDecimal.ZERO,
+            LocalDateTime.now(),
+            LocalDateTime.now()
         )).getId();
         accepterId = userRepository.save(new User(
-            null, "accepter@example.edu.cn", "20260002", "hash", "接单者", null,
-            UserRole.USER, UserStatus.ACTIVE, 100, LocalDateTime.now(), LocalDateTime.now()
+            null,
+            "accepter@example.edu.cn",
+            "20260002",
+            "hash",
+            "接单者",
+            null,
+            UserRole.USER,
+            UserStatus.ACTIVE,
+            100,
+            new BigDecimal("100.00"),
+            BigDecimal.ZERO,
+            LocalDateTime.now(),
+            LocalDateTime.now()
         )).getId();
     }
 
@@ -108,8 +141,19 @@ class AdminApplicationServiceImplTest {
     @Test
     void shouldListUsersByKeyword() {
         userRepository.save(new User(
-            null, "extra@example.edu.cn", "20260003", "hash", "测试用户", null,
-            UserRole.USER, UserStatus.ACTIVE, 100, LocalDateTime.now(), LocalDateTime.now()
+            null,
+            "extra@example.edu.cn",
+            "20260003",
+            "hash",
+            "测试用户",
+            null,
+            UserRole.USER,
+            UserStatus.ACTIVE,
+            100,
+            new BigDecimal("100.00"),
+            BigDecimal.ZERO,
+            LocalDateTime.now(),
+            LocalDateTime.now()
         ));
 
         PageResponse<UserProfileResponse> page = adminApplicationService.listUsers(
@@ -133,11 +177,6 @@ class AdminApplicationServiceImplTest {
     @Test
     void shouldListAndApproveReviewingDemand() {
         DemandDetailResponse reviewingDemand = createDemand("待审核跑腿", "EXPRESS");
-        demandRepository.findById(reviewingDemand.id()).ifPresent(demand -> {
-            demand.setStatus(DemandStatus.REVIEWING);
-            demand.setUpdatedAt(LocalDateTime.now());
-            demandRepository.save(demand);
-        });
 
         PageResponse<DemandSummaryResponse> pendingPage = adminApplicationService.listPendingDemands(
             adminId,
@@ -158,10 +197,6 @@ class AdminApplicationServiceImplTest {
     @Test
     void shouldBuildDashboardStats() {
         DemandDetailResponse reviewingDemand = createDemand("待审核咨询", "STUDY_TUTORING");
-        demandRepository.findById(reviewingDemand.id()).ifPresent(demand -> {
-            demand.setStatus(DemandStatus.REVIEWING);
-            demandRepository.save(demand);
-        });
 
         DemandDetailResponse completedDemand = createDemand("已完成快递", "EXPRESS");
         demandRepository.findById(completedDemand.id()).ifPresent(demand -> {
@@ -178,7 +213,6 @@ class AdminApplicationServiceImplTest {
             order.orderId(),
             new UpdateOrderStatusCommand("IN_PROGRESS", "开始处理", null)
         );
-        // 双确认流程：接单方提交完成，发布者再确认一次
         orderApplicationService.updateStatus(
             accepterId,
             order.orderId(),

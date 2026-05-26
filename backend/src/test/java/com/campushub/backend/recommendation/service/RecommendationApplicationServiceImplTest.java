@@ -11,6 +11,7 @@ import com.campushub.backend.auth.repository.InMemoryUserRepository;
 import com.campushub.backend.auth.repository.UserRepository;
 import com.campushub.backend.common.api.PageResponse;
 import com.campushub.backend.common.model.PageQuery;
+import com.campushub.backend.demand.domain.DemandStatus;
 import com.campushub.backend.demand.dto.DemandDetailResponse;
 import com.campushub.backend.demand.dto.DemandQuery;
 import com.campushub.backend.demand.dto.DemandSummaryResponse;
@@ -72,12 +73,34 @@ class RecommendationApplicationServiceImplTest {
         );
 
         publisherId = userRepository.save(new User(
-            null, "publisher@example.edu.cn", "20260001", "hash", "发布者", null,
-            UserRole.USER, UserStatus.ACTIVE, 100, LocalDateTime.now(), LocalDateTime.now()
+            null,
+            "publisher@example.edu.cn",
+            "20260001",
+            "hash",
+            "发布者",
+            null,
+            UserRole.USER,
+            UserStatus.ACTIVE,
+            100,
+            new BigDecimal("100.00"),
+            BigDecimal.ZERO,
+            LocalDateTime.now(),
+            LocalDateTime.now()
         )).getId();
         accepterId = userRepository.save(new User(
-            null, "accepter@example.edu.cn", "20260002", "hash", "接单者", null,
-            UserRole.USER, UserStatus.ACTIVE, 100, LocalDateTime.now(), LocalDateTime.now()
+            null,
+            "accepter@example.edu.cn",
+            "20260002",
+            "hash",
+            "接单者",
+            null,
+            UserRole.USER,
+            UserStatus.ACTIVE,
+            100,
+            new BigDecimal("100.00"),
+            BigDecimal.ZERO,
+            LocalDateTime.now(),
+            LocalDateTime.now()
         )).getId();
     }
 
@@ -173,7 +196,7 @@ class RecommendationApplicationServiceImplTest {
             )
         );
         demandRepository.findById(demand.id()).ifPresent(saved -> {
-            saved.setStatus(com.campushub.backend.demand.domain.DemandStatus.PENDING);
+            saved.setStatus(DemandStatus.PENDING);
             demandRepository.save(saved);
         });
         return demandApplicationService.getDetail(demand.id());

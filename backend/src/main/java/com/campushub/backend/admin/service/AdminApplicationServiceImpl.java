@@ -21,13 +21,18 @@ import com.campushub.backend.demand.repository.DemandRepository;
 import com.campushub.backend.order.domain.Order;
 import com.campushub.backend.order.domain.OrderStatus;
 import com.campushub.backend.order.repository.OrderRepository;
+import com.campushub.backend.review.domain.Review;
+import com.campushub.backend.review.repository.ReviewRepository;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -38,6 +43,9 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
     private final UserRepository userRepository;
     private final DemandRepository demandRepository;
     private final OrderRepository orderRepository;
+
+    @Autowired(required = false)
+    private ReviewRepository reviewRepository;
 
     public AdminApplicationServiceImpl(
         UserRepository userRepository,
@@ -159,9 +167,7 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
         List<Order> orders = orderRepository.findAll();
         LocalDate today = LocalDate.now();
 
-        long dailyActiveUsers = users.stream()
-            .filter(user -> isActiveToday(user, today))
-            .count();
+        long dailyActiveUsers = countDailyActiveUsers(users, demands, orders, today);
         long pendingReviewDemands = demandRepository.findByStatus(DemandStatus.REVIEWING).size();
         long completedOrders = orders.stream()
             .filter(order -> order.getStatus() == OrderStatus.COMPLETED)
@@ -229,8 +235,40 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
         return value != null && value.toLowerCase(Locale.ROOT).contains(normalizedKeyword);
     }
 
-    private boolean isActiveToday(User user, LocalDate today) {
-        return isSameDate(user.getCreatedAt(), today) || isSameDate(user.getUpdatedAt(), today);
+    private long countDailyActiveUsers(List<User> users, List<Demand> demands, List<Order> orders, LocalDate today) {
+        Set<Long> activeUserIds = new HashSet<>();
+
+        users.stream()
+            .filter(user -> isSameDate(user.getCreatedAt(), today))
+            .map(User::getId)
+            .forEach(activeUserIds::add);
+
+        demands.stream()
+            .filter(demand -> isSameDate(demand.getCreatedAt(), today) || isSameDate(demand.getUpdatedAt(), today))
+            .map(Demand::getPublisherId)
+            .forEach(activeUserIds::add);
+
+        orders.stream()
+            .filter(order -> isSameDate(order.getCreatedAt(), today)
+                || isSameDate(order.getUpdatedAt(), today)
+                || isSameDate(order.getCompletedAt(), today))
+            .forEach(order -> {
+                activeUserIds.add(order.getPublisherId());
+                activeUserIds.add(order.getAccepterId());
+            });
+
+        if (reviewRepository != null) {
+            for (User user : users) {
+                List<Review> reviews = reviewRepository.findByTargetId(user.getId());
+                reviews.stream()
+                    .filter(review -> isSameDate(review.getCreatedAt(), today))
+                    .map(Review::getAuthorId)
+                    .forEach(activeUserIds::add);
+            }
+        }
+
+        activeUserIds.remove(null);
+        return activeUserIds.size();
     }
 
     private boolean isSameDate(LocalDateTime time, LocalDate date) {

@@ -13,6 +13,7 @@ import com.campushub.backend.common.api.PageResponse;
 import com.campushub.backend.common.exception.BusinessException;
 import com.campushub.backend.common.exception.ErrorCode;
 import com.campushub.backend.common.model.PageQuery;
+import com.campushub.backend.demand.domain.DemandStatus;
 import com.campushub.backend.demand.dto.DemandDetailResponse;
 import com.campushub.backend.demand.dto.PublishDemandCommand;
 import com.campushub.backend.demand.repository.DemandRepository;
@@ -86,16 +87,49 @@ class ReviewApplicationServiceImplTest {
         );
 
         publisherId = userRepository.save(new User(
-            null, "publisher@example.edu.cn", "20260001", "hash", "发布者", null,
-            UserRole.USER, UserStatus.ACTIVE, 100, LocalDateTime.now(), LocalDateTime.now()
+            null,
+            "publisher@example.edu.cn",
+            "20260001",
+            "hash",
+            "发布者",
+            null,
+            UserRole.USER,
+            UserStatus.ACTIVE,
+            100,
+            new BigDecimal("100.00"),
+            BigDecimal.ZERO,
+            LocalDateTime.now(),
+            LocalDateTime.now()
         )).getId();
         accepterId = userRepository.save(new User(
-            null, "accepter@example.edu.cn", "20260002", "hash", "接单者", null,
-            UserRole.USER, UserStatus.ACTIVE, 100, LocalDateTime.now(), LocalDateTime.now()
+            null,
+            "accepter@example.edu.cn",
+            "20260002",
+            "hash",
+            "接单者",
+            null,
+            UserRole.USER,
+            UserStatus.ACTIVE,
+            100,
+            new BigDecimal("100.00"),
+            BigDecimal.ZERO,
+            LocalDateTime.now(),
+            LocalDateTime.now()
         )).getId();
         outsiderId = userRepository.save(new User(
-            null, "outsider@example.edu.cn", "20260003", "hash", "旁观者", null,
-            UserRole.USER, UserStatus.ACTIVE, 100, LocalDateTime.now(), LocalDateTime.now()
+            null,
+            "outsider@example.edu.cn",
+            "20260003",
+            "hash",
+            "旁观者",
+            null,
+            UserRole.USER,
+            UserStatus.ACTIVE,
+            100,
+            new BigDecimal("100.00"),
+            BigDecimal.ZERO,
+            LocalDateTime.now(),
+            LocalDateTime.now()
         )).getId();
     }
 
@@ -111,7 +145,7 @@ class ReviewApplicationServiceImplTest {
 
         assertEquals(order.orderId(), response.orderId());
         assertEquals(accepterId, response.targetId());
-        assertEquals(80, userRepository.findById(accepterId).orElseThrow().getCreditScore());
+        assertEquals(98, userRepository.findById(accepterId).orElseThrow().getCreditScore());
     }
 
     @Test
@@ -197,7 +231,7 @@ class ReviewApplicationServiceImplTest {
             )
         );
         demandRepository.findById(demand.id()).ifPresent(saved -> {
-            saved.setStatus(com.campushub.backend.demand.domain.DemandStatus.PENDING);
+            saved.setStatus(DemandStatus.PENDING);
             demandRepository.save(saved);
         });
         return demandApplicationService.getDetail(demand.id());
@@ -211,7 +245,6 @@ class ReviewApplicationServiceImplTest {
             accepted.orderId(),
             new UpdateOrderStatusCommand("IN_PROGRESS", "开始", null)
         );
-        // 接单方提交完成，发布者需要确认完成才能算真正完成
         orderApplicationService.updateStatus(
             accepterId,
             accepted.orderId(),
