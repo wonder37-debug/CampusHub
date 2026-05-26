@@ -144,3 +144,30 @@ export function translateApiError(payload: any): string {
     return fieldMap[field] ?? field
   }
 }
+
+export function handleError(err: unknown, fallback = '操作失败'): string {
+  try {
+    if (err == null) return fallback
+    if (err instanceof Error) {
+      const msg = err.message || String(err)
+      // common network error mapping
+      if (/failed to fetch|networkerror|network error/i.test(msg)) {
+        return '网络异常，请检查网络或后端服务'
+      }
+      return msg || fallback
+    }
+
+    // try parse structured payloads
+    if (typeof err === 'object') {
+      // common pattern from fetch wrapper: { status, message }
+      const anyErr = err as any
+      if (anyErr?.message) return String(anyErr.message)
+      if (anyErr?.error) return String(anyErr.error)
+      if (anyErr?.status === 0) return '网络异常，请检查网络或后端服务'
+    }
+
+    return String(err) || fallback
+  } catch (e) {
+    return fallback
+  }
+}

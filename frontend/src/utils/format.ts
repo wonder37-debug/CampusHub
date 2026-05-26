@@ -83,13 +83,15 @@ export function statusToneClass(value: string): string {
 export function formatDemandCategory(category: DemandCategory): string {
   switch (category) {
     case 'EXPRESS':
-      return '取快递'
+      return '跑腿代取'
     case 'STUDY_TUTORING':
       return '学习辅导'
     case 'SECOND_HAND':
       return '二手交易'
     case 'TEAM_UP':
       return '活动组队'
+    case 'DELEGATE':
+      return '委托代办'
     default:
       return '其他'
   }

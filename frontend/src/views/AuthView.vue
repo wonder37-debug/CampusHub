@@ -3,7 +3,9 @@ import { computed, reactive, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 
 import { useCampusHubStore } from '@/stores/campusHub'
+import { validateLoginForm, validateRegisterForm } from '@/utils/validators'
 import { formatUserRole, formatUserStatus } from '@/utils/format'
+import { handleError } from '@/utils/errorHandler'
 
 const store = useCampusHubStore()
 const router = useRouter()
@@ -65,6 +67,13 @@ async function submitLogin(): Promise<void> {
   error.value = ''
   message.value = ''
 
+  // basic validations
+  const loginErrors = validateLoginForm(loginForm)
+  if (Object.keys(loginErrors).length) {
+    error.value = Object.values(loginErrors)[0]
+    return
+  }
+
   try {
     const user = await store.login(loginForm)
     message.value = `欢迎回来，${user.nickname}。`
@@ -76,7 +85,7 @@ async function submitLogin(): Promise<void> {
       router.replace('/profile')
     }
   } catch (loginError) {
-    error.value = loginError instanceof Error ? loginError.message : '登录失败'
+      error.value = handleError(loginError, '登录失败')
   }
 }
 
@@ -128,7 +137,7 @@ async function sendVerificationCode(): Promise<void> {
 
     message.value = `验证码已发送到 ${email}，请查收邮箱后完成注册。`
   } catch (sendError) {
-    error.value = sendError instanceof Error ? sendError.message : '验证码发送失败'
+      error.value = handleError(sendError, '验证码发送失败')
   } finally {
     codeSending.value = false
   }
@@ -138,7 +147,15 @@ async function submitRegister(): Promise<void> {
   error.value = ''
   message.value = ''
 
-  if (!validateEmailPrefix()) {
+  // basic validations
+  const regFieldErrors = validateRegisterForm({
+    studentId: registerForm.studentId,
+    password: registerForm.password,
+    emailPrefix: registerForm.emailPrefix,
+    verificationCode: registerForm.verificationCode
+  })
+  if (Object.keys(regFieldErrors).length) {
+    error.value = Object.values(regFieldErrors)[0]
     return
   }
 
@@ -161,7 +178,7 @@ async function submitRegister(): Promise<void> {
       router.replace('/profile')
     }
   } catch (registerError) {
-    error.value = registerError instanceof Error ? registerError.message : '注册失败'
+      error.value = handleError(registerError, '注册失败')
   }
 }
 </script>

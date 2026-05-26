@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted } from 'vue'
+import { handleError } from '@/utils/errorHandler'
 import { useRoute, useRouter } from 'vue-router'
 
 import { useCampusHubStore } from '@/stores/campusHub'
+import SkeletonCard from '@/components/SkeletonCard.vue'
 import { formatOrderStatus, formatRelativeTime, formatScore, statusToneClass } from '@/utils/format'
 
 const route = useRoute()
@@ -17,6 +19,7 @@ const error = ref('')
 const completionSubmitted = ref(false)
 const reviewRating = ref('5')
 const reviewComment = ref('')
+const loadingOrder = ref(false)
 
 const relatedReviews = computed(() => {
   if (!order.value) return []
@@ -49,7 +52,7 @@ async function completeOrder(): Promise<void> {
       ? '双方都已确认完成，订单已完成。'
       : '已提交完成确认，等待对方确认。'
   } catch (completeError) {
-    error.value = completeError instanceof Error ? completeError.message : '操作失败'
+    error.value = handleError(completeError, '操作失败')
   }
 }
 
@@ -66,15 +69,37 @@ async function submitReview(): Promise<void> {
     message.value = '评价已提交。'
     reviewComment.value = ''
   } catch (e) {
-    error.value = e instanceof Error ? e.message : '评价失败'
+    error.value = handleError(e, '评价失败')
   }
 }
 
 // (no automatic demand enrichment) keep original simple behavior
+
+onMounted(() => {
+  if (!order.value) {
+    loadingOrder.value = true
+    void (async () => {
+      try {
+        await store.fetchOrders()
+      } finally {
+        loadingOrder.value = false
+      }
+    })()
+  }
+})
 </script>
 
 <template>
-  <div v-if="order" class="page-grid">
+  <div v-if="loadingOrder" class="page-grid">
+    <section class="panel">
+      <SkeletonCard />
+    </section>
+    <section class="panel">
+      <SkeletonCard />
+    </section>
+  </div>
+
+  <div v-else-if="order" class="page-grid">
     <section class="panel">
       <div class="page-head">
         <button type="button" class="button secondary" @click="goBack">返回</button>

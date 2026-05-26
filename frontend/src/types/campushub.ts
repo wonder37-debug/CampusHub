@@ -1,4 +1,4 @@
-export const DEMAND_CATEGORY_OPTIONS = ['EXPRESS', 'STUDY_TUTORING', 'SECOND_HAND', 'TEAM_UP', 'OTHER'] as const
+export const DEMAND_CATEGORY_OPTIONS = ['EXPRESS', 'STUDY_TUTORING', 'SECOND_HAND', 'TEAM_UP', 'DELEGATE', 'OTHER'] as const
 export const CAMPUS_ZONE_OPTIONS = ['GULOU', 'XIANLIN', 'SUZHOU'] as const
 export const DEMAND_SORT_MODES = ['time', 'distance', 'reward', 'recommend'] as const
 export const USER_ROLE_OPTIONS = ['USER', 'ADMIN'] as const
@@ -110,6 +110,7 @@ export interface NotificationRecord {
   isRead: boolean
   createdAt: string
   relatedId: string
+  relatedName?: string
 }
 
 export interface AuthFormInput {

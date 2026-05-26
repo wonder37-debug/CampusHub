@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted } from 'vue'
+import { handleError } from '@/utils/errorHandler'
 import { useRoute } from 'vue-router'
 
 import { useCampusHubStore } from '@/stores/campusHub'
+import SkeletonCard from '@/components/SkeletonCard.vue'
 import { formatCampusZone, formatDateTime, formatDemandCategory, formatDemandStatus, formatMoney, formatOrderStatus, formatScore, statusToneClass } from '@/utils/format'
 
 const route = useRoute()
@@ -13,6 +15,7 @@ const reviewComment = ref('')
 const message = ref('')
 const error = ref('')
 const completionSubmitted = ref(false)
+const loadingDemand = ref(false)
 
 const demand = computed(() => store.getDemandById(String(route.params.id)))
 const relatedOrder = computed(() => store.orders.find((order) => order.demandId === demand.value?.id))
@@ -59,7 +62,7 @@ async function acceptCurrentDemand(): Promise<void> {
     const order = await store.acceptDemand(demand.value.id, note.value)
     message.value = `已接单，生成订单 ${order.id}`
   } catch (acceptError) {
-    error.value = acceptError instanceof Error ? acceptError.message : '接单失败'
+    error.value = handleError(acceptError, '接单失败')
   }
 }
 
@@ -72,7 +75,7 @@ async function startOrder(): Promise<void> {
     await store.startOrder(relatedOrder.value.id)
     message.value = '订单已进入进行中状态。'
   } catch (startError) {
-    error.value = startError instanceof Error ? startError.message : '操作失败'
+    error.value = handleError(startError, '操作失败')
   }
 }
 
@@ -88,7 +91,7 @@ async function completeOrder(): Promise<void> {
       ? '双方都已确认完成，订单已完成。'
       : '已提交完成确认，等待对方确认。'
   } catch (completeError) {
-    error.value = completeError instanceof Error ? completeError.message : '操作失败'
+    error.value = handleError(completeError, '操作失败')
   }
 }
 
@@ -105,13 +108,36 @@ async function submitReview(): Promise<void> {
     message.value = '评价已提交。'
     reviewComment.value = ''
   } catch (reviewError) {
-    error.value = reviewError instanceof Error ? reviewError.message : '评价失败'
+    error.value = handleError(reviewError, '评价失败')
   }
 }
+
+onMounted(() => {
+  // ensure demands are loaded for this detail view
+  if (!demand.value) {
+    loadingDemand.value = true
+    void (async () => {
+      try {
+        await store.fetchDemands()
+      } finally {
+        loadingDemand.value = false
+      }
+    })()
+  }
+})
 </script>
 
 <template>
-  <div v-if="demand" class="page-grid two-column">
+  <div v-if="loadingDemand" class="page-grid two-column">
+    <section class="panel">
+      <SkeletonCard />
+    </section>
+    <section class="panel">
+      <SkeletonCard />
+    </section>
+  </div>
+
+  <div v-else-if="demand" class="page-grid two-column">
     <section class="panel">
       <div class="status-row">
         <span class="chip" :class="relatedOrder ? statusToneClass(relatedOrder.status) : statusToneClass(demand.status)">
@@ -137,7 +163,8 @@ async function submitReview(): Promise<void> {
         <img :src="demand.publisher?.avatarUrl ?? demand.publisherAvatar" :alt="demand.publisher?.nickname ?? demand.publisherName" class="avatar large" />
         <div>
           <strong>{{ demand.anonymous ? demand.anonymousCode ?? '匿名发布' : (demand.publisher?.nickname ?? demand.publisherName) }}</strong>
-          <p class="subtle">信用分 {{ demand.publisher ? formatScore(demand.publisher.creditScore) : '未知' }}</p>
+          <p class="subtle">信用分：{{ demand.publisher ? formatScore(demand.publisher.creditScore) : '未知' }}</p>
+          <p class="meta">发布者学号：{{ demand.anonymous ? (demand.publisher?.studentId ? String(demand.publisher.studentId).slice(0,3) + '***' + String(demand.publisher.studentId).slice(-2) : '匿名') : (demand.publisher?.studentId ?? '未知') }}</p>
           <p class="meta">发布于 {{ formatDateTime(demand.createdAt) }}</p>
         </div>
       </div>

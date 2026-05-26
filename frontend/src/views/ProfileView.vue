@@ -46,9 +46,9 @@ onMounted(() => {
           <p class="eyebrow">个人中心</p>
           <h1 class="page-title">{{ store.currentUser.nickname }}</h1>
           <p class="page-summary">{{ store.currentUser.studentId }} · {{ maskedPhone }}</p>
-          <div class="stats-row">
-            <span class="chip is-neutral">{{ formatUserRole(store.currentUser.role) }}</span>
-            <span class="chip is-neutral">{{ formatUserStatus(store.currentUser.status) }}</span>
+          <div class="stats-row" style="gap:12px;">
+            <div class="meta">当前身份：<strong>{{ formatUserRole(store.currentUser.role) }}</strong></div>
+            <div class="meta">当前状态：<strong>{{ formatUserStatus(store.currentUser.status) }}</strong></div>
           </div>
           <button type="button" class="button secondary" @click="openEditPage">编辑资料</button>
         </div>

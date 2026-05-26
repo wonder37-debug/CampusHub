@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import SkeletonCard from '@/components/SkeletonCard.vue'
 import { useRouter } from 'vue-router'
 
 import { useCampusHubStore } from '@/stores/campusHub'
@@ -8,6 +9,7 @@ import { formatOrderStatus, formatRelativeTime, statusToneClass, formatDemandSta
 const store = useCampusHubStore()
 const router = useRouter()
 const activeTab = ref<'published' | 'accepted'>('published')
+const loadingOrders = ref(false)
 
 const visibleOrders = computed(() => {
   const currentUserId = store.currentUser?.id
@@ -87,7 +89,14 @@ async function cancelOrder(orderId: string): Promise<void> {
 }
 
 onMounted(() => {
-  void store.fetchOrders()
+  loadingOrders.value = true
+  void (async () => {
+    try {
+      await store.fetchOrders()
+    } finally {
+      loadingOrders.value = false
+    }
+  })()
 })
 </script>
 
@@ -113,7 +122,11 @@ onMounted(() => {
     </div>
 
     <section v-else class="order-grid">
-      <div v-if="!visibleOrders.length" class="empty-state">
+      <div v-if="loadingOrders" class="order-grid">
+        <SkeletonCard v-for="n in 4" :key="n" />
+      </div>
+
+      <div v-else-if="!visibleOrders.length" class="empty-state">
         <strong>暂无订单</strong>
       </div>
 

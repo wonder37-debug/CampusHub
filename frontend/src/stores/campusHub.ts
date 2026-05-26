@@ -167,7 +167,8 @@ function mapNotificationRecord(raw: any, fallbackReceiverId = ''): NotificationR
     content: String(raw.content ?? raw.title ?? ''),
     isRead: Boolean(raw.read ?? raw.isRead ?? false),
     createdAt: String(raw.createdAt ?? now()),
-    relatedId: String(raw.relatedId ?? '')
+    relatedId: String(raw.relatedId ?? ''),
+    relatedName: String(raw.relatedName ?? raw.relatedTitle ?? raw.targetName ?? '')
   }
 }
 
@@ -473,12 +474,13 @@ export const useCampusHubStore = defineStore('campusHub', {
       return mapped
     },
 
-    async approveDemand(demandId: string, approved: boolean): Promise<DemandRecord> {
+    async approveDemand(demandId: string, approved: boolean, reason?: string): Promise<DemandRecord> {
+      const body: any = { action: approved ? 'approve' : 'reject' }
+      if (!approved && reason) body.reason = String(reason)
+
       const demand = await requestJson<any>(`/admin/demands/${encodeURIComponent(demandId)}/review`, {
         method: 'POST',
-        body: JSON.stringify({
-          action: approved ? 'approve' : 'reject'
-        })
+        body: JSON.stringify(body)
       }, this.token)
 
       const mapped = mapDemandRecord(demand)

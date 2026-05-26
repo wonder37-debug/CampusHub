@@ -29,22 +29,27 @@ async function openNotification(notification: any): Promise<void> {
 
   const relatedId = String(notification.relatedId ?? '')
   const type = String(notification.type ?? '')
+  // If the current user is an admin and this notification relates to review, send them to admin review panel
+  const isAdmin = store.currentUser?.role === 'ADMIN'
+  const normalizedType = type.toUpperCase()
+  const content = String(notification.content ?? '')
 
-  if (type === 'ORDER_ACCEPTED' || type === 'STATUS_CHANGED') {
-    router.push(`/demands/${relatedId}`)
-    return
-  }
-
-  if (type === 'REVIEW_RECEIVED') {
-    router.push(`/orders/${relatedId}`)
-    return
-  }
-
-  if (type === 'REVIEW_REQUEST') {
+  if (isAdmin && (normalizedType.includes('REVIEW') || /审核|待审|review_request/i.test(content))) {
     router.push(`/admin?tab=review&demandId=${relatedId}`)
     return
   }
 
+  if (normalizedType === 'ORDER_ACCEPTED' || normalizedType === 'STATUS_CHANGED') {
+    router.push(`/demands/${relatedId}`)
+    return
+  }
+
+  if (normalizedType === 'REVIEW_RECEIVED') {
+    router.push(`/orders/${relatedId}`)
+    return
+  }
+
+  // fallback: stay on notifications
   router.push('/notifications')
 }
 
@@ -58,8 +63,7 @@ onMounted(() => {
     <section class="panel page-head">
       <div class="page-head">
         <button type="button" class="button secondary" @click="goBack">返回</button>
-        <div>
-          <p class="eyebrow">消息</p>
+        <div style="flex:1">
           <h1 class="page-title">消息</h1>
           <p class="page-summary">接单、状态变更和评价会在这里显示。</p>
         </div>
@@ -98,7 +102,8 @@ onMounted(() => {
 
         <div class="meta">
           <span v-if="!notification.isRead" class="unread-dot"></span>
-          点击可查看相关订单或需求详情
+          <span v-if="notification.relatedName">关联：{{ notification.relatedName }}</span>
+          <span v-else>点击可查看相关订单或需求详情</span>
         </div>
       </article>
     </section>
