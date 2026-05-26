@@ -10,8 +10,13 @@
 backend:dependencies:
   extends: .backend-template
   stage: deps
+  timeout: 20m
   script:
-    - mvn $MAVEN_CLI_OPTS dependency:go-offline
+    - mvn $MAVEN_CLI_OPTS -DskipTests test-compile dependency:go-offline
+  artifacts:
+    paths:
+      - .m2/repository/
+    expire_in: 1 day
   rules:
     - changes:
         - backend/**/*
@@ -23,6 +28,9 @@ backend:dependencies:
 backend:static-check:
   extends: .backend-template
   stage: static-check
+  needs:
+    - job: backend:dependencies
+      artifacts: true
   script:
     - mvn $MAVEN_CLI_OPTS -DskipTests compile
   rules:
@@ -35,6 +43,9 @@ backend:unit-test:
   extends: .backend-template
   stage: unit-test
   timeout: 15m
+  needs:
+    - job: backend:dependencies
+      artifacts: true
   script:
     - timeout 12m mvn $MAVEN_CLI_OPTS -Dtest='*ServiceImplTest,RequestUserExtractorTest' test
   artifacts:
@@ -55,6 +66,9 @@ backend:integration-test:
   extends: .backend-template
   stage: integration-test
   timeout: 15m
+  needs:
+    - job: backend:dependencies
+      artifacts: true
   script:
     - mvn -version
     - timeout 12m mvn $MAVEN_CLI_OPTS -Dtest=FrontendIntegrationFlowTest test
@@ -75,6 +89,9 @@ backend:integration-test:
 backend:build:
   extends: .backend-template
   stage: build
+  needs:
+    - job: backend:dependencies
+      artifacts: true
   script:
     - mvn $MAVEN_CLI_OPTS -DskipTests package
   artifacts:
