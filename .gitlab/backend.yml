@@ -2,24 +2,14 @@
   image: maven:3.9.9-eclipse-temurin-21
   variables:
     MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
-    MAVEN_CLI_OPTS: "-B -ntp"
+    MAVEN_CLI_OPTS: "-B -ntp -s ../.gitlab/maven-settings.xml -Daether.connector.connectTimeout=30000 -Daether.connector.requestTimeout=120000 -Dmaven.wagon.rto=120000 -Dmaven.wagon.http.retryHandler.count=1"
     SPRING_PROFILES_ACTIVE: "default"
-  cache:
-    key: "maven-v2-$CI_COMMIT_REF_SLUG"
-    paths:
-      - .m2/repository/
-    policy: pull
   before_script:
     - cd backend
 
 backend:dependencies:
   extends: .backend-template
   stage: deps
-  cache:
-    key: "maven-v2-$CI_COMMIT_REF_SLUG"
-    paths:
-      - .m2/repository/
-    policy: pull-push
   script:
     - mvn $MAVEN_CLI_OPTS dependency:go-offline
   rules:
@@ -44,9 +34,9 @@ backend:static-check:
 backend:unit-test:
   extends: .backend-template
   stage: unit-test
-  timeout: 5m
+  timeout: 15m
   script:
-    - timeout 4m mvn $MAVEN_CLI_OPTS -Dtest='*ServiceImplTest,RequestUserExtractorTest' test
+    - timeout 12m mvn $MAVEN_CLI_OPTS -Dtest='*ServiceImplTest,RequestUserExtractorTest' test
   artifacts:
     when: always
     reports:
@@ -64,9 +54,10 @@ backend:unit-test:
 backend:integration-test:
   extends: .backend-template
   stage: integration-test
-  timeout: 20m
+  timeout: 15m
   script:
-    - mvn $MAVEN_CLI_OPTS -Dtest=FrontendIntegrationFlowTest test
+    - mvn -version
+    - timeout 12m mvn $MAVEN_CLI_OPTS -Dtest=FrontendIntegrationFlowTest test
   artifacts:
     when: always
     reports:
