@@ -32,11 +32,15 @@ public class ApiViewMapper {
             || currentUser != null && (currentUser.isAdmin() || demand.getPublisherId().equals(currentUser.userId()));
         Long publisherId = canSeePublisher ? demand.getPublisherId() : null;
         String publisherDisplayName = canSeePublisher ? demand.getPublisherDisplayName() : demand.getAnonymousCode();
+        UserSummaryView publisher = canSeePublisher && demand.getPublisherId() != null
+            ? userRepository.findById(demand.getPublisherId()).map(UserSummaryView::from).orElse(null)
+            : null;
 
         return new DemandView(
             demand.getId(),
             publisherId,
             publisherDisplayName,
+            publisher,
             demand.getTitle(),
             demand.getDescription(),
             demand.getCategory().name(),

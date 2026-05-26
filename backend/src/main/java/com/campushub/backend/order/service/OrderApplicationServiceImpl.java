@@ -28,6 +28,9 @@ import org.springframework.stereotype.Service;
 @Service
 public class OrderApplicationServiceImpl implements OrderApplicationService {
 
+    private static final String COMPLETION_PENDING_NOTE = "已确认完成，等待对方确认";
+    private static final String COMPLETION_FINAL_NOTE = "双方已确认完成";
+
     private final OrderRepository orderRepository;
     private final DemandRepository demandRepository;
     private final UserRepository userRepository;
@@ -108,6 +111,9 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         }
 
         OrderStatus targetStatus = parseStatus(command.targetStatus());
+        if (targetStatus == OrderStatus.COMPLETED) {
+            return confirmCompletion(operatorId, order, demand);
+        }
         validateTransition(order, operatorId, targetStatus, command.proofImageCount());
 
         OrderStatus fromStatus = order.getStatus();
@@ -135,13 +141,53 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         notificationApplicationService.notifyStatusChanged(
             order.getPublisherId(),
             order.getId(),
-            "订单状态已更新为 " + targetStatus.name()
+            "订单进度已更新为“" + formatOrderStatus(targetStatus) + "”"
         );
         notificationApplicationService.notifyStatusChanged(
             order.getAccepterId(),
             order.getId(),
-            "订单状态已更新为 " + targetStatus.name()
+            "订单进度已更新为“" + formatOrderStatus(targetStatus) + "”"
         );
+        return OrderDetailResponse.from(order, DemandDetailResponse.from(demand));
+    }
+
+    private OrderDetailResponse confirmCompletion(Long operatorId, Order order, Demand demand) {
+        if (order.getStatus() != OrderStatus.IN_PROGRESS) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "only in progress orders can be completed");
+        }
+
+        Long counterpartId = getCounterpartId(order, operatorId);
+        if (counterpartId == null) {
+            throw new BusinessException(ErrorCode.PERMISSION_DENIED, "only participants can complete order");
+        }
+
+        if (hasCompletionConfirmation(order, operatorId)) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "completion already confirmed by this user");
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        if (!hasCompletionConfirmation(order, counterpartId)) {
+            order.addHistory(OrderStatus.IN_PROGRESS, OrderStatus.IN_PROGRESS, operatorId, COMPLETION_PENDING_NOTE, now);
+            order.setUpdatedAt(now);
+            orderRepository.save(order);
+            notificationApplicationService.notifyStatusChanged(
+                counterpartId,
+                order.getId(),
+                "对方已确认完成，请确认完成"
+            );
+            return OrderDetailResponse.from(order, DemandDetailResponse.from(demand));
+        }
+
+        order.setStatus(OrderStatus.COMPLETED);
+        order.setCompletedAt(now);
+        order.setUpdatedAt(now);
+        order.addHistory(OrderStatus.IN_PROGRESS, OrderStatus.COMPLETED, operatorId, COMPLETION_FINAL_NOTE, now);
+        demand.setStatus(DemandStatus.COMPLETED);
+        demand.setUpdatedAt(now);
+        orderRepository.save(order);
+        demandRepository.save(demand);
+        notificationApplicationService.notifyStatusChanged(order.getPublisherId(), order.getId(), "订单已完成");
+        notificationApplicationService.notifyStatusChanged(order.getAccepterId(), order.getId(), "订单已完成");
         return OrderDetailResponse.from(order, DemandDetailResponse.from(demand));
     }
 
@@ -213,6 +259,25 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         }
     }
 
+    private boolean hasCompletionConfirmation(Order order, Long userId) {
+        return order.getStatusHistory().stream()
+            .anyMatch(entry -> entry.operatorId() != null
+                && entry.operatorId().equals(userId)
+                && entry.fromStatus() == OrderStatus.IN_PROGRESS
+                && entry.toStatus() == OrderStatus.IN_PROGRESS
+                && COMPLETION_PENDING_NOTE.equals(entry.note()));
+    }
+
+    private Long getCounterpartId(Order order, Long operatorId) {
+        if (operatorId.equals(order.getPublisherId())) {
+            return order.getAccepterId();
+        }
+        if (operatorId.equals(order.getAccepterId())) {
+            return order.getPublisherId();
+        }
+        return null;
+    }
+
     private OrderStatus parseStatus(String raw) {
         try {
             return OrderStatus.valueOf(raw.trim().toUpperCase(Locale.ROOT));
@@ -248,5 +313,17 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
 
     private String trimToNull(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private String formatOrderStatus(OrderStatus status) {
+        if (status == null) {
+            return "未知状态";
+        }
+        return switch (status) {
+            case ACCEPTED -> "已接单";
+            case IN_PROGRESS -> "进行中";
+            case COMPLETED -> "已完成";
+            case CANCELLED -> "已取消";
+        };
     }
 }

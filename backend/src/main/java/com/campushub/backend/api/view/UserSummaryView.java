@@ -3,6 +3,8 @@ package com.campushub.backend.api.view;
 import com.campushub.backend.auth.domain.User;
 import com.campushub.backend.auth.dto.UserProfileResponse;
 
+import java.math.BigDecimal;
+
 public record UserSummaryView(
     Long id,
     String email,
@@ -11,7 +13,9 @@ public record UserSummaryView(
     String avatarUrl,
     String role,
     String status,
-    int creditScore
+    int creditScore,
+    BigDecimal balance,
+    BigDecimal frozenBalance
 ) {
 
     public static UserSummaryView from(UserProfileResponse profile) {
@@ -23,7 +27,9 @@ public record UserSummaryView(
             profile.avatarUrl(),
             profile.role().name(),
             profile.status().name(),
-            profile.creditScore()
+            profile.creditScore(),
+            profile.balance(),
+            profile.frozenBalance()
         );
     }
 
@@ -36,7 +42,9 @@ public record UserSummaryView(
             user.getAvatarUrl(),
             user.getRole().name(),
             user.getStatus().name(),
-            user.getCreditScore()
+            user.getCreditScore(),
+            user.getBalance(),
+            user.getFrozenBalance()
         );
     }
 }

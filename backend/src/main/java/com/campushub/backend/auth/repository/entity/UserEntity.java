@@ -8,13 +8,13 @@ import com.campushub.backend.auth.domain.User;
 import com.campushub.backend.auth.domain.UserRole;
 import com.campushub.backend.auth.domain.UserStatus;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
  * sys_user 表的 MyBatis-Plus 持久化实体。
  *
- * <p>仅承载与领域模型 {@link User} 对应的字段；数据库中存在但当前领域模型尚未使用的列
- * （balance / frozen_balance / email_verified_at）此处不声明，由数据库默认值兜底。</p>
+ * <p>仅承载与领域模型 {@link User} 对应的字段。</p>
  */
 @TableName("sys_user")
 public class UserEntity {
@@ -46,6 +46,12 @@ public class UserEntity {
     @TableField("credit_score")
     private Integer creditScore;
 
+    @TableField("balance")
+    private BigDecimal balance;
+
+    @TableField("frozen_balance")
+    private BigDecimal frozenBalance;
+
     @TableField("created_at")
     private LocalDateTime createdAt;
 
@@ -70,6 +76,8 @@ public class UserEntity {
         entity.role = user.getRole() == null ? null : user.getRole().name();
         entity.status = user.getStatus() == null ? null : user.getStatus().name();
         entity.creditScore = user.getCreditScore();
+        entity.balance = user.getBalance();
+        entity.frozenBalance = user.getFrozenBalance();
         entity.createdAt = user.getCreatedAt();
         entity.updatedAt = user.getUpdatedAt();
         return entity;
@@ -87,6 +95,8 @@ public class UserEntity {
         user.setRole(this.role == null ? null : UserRole.valueOf(this.role));
         user.setStatus(this.status == null ? null : UserStatus.valueOf(this.status));
         user.setCreditScore(this.creditScore == null ? 0 : this.creditScore);
+        user.setBalance(this.balance);
+        user.setFrozenBalance(this.frozenBalance);
         user.setCreatedAt(this.createdAt);
         user.setUpdatedAt(this.updatedAt);
         return user;
@@ -162,6 +172,22 @@ public class UserEntity {
 
     public void setCreditScore(Integer creditScore) {
         this.creditScore = creditScore;
+    }
+
+    public BigDecimal getBalance() {
+        return balance;
+    }
+
+    public void setBalance(BigDecimal balance) {
+        this.balance = balance;
+    }
+
+    public BigDecimal getFrozenBalance() {
+        return frozenBalance;
+    }
+
+    public void setFrozenBalance(BigDecimal frozenBalance) {
+        this.frozenBalance = frozenBalance;
     }
 
     public LocalDateTime getCreatedAt() {

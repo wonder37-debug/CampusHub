@@ -3,7 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { useCampusHubStore } from '@/stores/campusHub'
-import { formatScore, formatUserRole, formatUserStatus } from '@/utils/format'
+import { formatMoney, formatRelativeTime, formatScore, formatUserRole, formatUserStatus } from '@/utils/format'
 
 const store = useCampusHubStore()
 const router = useRouter()
@@ -58,6 +58,7 @@ function logout(): void {
 
 onMounted(() => {
   void store.fetchProfile()
+  void store.fetchCurrentUserReviews()
 })
 </script>
 
@@ -84,6 +85,14 @@ onMounted(() => {
           <strong>{{ formatScore(store.currentUser.creditScore) }}</strong>
         </div>
         <div class="mini-stat">
+          <span class="subtle">可用余额</span>
+          <strong>{{ formatMoney(store.currentUser.balance) }}</strong>
+        </div>
+        <div class="mini-stat">
+          <span class="subtle">冻结金额</span>
+          <strong>{{ formatMoney(store.currentUser.frozenBalance) }}</strong>
+        </div>
+        <div class="mini-stat">
           <span class="subtle">信用等级</span>
           <strong>{{ creditLevel }}</strong>
         </div>
@@ -104,6 +113,26 @@ onMounted(() => {
       </div>
 
       <div class="hero-badge" style="margin-top: 16px;">v1.0.0</div>
+    </section>
+
+    <section class="panel">
+      <p class="eyebrow">评价列表</p>
+      <h2 class="section-title">我的评价</h2>
+
+      <div v-if="store.currentUserReviews.length" class="review-grid">
+        <div v-for="review in store.currentUserReviews" :key="review.id" class="list-card">
+          <div class="status-row">
+            <span class="chip is-success">{{ review.rating }} 星</span>
+            <span class="meta">{{ formatRelativeTime(review.createdAt) }}</span>
+          </div>
+          <strong>{{ review.reviewerName }} → {{ review.targetName }}</strong>
+          <p class="subtle">{{ review.comment || '暂无评价内容' }}</p>
+        </div>
+      </div>
+
+      <div v-else class="empty-state">
+        <strong>暂无评价</strong>
+      </div>
     </section>
 
     <section class="panel">

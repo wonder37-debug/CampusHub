@@ -31,9 +31,11 @@ const visibleOrders = computed(() => {
     requesterId: d.publisherId,
     requesterName: d.publisherName,
     requesterAvatar: d.publisherAvatar,
+    requesterCreditScore: d.publisher?.creditScore ?? 0,
     serviceProviderId: '',
     serviceProviderName: '',
     serviceProviderAvatar: '',
+    serviceProviderCreditScore: 0,
     status: 'PENDING' as unknown as import('@/types/campushub').OrderStatus,
     note: '',
     proofSubmitted: false,
@@ -150,7 +152,7 @@ onMounted(() => {
             class="button primary"
             @click.stop="completeOrder(order.id)"
           >
-            确认完成
+            提交完成确认
           </button>
         </div>
       </article>

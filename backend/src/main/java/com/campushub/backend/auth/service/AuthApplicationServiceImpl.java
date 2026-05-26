@@ -19,6 +19,7 @@ import java.time.LocalDateTime;
 import java.util.Objects;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
+import java.math.BigDecimal;
 
 @Service
 public class AuthApplicationServiceImpl implements AuthApplicationService {
@@ -91,6 +92,8 @@ public class AuthApplicationServiceImpl implements AuthApplicationService {
             UserRole.USER,
             UserStatus.ACTIVE,
             DEFAULT_CREDIT_SCORE,
+            BigDecimal.ZERO,
+            BigDecimal.ZERO,
             now,
             now
         );
