@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { useCampusHubStore } from '@/stores/campusHub'
@@ -7,24 +7,6 @@ import { formatMoney, formatRelativeTime, formatScore, formatUserRole, formatUse
 
 const store = useCampusHubStore()
 const router = useRouter()
-const saving = ref(false)
-
-const profileForm = reactive({
-  nickname: store.currentUser?.nickname ?? '',
-  avatarUrl: store.currentUser?.avatarUrl ?? ''
-})
-
-function onAvatarFileSelected(event: Event): void {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (!file) return
-
-  const reader = new FileReader()
-  reader.onload = () => {
-    profileForm.avatarUrl = String(reader.result || '')
-  }
-  reader.readAsDataURL(file)
-}
 
 const creditLevel = computed(() => {
   const score = store.currentUser?.creditScore ?? 0
@@ -38,14 +20,7 @@ const maskedPhone = computed(() => {
   return phone ? `${String(phone).slice(0, 3)}****${String(phone).slice(-4)}` : '138****0000'
 })
 
-async function saveProfile(): Promise<void> {
-  saving.value = true
-  try {
-    await store.updateProfile(profileForm)
-  } finally {
-    saving.value = false
-  }
-}
+
 
 function openEditPage(): void {
   router.push('/profile/edit')
@@ -71,9 +46,9 @@ onMounted(() => {
           <p class="eyebrow">个人中心</p>
           <h1 class="page-title">{{ store.currentUser.nickname }}</h1>
           <p class="page-summary">{{ store.currentUser.studentId }} · {{ maskedPhone }}</p>
-          <div class="stats-row">
-            <span class="chip is-neutral">{{ formatUserRole(store.currentUser.role) }}</span>
-            <span class="chip is-neutral">{{ formatUserStatus(store.currentUser.status) }}</span>
+          <div class="stats-row" style="gap:12px;">
+            <div class="meta">当前身份：<strong>{{ formatUserRole(store.currentUser.role) }}</strong></div>
+            <div class="meta">当前状态：<strong>{{ formatUserStatus(store.currentUser.status) }}</strong></div>
           </div>
           <button type="button" class="button secondary" @click="openEditPage">编辑资料</button>
         </div>
@@ -136,38 +111,7 @@ onMounted(() => {
     </section>
 
     <section class="panel">
-      <div class="page-head">
-        <div>
-          <p class="eyebrow">资料编辑</p>
-          <h2 class="section-title">修改头像与昵称</h2>
-        </div>
-      </div>
-
-      <div class="form-grid two-column">
-        <div class="field">
-          <label for="profile-nickname">昵称</label>
-          <input id="profile-nickname" v-model="profileForm.nickname" />
-        </div>
-        <div class="field">
-          <label for="profile-avatar">头像链接</label>
-          <input id="profile-avatar" v-model="profileForm.avatarUrl" />
-        </div>
-        <div class="field" style="grid-column: 1 / -1;">
-          <label for="profile-avatar-file">本地上传头像</label>
-          <input
-            id="profile-avatar-file"
-            ref="avatarFileInput"
-            type="file"
-            accept="image/*"
-            @change="onAvatarFileSelected"
-          />
-          <span class="input-help">选择本地图片后会自动转成预览地址，保存后即作为头像使用。</span>
-        </div>
-      </div>
-
-      <div class="card-actions">
-        <button type="button" class="button primary" :disabled="saving" @click="saveProfile">保存资料</button>
-      </div>
+      <!-- 资料编辑已移除：使用顶部的“编辑资料”按钮进入单独编辑页面 -->
     </section>
   </div>
 

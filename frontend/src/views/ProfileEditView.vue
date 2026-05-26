@@ -1,12 +1,18 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { useCampusHubStore } from '@/stores/campusHub'
+import { validateNickname, validateAvatarUrl } from '@/utils/validators'
 
 const store = useCampusHubStore()
 const router = useRouter()
 const saving = ref(false)
+const message = ref('')
+const error = ref('')
+const fieldErrors = reactive({ nickname: '', avatarUrl: '' })
+
+const isValid = computed(() => !fieldErrors.nickname && !fieldErrors.avatarUrl && profileForm.nickname.trim().length >= 2)
 const profileForm = reactive({
   nickname: store.currentUser?.nickname ?? '',
   avatarUrl: store.currentUser?.avatarUrl ?? ''
@@ -25,10 +31,25 @@ function onAvatarFileSelected(event: Event): void {
 }
 
 async function save(): Promise<void> {
+  // run local validations
+  fieldErrors.nickname = validateNickname(profileForm.nickname)
+  fieldErrors.avatarUrl = validateAvatarUrl(profileForm.avatarUrl)
+
+  if (!isValid.value) {
+    error.value = '请修正表单错误后再保存'
+    return
+  }
+
   saving.value = true
+  message.value = ''
+  error.value = ''
   try {
     await store.updateProfile(profileForm)
-    router.push('/profile')
+    message.value = '已保存个人资料'
+    // 0.8s 后返回个人页
+    setTimeout(() => {
+      router.push('/profile')
+    }, 800)
   } finally {
     saving.value = false
   }
@@ -53,11 +74,13 @@ onMounted(() => {
       <div class="form-grid two-column">
         <div class="field">
           <label for="nickname">昵称</label>
-          <input id="nickname" v-model="profileForm.nickname" />
+          <input id="nickname" v-model="profileForm.nickname" @input="fieldErrors.nickname = ''" />
+          <p v-if="fieldErrors.nickname" class="input-help" style="color: var(--danger)">{{ fieldErrors.nickname }}</p>
         </div>
         <div class="field">
           <label for="avatar">头像链接</label>
-          <input id="avatar" v-model="profileForm.avatarUrl" />
+          <input id="avatar" v-model="profileForm.avatarUrl" @input="fieldErrors.avatarUrl = ''" />
+          <p v-if="fieldErrors.avatarUrl" class="input-help" style="color: var(--danger)">{{ fieldErrors.avatarUrl }}</p>
         </div>
         <div class="field" style="grid-column: 1 / -1;">
           <label for="avatar-file">本地上传头像</label>
@@ -67,9 +90,11 @@ onMounted(() => {
       </div>
 
       <div class="card-actions" style="margin-top: 16px;">
-        <button type="button" class="button primary" :disabled="saving" @click="save">保存</button>
+        <button type="button" class="button primary" :disabled="saving || !isValid" @click="save">保存</button>
         <button type="button" class="button secondary" @click="router.push('/profile')">返回</button>
       </div>
+      <p v-if="message" class="hero-badge">{{ message }}</p>
+      <p v-if="error" class="hero-badge" style="background: rgba(181, 71, 71, 0.14); color: var(--danger)">{{ error }}</p>
     </section>
   </div>
 

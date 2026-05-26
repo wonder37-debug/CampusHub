@@ -1,11 +1,11 @@
-export const DEMAND_CATEGORY_OPTIONS = ['EXPRESS', 'STUDY_TUTORING', 'SECOND_HAND', 'TEAM_UP', 'OTHER'] as const
+export const DEMAND_CATEGORY_OPTIONS = ['EXPRESS', 'STUDY_TUTORING', 'SECOND_HAND', 'TEAM_UP', 'DELEGATE', 'OTHER'] as const
 export const CAMPUS_ZONE_OPTIONS = ['GULOU', 'XIANLIN', 'SUZHOU'] as const
 export const DEMAND_SORT_MODES = ['time', 'distance', 'reward', 'recommend'] as const
 export const USER_ROLE_OPTIONS = ['USER', 'ADMIN'] as const
 export const USER_STATUS_OPTIONS = ['ACTIVE', 'BANNED'] as const
-export const DEMAND_STATUS_OPTIONS = ['PENDING', 'REVIEWING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'] as const
+export const DEMAND_STATUS_OPTIONS = ['PENDING', 'REVIEWING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'EXPIRED'] as const
 export const ORDER_STATUS_OPTIONS = ['ACCEPTED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'] as const
-export const NOTIFICATION_TYPE_OPTIONS = ['ORDER_ACCEPTED', 'STATUS_CHANGED', 'REVIEW_RECEIVED'] as const
+export const NOTIFICATION_TYPE_OPTIONS = ['ORDER_ACCEPTED', 'STATUS_CHANGED', 'REVIEW_RECEIVED', 'REVIEW_REQUEST'] as const
 
 export type DemandCategory = (typeof DEMAND_CATEGORY_OPTIONS)[number]
 export type CampusZone = (typeof CAMPUS_ZONE_OPTIONS)[number]
@@ -66,6 +66,12 @@ export interface OrderRecord {
   id: string
   demandId: string
   demandTitle: string
+  demandLocation?: string
+  demandStartTime?: string
+  demandEndTime?: string
+  demandCategory?: string
+  demandCampusZone?: string
+  demandReward?: number
   requesterId: string
   requesterName: string
   requesterAvatar: string
@@ -104,6 +110,7 @@ export interface NotificationRecord {
   isRead: boolean
   createdAt: string
   relatedId: string
+  relatedName?: string
 }
 
 export interface AuthFormInput {

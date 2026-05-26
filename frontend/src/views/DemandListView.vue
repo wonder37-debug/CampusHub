@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import SkeletonCard from '@/components/SkeletonCard.vue'
 import { useRouter } from 'vue-router'
 
 import { DEMAND_CATEGORY_OPTIONS, type CampusZone, type DemandRecord, type DemandSortMode } from '@/types/campushub'
 import { useCampusHubStore } from '@/stores/campusHub'
-import { campusZoneOptions, formatCampusZone, formatDemandCategory, formatDemandStatus, formatMoney, formatRelativeTime, formatScore, statusToneClass, truncateText } from '@/utils/format'
+import { campusZoneOptions, formatCampusZone, formatDemandCategory, formatDemandStatus, formatMoney, formatRelativeTime, formatScore, statusToneClass, truncateText, formatDateTime } from '@/utils/format'
 
 const store = useCampusHubStore()
 const router = useRouter()
@@ -13,13 +14,14 @@ const filters = reactive({
   category: '' as '' | (typeof DEMAND_CATEGORY_OPTIONS)[number],
   campusZone: '' as '' | CampusZone,
   status: '' as string,
-  sort: 'time' as DemandSortMode,
+  sort: 'recommend' as DemandSortMode,
   page: 1,
   size: 6
 })
 
 const listRef = ref<HTMLElement | null>(null)
 const refreshing = ref(false)
+const loadingDemands = ref(false)
 const recommendedDemands = ref<DemandRecord[]>([])
 let observer: IntersectionObserver | null = null
 
@@ -29,6 +31,7 @@ const visibleDemands = computed(() => {
   const selectedStatus = filters.status
   const source = filters.sort === 'recommend' && recommendedDemands.value.length ? recommendedDemands.value : [...store.demands]
   const sorted = source
+    .filter((demand) => demand.status !== 'EXPIRED')
     .filter((demand) => !selectedCategory || demand.category === selectedCategory)
     .filter((demand) => !selectedCampusZone || demand.campusZone === selectedCampusZone)
     .filter((demand) => {
@@ -63,26 +66,36 @@ const visibleDemands = computed(() => {
   return sorted.slice(0, filters.page * filters.size)
 })
 
-const totalCount = computed(() =>
-  store.demands.filter(
+const totalCount = computed(() => {
+  if (filters.sort === 'recommend' && recommendedDemands.value.length) {
+    return recommendedDemands.value.filter((demand) =>
+      (!filters.category || demand.category === filters.category) &&
+      (!filters.campusZone || demand.campusZone === filters.campusZone) &&
+      (!filters.status || demand.status === filters.status)
+    ).length
+  }
+
+  return store.demands.filter(
     (demand) =>
       (!filters.category || demand.category === filters.category) &&
       (!filters.campusZone || demand.campusZone === filters.campusZone) &&
       (!filters.status || demand.status === filters.status)
   ).length
-)
+})
 const hasMore = computed(() => visibleDemands.value.length < totalCount.value)
 
 function refreshList(): void {
   refreshing.value = true
   filters.page = 1
-  window.setTimeout(() => {
-    void store.fetchDemands().finally(() => {
-      if (filters.sort === 'recommend') {
-        void syncRecommendations()
-      }
+  window.setTimeout(async () => {
+    try {
+      await store.fetchDemands()
+        if (filters.sort === 'recommend') {
+            await syncRecommendations()
+          }
+    } finally {
       refreshing.value = false
-    })
+    }
   }, 0)
 }
 
@@ -104,9 +117,7 @@ function goPublish(): void {
   router.push('/demands/new')
 }
 
-function onPullToRefresh(): void {
-  refreshList()
-}
+
 
 async function syncRecommendations(): Promise<void> {
   if (!store.currentUser) {
@@ -119,10 +130,18 @@ async function syncRecommendations(): Promise<void> {
 }
 
 onMounted(() => {
-  void store.fetchDemands()
-  if (filters.sort === 'recommend') {
-    void syncRecommendations()
-  }
+  // 首页仅请求 PENDING 的需求以减小数据量并符合展示目的
+  loadingDemands.value = true
+  void (async () => {
+    try {
+      await store.fetchDemands('PENDING')
+      if (filters.sort === 'recommend') {
+        await syncRecommendations()
+      }
+    } finally {
+      loadingDemands.value = false
+    }
+  })()
 
   if (listRef.value) {
     observer = new IntersectionObserver(
@@ -152,7 +171,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="page-grid" @touchend="onPullToRefresh">
+  <div class="page-grid">
     <section class="panel">
       <div class="page-head">
         <div>
@@ -160,7 +179,7 @@ onBeforeUnmount(() => {
           <h1 class="page-title">需求列表</h1>
           <p class="page-summary">筛选最新需求，点击卡片查看详情并可直接接单。</p>
         </div>
-        <button type="button" class="button secondary" @click="refreshList">下拉刷新</button>
+        <!-- 已有刷新列表按钮，移除重复的“下拉刷新”按钮 -->
       </div>
 
       <div class="filters">
@@ -198,9 +217,8 @@ onBeforeUnmount(() => {
         <div class="field">
           <label for="demand-sort">排序方式</label>
           <select id="demand-sort" v-model="filters.sort">
-            <option value="time">时间倒序</option>
-            <option value="distance">距离最近</option>
-            <option value="reward">报酬从高到低</option>
+            <option value="time">时间最近</option>
+            <option value="reward">报酬最高</option>
             <option value="recommend">推荐排序</option>
           </select>
         </div>
@@ -212,6 +230,10 @@ onBeforeUnmount(() => {
     <section class="demand-grid" ref="listRef">
       <div v-if="refreshing" class="empty-state">
         <strong>正在刷新...</strong>
+      </div>
+
+      <div v-else-if="loadingDemands" class="demand-grid">
+        <SkeletonCard v-for="n in 6" :key="n" />
       </div>
 
       <div v-else-if="!visibleDemands.length" class="empty-state">
@@ -237,22 +259,26 @@ onBeforeUnmount(() => {
 
         <div class="card-head">
           <h3>{{ demand.title }}</h3>
-          <strong>{{ demand.reward > 0 ? formatMoney(demand.reward) : '一杯奶茶' }}</strong>
+          <strong>{{ formatMoney(demand.reward) }}</strong>
         </div>
 
-        <div class="meta">{{ demand.location }}</div>
+        <div class="meta">地点：{{ demand.location || '无' }}</div>
+
+        <div class="meta" style="margin-top:6px">
+          <span v-if="demand.startTime || demand.endTime">时间：{{ formatDateTime(demand.startTime || '') }} - {{ formatDateTime(demand.endTime || '') }}</span>
+        </div>
 
         <div class="tag-row">
           <span class="badge is-neutral">{{ formatCampusZone(demand.campusZone) }}</span>
         </div>
 
-        <p>{{ truncateText(demand.description, 86) }}</p>
+        <p>描述：{{ truncateText(demand.description || '无', 86) }}</p>
 
         <div class="avatar-row">
           <img :src="demand.publisher?.avatarUrl ?? demand.publisherAvatar" :alt="demand.publisher?.nickname ?? demand.publisherName" class="avatar" />
           <div>
             <strong>{{ demand.anonymous ? demand.anonymousCode ?? '匿名用户' : (demand.publisher?.nickname ?? demand.publisherName) }}</strong>
-            <div class="meta">信用分 {{ demand.publisher ? formatScore(demand.publisher.creditScore) : '未知' }}</div>
+            <div class="meta">信用分：{{ demand.publisher ? formatScore(demand.publisher.creditScore) : '未知' }}</div>
           </div>
         </div>
 
@@ -264,6 +290,6 @@ onBeforeUnmount(() => {
       </div>
     </section>
 
-    <button class="fab" type="button" title="发布需求" @click="goPublish">+</button>
+    <button class="fab" type="button" title="发布需求" @click="goPublish">发布需求</button>
   </div>
 </template>

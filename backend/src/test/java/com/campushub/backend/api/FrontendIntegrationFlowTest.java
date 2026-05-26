@@ -14,7 +14,9 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -23,8 +25,18 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultActions;
 
-@SpringBootTest(properties = "app.auth.allowed-email-domains=nju.edu.cn,smail.nju.edu.cn")
+@SpringBootTest(properties = {
+    "app.auth.allowed-email-domains=nju.edu.cn,smail.nju.edu.cn",
+    "spring.datasource.url=jdbc:h2:mem:campushub_integration;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1",
+    "spring.datasource.driver-class-name=org.h2.Driver",
+    "spring.datasource.username=sa",
+    "spring.datasource.password=",
+    "spring.sql.init.mode=always",
+    "spring.sql.init.schema-locations=classpath:schema.sql",
+    "spring.datasource.hikari.connection-timeout=3000"
+})
 @AutoConfigureMockMvc
+@Timeout(value = 3, unit = TimeUnit.MINUTES)
 class FrontendIntegrationFlowTest {
 
     @Autowired

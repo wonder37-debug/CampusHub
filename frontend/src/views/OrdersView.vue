@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import SkeletonCard from '@/components/SkeletonCard.vue'
 import { useRouter } from 'vue-router'
 
 import { useCampusHubStore } from '@/stores/campusHub'
-import { formatOrderStatus, formatRelativeTime, statusToneClass, formatDemandStatus } from '@/utils/format'
+import { formatOrderStatus, formatRelativeTime, statusToneClass, formatDemandStatus, formatMoney, formatDateTime } from '@/utils/format'
 
 const store = useCampusHubStore()
 const router = useRouter()
 const activeTab = ref<'published' | 'accepted'>('published')
+const loadingOrders = ref(false)
 
 const visibleOrders = computed(() => {
   const currentUserId = store.currentUser?.id
@@ -36,12 +38,19 @@ const visibleOrders = computed(() => {
     serviceProviderName: '',
     serviceProviderAvatar: '',
     serviceProviderCreditScore: 0,
-    status: 'PENDING' as unknown as import('@/types/campushub').OrderStatus,
+    // keep demand status for placeholders (could be EXPIRED)
+    status: d.status as unknown as import('@/types/campushub').OrderStatus,
+    demandStatus: d.status,
     note: '',
     proofSubmitted: false,
     proofImageCount: 0,
     createdAt: d.createdAt,
     updatedAt: d.updatedAt,
+    // include demand fields so the UI can show reward/time/location for placeholders
+    demandStartTime: d.startTime,
+    demandEndTime: d.endTime,
+    demandReward: d.reward,
+    demandLocation: d.location,
     completedAt: '',
     timeline: [],
     isPlaceholder: true
@@ -80,7 +89,14 @@ async function cancelOrder(orderId: string): Promise<void> {
 }
 
 onMounted(() => {
-  void store.fetchOrders()
+  loadingOrders.value = true
+  void (async () => {
+    try {
+      await store.fetchOrders()
+    } finally {
+      loadingOrders.value = false
+    }
+  })()
 })
 </script>
 
@@ -106,14 +122,18 @@ onMounted(() => {
     </div>
 
     <section v-else class="order-grid">
-      <div v-if="!visibleOrders.length" class="empty-state">
+      <div v-if="loadingOrders" class="order-grid">
+        <SkeletonCard v-for="n in 4" :key="n" />
+      </div>
+
+      <div v-else-if="!visibleOrders.length" class="empty-state">
         <strong>暂无订单</strong>
       </div>
 
       <article v-for="order in visibleOrders" :key="order.id" class="list-card order-card" @click="openOrder(order.id)">
         <div class="status-row">
           <template v-if="(order as any).isPlaceholder">
-            <span class="chip" :class="statusToneClass('PENDING')">{{ formatDemandStatus('PENDING') }}</span>
+            <span class="chip" :class="statusToneClass((order as any).demandStatus || 'PENDING')">{{ formatDemandStatus((order as any).demandStatus || 'PENDING') }}</span>
             <span class="chip">发布单</span>
           </template>
           <template v-else>
@@ -125,6 +145,14 @@ onMounted(() => {
         <div class="card-head">
           <h3>{{ order.demandTitle }}</h3>
           <span class="meta">{{ formatRelativeTime(order.createdAt) }}</span>
+        </div>
+
+        <div class="meta">
+          <span v-if="order.demandReward">报酬：{{ formatMoney(order.demandReward) }}</span>
+          <span v-if="order.demandStartTime || order.demandEndTime" style="margin-left:12px">
+            时间：{{ formatDateTime(order.demandStartTime || '') }} - {{ formatDateTime(order.demandEndTime || '') }}
+          </span>
+          <span v-if="order.demandLocation" style="display:block;margin-top:6px">地点：{{ order.demandLocation }}</span>
         </div>
 
         <div class="meta">对方：{{ otherPartyName(order) }}</div>
