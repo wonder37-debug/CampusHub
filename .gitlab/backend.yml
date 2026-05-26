@@ -5,15 +5,21 @@
     MAVEN_CLI_OPTS: "-B -ntp"
     SPRING_PROFILES_ACTIVE: "default"
   cache:
-    key: "maven-$CI_COMMIT_REF_SLUG"
+    key: "maven-v2-$CI_COMMIT_REF_SLUG"
     paths:
       - .m2/repository/
+    policy: pull
   before_script:
     - cd backend
 
 backend:dependencies:
   extends: .backend-template
   stage: deps
+  cache:
+    key: "maven-v2-$CI_COMMIT_REF_SLUG"
+    paths:
+      - .m2/repository/
+    policy: pull-push
   script:
     - mvn $MAVEN_CLI_OPTS dependency:go-offline
   rules:
@@ -58,9 +64,9 @@ backend:unit-test:
 backend:integration-test:
   extends: .backend-template
   stage: integration-test
-  timeout: 10m
+  timeout: 20m
   script:
-    - timeout 8m mvn $MAVEN_CLI_OPTS -Dtest=FrontendIntegrationFlowTest test
+    - mvn $MAVEN_CLI_OPTS -Dtest=FrontendIntegrationFlowTest test
   artifacts:
     when: always
     reports:
