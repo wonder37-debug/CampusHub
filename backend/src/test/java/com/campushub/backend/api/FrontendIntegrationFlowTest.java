@@ -45,7 +45,9 @@ class FrontendIntegrationFlowTest {
         mockMvc.perform(get("/api/v1/users/me")
                 .header("Authorization", bearer(publisher.token())))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.studentId").value(publisher.studentId()));
+            .andExpect(jsonPath("$.data.studentId").value(publisher.studentId()))
+            .andExpect(jsonPath("$.data.creditScore").value(100))
+            .andExpect(jsonPath("$.data.credit_score").value(100));
 
         Long demandId = publishDemand(publisher.token());
 
@@ -76,7 +78,17 @@ class FrontendIntegrationFlowTest {
         mockMvc.perform(get("/api/v1/demands/{demandId}", demandId)
                 .header("Authorization", bearer(accepter.token())))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.status").value("PENDING"));
+            .andExpect(jsonPath("$.data.status").value("PENDING"))
+            .andExpect(jsonPath("$.data.canAccept").value(true))
+            .andExpect(jsonPath("$.data.acceptDisabledReason").doesNotExist());
+
+        mockMvc.perform(get("/api/v1/recommendations")
+                .header("Authorization", bearer(accepter.token()))
+                .param("page", "1")
+                .param("size", "10"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.items[0].rank").value(1))
+            .andExpect(jsonPath("$.data.items[0].demand.id").value(demandId));
 
         Long orderId = acceptDemand(accepter.token(), demandId);
 
@@ -91,7 +103,18 @@ class FrontendIntegrationFlowTest {
         mockMvc.perform(get("/api/v1/orders/{orderId}", orderId)
                 .header("Authorization", bearer(publisher.token())))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.status").value("ACCEPTED"));
+            .andExpect(jsonPath("$.data.status").value("ACCEPTED"))
+            .andExpect(jsonPath("$.data.demand.canAccept").value(false))
+            .andExpect(jsonPath("$.data.demand.acceptDisabledReason").value("OWN_DEMAND"));
+
+        mockMvc.perform(get("/api/v1/notifications")
+                .header("Authorization", bearer(publisher.token()))
+                .param("page", "1")
+                .param("size", "10"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.items[0].targetType").value("ORDER"))
+            .andExpect(jsonPath("$.data.items[0].targetId").value(orderId))
+            .andExpect(jsonPath("$.data.items[0].actionHint").value("VIEW_ORDER"));
 
         updateOrder(accepter.token(), orderId, "IN_PROGRESS", "started", null)
             .andExpect(status().isOk())
@@ -115,13 +138,22 @@ class FrontendIntegrationFlowTest {
             .andExpect(jsonPath("$.data.orderId").value(orderId))
             .andExpect(jsonPath("$.data.targetId").value(accepter.userId()))
             .andExpect(jsonPath("$.data.rating").value(5));
+
+        mockMvc.perform(get("/api/v1/orders/{orderId}", orderId)
+                .header("Authorization", bearer(publisher.token())))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.reviews[0].rating").value(5))
+            .andExpect(jsonPath("$.data.currentUserReviewed").value(true))
+            .andExpect(jsonPath("$.data.pendingReviewTarget").doesNotExist())
+            .andExpect(jsonPath("$.data.completionHint").value("双方已确认完成"));
     }
 
     @Test
     void shouldRejectUnauthenticatedProtectedApi() throws Exception {
         mockMvc.perform(get("/api/v1/orders"))
             .andExpect(status().isUnauthorized())
-            .andExpect(jsonPath("$.code").value(1001));
+            .andExpect(jsonPath("$.code").value(1001))
+            .andExpect(jsonPath("$.errorCode").value("AUTH_FAILED"));
     }
 
     @Test

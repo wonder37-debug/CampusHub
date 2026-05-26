@@ -93,16 +93,8 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         demand.setUpdatedAt(now);
         demandRepository.save(demand);
 
-        notificationApplicationService.notifyOrderAccepted(
-            demand.getPublisherId(),
-            order.getId(),
-            "您的需求已被接单"
-        );
-        notificationApplicationService.notifyOrderAccepted(
-            accepter.getId(),
-            order.getId(),
-            "您已成功接单"
-        );
+        notificationApplicationService.notifyOrderAcceptedForPublisher(demand.getPublisherId(), order.getId());
+        notificationApplicationService.notifyOrderAcceptedForAccepter(accepter.getId(), order.getId());
 
         return OrderDetailResponse.from(order, DemandDetailResponse.from(demand));
     }
@@ -141,16 +133,8 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         orderRepository.save(order);
         demandRepository.save(demand);
 
-        notificationApplicationService.notifyStatusChanged(
-            order.getPublisherId(),
-            order.getId(),
-            "订单进度已更新为“" + formatOrderStatus(targetStatus) + "”"
-        );
-        notificationApplicationService.notifyStatusChanged(
-            order.getAccepterId(),
-            order.getId(),
-            "订单进度已更新为“" + formatOrderStatus(targetStatus) + "”"
-        );
+        notificationApplicationService.notifyOrderStatusChanged(order.getPublisherId(), order.getId(), targetStatus);
+        notificationApplicationService.notifyOrderStatusChanged(order.getAccepterId(), order.getId(), targetStatus);
         return OrderDetailResponse.from(order, DemandDetailResponse.from(demand));
     }
 
@@ -177,11 +161,7 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
             order.addHistory(OrderStatus.IN_PROGRESS, OrderStatus.IN_PROGRESS, operatorId, COMPLETION_PENDING_NOTE, now);
             order.setUpdatedAt(now);
             orderRepository.save(order);
-            notificationApplicationService.notifyStatusChanged(
-                counterpartId,
-                order.getId(),
-                "对方已确认完成，请您确认订单完成"
-            );
+            notificationApplicationService.notifyOrderCompletionPending(counterpartId, order.getId());
             return OrderDetailResponse.from(order, DemandDetailResponse.from(demand));
         }
 
@@ -198,8 +178,8 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         orderRepository.save(order);
         demandRepository.save(demand);
 
-        notificationApplicationService.notifyStatusChanged(order.getPublisherId(), order.getId(), "订单已完成");
-        notificationApplicationService.notifyStatusChanged(order.getAccepterId(), order.getId(), "订单已完成");
+        notificationApplicationService.notifyOrderStatusChanged(order.getPublisherId(), order.getId(), OrderStatus.COMPLETED);
+        notificationApplicationService.notifyOrderStatusChanged(order.getAccepterId(), order.getId(), OrderStatus.COMPLETED);
         return OrderDetailResponse.from(order, DemandDetailResponse.from(demand));
     }
 
@@ -329,17 +309,5 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
 
     private boolean isDemandExpired(Demand demand, LocalDateTime now) {
         return demand.getEndTime() != null && demand.getEndTime().isBefore(now);
-    }
-
-    private String formatOrderStatus(OrderStatus status) {
-        if (status == null) {
-            return "未知状态";
-        }
-        return switch (status) {
-            case ACCEPTED -> "已接单";
-            case IN_PROGRESS -> "进行中";
-            case COMPLETED -> "已完成";
-            case CANCELLED -> "已取消";
-        };
     }
 }

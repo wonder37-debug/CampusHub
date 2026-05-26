@@ -1,8 +1,8 @@
 package com.campushub.backend.api.view;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.campushub.backend.auth.domain.User;
 import com.campushub.backend.auth.dto.UserProfileResponse;
-
 import java.math.BigDecimal;
 
 public record UserSummaryView(
@@ -46,5 +46,10 @@ public record UserSummaryView(
             user.getBalance(),
             user.getFrozenBalance()
         );
+    }
+
+    @JsonProperty("credit_score")
+    public int creditScoreSnakeCase() {
+        return creditScore;
     }
 }

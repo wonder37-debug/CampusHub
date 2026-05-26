@@ -24,6 +24,9 @@ public class Demand {
     private boolean isApproved;
     private boolean anonymous;
     private String anonymousCode;
+    private Long reviewedBy;
+    private LocalDateTime reviewedAt;
+    private String reviewReason;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -49,6 +52,9 @@ public class Demand {
         boolean isApproved,
         boolean anonymous,
         String anonymousCode,
+        Long reviewedBy,
+        LocalDateTime reviewedAt,
+        String reviewReason,
         LocalDateTime createdAt,
         LocalDateTime updatedAt
     ) {
@@ -69,6 +75,9 @@ public class Demand {
         this.isApproved = isApproved;
         this.anonymous = anonymous;
         this.anonymousCode = anonymousCode;
+        this.reviewedBy = reviewedBy;
+        this.reviewedAt = reviewedAt;
+        this.reviewReason = reviewReason;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
     }
@@ -213,6 +222,30 @@ public class Demand {
 
     public void setAnonymousCode(String anonymousCode) {
         this.anonymousCode = anonymousCode;
+    }
+
+    public Long getReviewedBy() {
+        return reviewedBy;
+    }
+
+    public void setReviewedBy(Long reviewedBy) {
+        this.reviewedBy = reviewedBy;
+    }
+
+    public LocalDateTime getReviewedAt() {
+        return reviewedAt;
+    }
+
+    public void setReviewedAt(LocalDateTime reviewedAt) {
+        this.reviewedAt = reviewedAt;
+    }
+
+    public String getReviewReason() {
+        return reviewReason;
+    }
+
+    public void setReviewReason(String reviewReason) {
+        this.reviewReason = reviewReason;
     }
 
     public LocalDateTime getCreatedAt() {

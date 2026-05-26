@@ -18,9 +18,12 @@ import com.campushub.backend.demand.domain.DemandStatus;
 import com.campushub.backend.demand.dto.DemandDetailResponse;
 import com.campushub.backend.demand.dto.DemandSummaryResponse;
 import com.campushub.backend.demand.repository.DemandRepository;
+import com.campushub.backend.notification.service.NotificationApplicationService;
 import com.campushub.backend.order.domain.Order;
 import com.campushub.backend.order.domain.OrderStatus;
 import com.campushub.backend.order.repository.OrderRepository;
+import com.campushub.backend.recommendation.domain.UserActionLog;
+import com.campushub.backend.recommendation.repository.UserActionLogRepository;
 import com.campushub.backend.review.domain.Review;
 import com.campushub.backend.review.repository.ReviewRepository;
 import java.time.LocalDate;
@@ -43,18 +46,24 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
     private final UserRepository userRepository;
     private final DemandRepository demandRepository;
     private final OrderRepository orderRepository;
+    private final NotificationApplicationService notificationApplicationService;
 
     @Autowired(required = false)
     private ReviewRepository reviewRepository;
 
+    @Autowired(required = false)
+    private UserActionLogRepository userActionLogRepository;
+
     public AdminApplicationServiceImpl(
         UserRepository userRepository,
         DemandRepository demandRepository,
-        OrderRepository orderRepository
+        OrderRepository orderRepository,
+        NotificationApplicationService notificationApplicationService
     ) {
         this.userRepository = userRepository;
         this.demandRepository = demandRepository;
         this.orderRepository = orderRepository;
+        this.notificationApplicationService = notificationApplicationService;
     }
 
     @Override
@@ -65,8 +74,10 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
         }
 
         List<User> filtered = userRepository.findAll().stream()
-            .filter(user -> matchesUserKeyword(user, query.q()))
-            .sorted(Comparator.comparing(User::getCreatedAt, Comparator.nullsLast(LocalDateTime::compareTo)).reversed())
+            .filter(user -> matchesUserKeyword(user, query.q(), query.searchField()))
+            .filter(user -> matchesUserRole(user, query.role()))
+            .filter(user -> matchesUserStatus(user, query.status()))
+            .sorted(resolveUserComparator(query.sortBy(), query.sortDirection()))
             .toList();
 
         int page = query.pageQuery().page();
@@ -145,16 +156,27 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
         }
 
         String action = command.action().trim().toLowerCase(Locale.ROOT);
+        LocalDateTime now = LocalDateTime.now();
         if ("approve".equals(action)) {
             demand.setStatus(DemandStatus.PENDING);
             demand.setIsApproved(true);
+            demand.setReviewReason(null);
         } else if ("reject".equals(action)) {
+            String reviewReason = normalizeRejectReason(command.reason());
             demand.setStatus(DemandStatus.CANCELLED);
             demand.setIsApproved(false);
+            demand.setReviewReason(reviewReason);
+            notificationApplicationService.notifyDemandRejected(
+                demand.getPublisherId(),
+                demand.getId(),
+                "您的需求《" + demand.getTitle() + "》审核未通过，原因：" + reviewReason
+            );
         } else {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "unsupported review action: " + command.action());
         }
-        demand.setUpdatedAt(LocalDateTime.now());
+        demand.setReviewedBy(operatorId);
+        demand.setReviewedAt(now);
+        demand.setUpdatedAt(now);
         return DemandDetailResponse.from(demandRepository.save(demand));
     }
 
@@ -167,7 +189,7 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
         List<Order> orders = orderRepository.findAll();
         LocalDate today = LocalDate.now();
 
-        long dailyActiveUsers = countDailyActiveUsers(users, demands, orders, today);
+        long dailyActiveUsers = countDailyActiveUsers(demands, orders, today);
         long pendingReviewDemands = demandRepository.findByStatus(DemandStatus.REVIEWING).size();
         long completedOrders = orders.stream()
             .filter(order -> order.getStatus() == OrderStatus.COMPLETED)
@@ -207,14 +229,24 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
             .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "user not found"));
     }
 
-    private boolean matchesUserKeyword(User user, String keyword) {
+    private boolean matchesUserKeyword(User user, String keyword, String searchField) {
         if (keyword == null || keyword.isBlank()) {
             return true;
         }
         String normalized = keyword.trim().toLowerCase(Locale.ROOT);
-        return containsIgnoreCase(user.getNickname(), normalized)
-            || containsIgnoreCase(user.getEmail(), normalized)
-            || containsIgnoreCase(user.getStudentId(), normalized);
+        if (searchField == null || searchField.isBlank()) {
+            return containsIgnoreCase(user.getNickname(), normalized)
+                || containsIgnoreCase(user.getEmail(), normalized)
+                || containsIgnoreCase(user.getStudentId(), normalized);
+        }
+        return switch (searchField.trim().toLowerCase(Locale.ROOT)) {
+            case "nickname" -> containsIgnoreCase(user.getNickname(), normalized);
+            case "email" -> containsIgnoreCase(user.getEmail(), normalized);
+            case "studentid", "student_id" -> containsIgnoreCase(user.getStudentId(), normalized);
+            default -> containsIgnoreCase(user.getNickname(), normalized)
+                || containsIgnoreCase(user.getEmail(), normalized)
+                || containsIgnoreCase(user.getStudentId(), normalized);
+        };
     }
 
     private boolean matchesDemandKeyword(Demand demand, String keyword) {
@@ -235,19 +267,57 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
         return value != null && value.toLowerCase(Locale.ROOT).contains(normalizedKeyword);
     }
 
-    private long countDailyActiveUsers(List<User> users, List<Demand> demands, List<Order> orders, LocalDate today) {
+    private boolean matchesUserRole(User user, String role) {
+        if (role == null || role.isBlank()) {
+            return true;
+        }
+        return user.getRole().name().equalsIgnoreCase(role.trim());
+    }
+
+    private boolean matchesUserStatus(User user, String status) {
+        if (status == null || status.isBlank()) {
+            return true;
+        }
+        return user.getStatus().name().equalsIgnoreCase(status.trim());
+    }
+
+    private Comparator<User> resolveUserComparator(String sortBy, String sortDirection) {
+        boolean descending = sortDirection == null || sortDirection.isBlank()
+            || !"asc".equalsIgnoreCase(sortDirection.trim());
+        Comparator<User> comparator = switch (sortBy == null ? "" : sortBy.trim().toLowerCase(Locale.ROOT)) {
+            case "creditscore", "credit_score" ->
+                Comparator.comparing(User::getCreditScore, Comparator.nullsLast(Integer::compareTo));
+            case "nickname" ->
+                Comparator.comparing(User::getNickname, Comparator.nullsLast(String::compareToIgnoreCase));
+            case "createdat", "created_at" ->
+                Comparator.comparing(User::getCreatedAt, Comparator.nullsLast(LocalDateTime::compareTo));
+            default ->
+                Comparator.comparing(User::getCreatedAt, Comparator.nullsLast(LocalDateTime::compareTo));
+        };
+        comparator = descending ? comparator.reversed() : comparator;
+        return comparator.thenComparing(User::getId, Comparator.nullsLast(Long::compareTo));
+    }
+
+    private long countDailyActiveUsers(List<Demand> demands, List<Order> orders, LocalDate today) {
         Set<Long> activeUserIds = new HashSet<>();
 
-        users.stream()
-            .filter(user -> isSameDate(user.getCreatedAt(), today))
-            .map(User::getId)
-            .forEach(activeUserIds::add);
+        collectDemandActivity(activeUserIds, demands, today);
+        collectOrderActivity(activeUserIds, orders, today);
+        collectReviewActivity(activeUserIds, today);
+        collectRecommendationActivity(activeUserIds, today);
 
+        activeUserIds.remove(null);
+        return activeUserIds.size();
+    }
+
+    private void collectDemandActivity(Set<Long> activeUserIds, List<Demand> demands, LocalDate today) {
         demands.stream()
             .filter(demand -> isSameDate(demand.getCreatedAt(), today) || isSameDate(demand.getUpdatedAt(), today))
             .map(Demand::getPublisherId)
             .forEach(activeUserIds::add);
+    }
 
+    private void collectOrderActivity(Set<Long> activeUserIds, List<Order> orders, LocalDate today) {
         orders.stream()
             .filter(order -> isSameDate(order.getCreatedAt(), today)
                 || isSameDate(order.getUpdatedAt(), today)
@@ -256,19 +326,37 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
                 activeUserIds.add(order.getPublisherId());
                 activeUserIds.add(order.getAccepterId());
             });
+    }
 
-        if (reviewRepository != null) {
-            for (User user : users) {
-                List<Review> reviews = reviewRepository.findByTargetId(user.getId());
-                reviews.stream()
-                    .filter(review -> isSameDate(review.getCreatedAt(), today))
-                    .map(Review::getAuthorId)
-                    .forEach(activeUserIds::add);
+    private void collectReviewActivity(Set<Long> activeUserIds, LocalDate today) {
+        if (reviewRepository == null) {
+            return;
+        }
+        for (Review review : listAllReviews()) {
+            if (isSameDate(review.getCreatedAt(), today)) {
+                activeUserIds.add(review.getAuthorId());
             }
         }
+    }
 
-        activeUserIds.remove(null);
-        return activeUserIds.size();
+    private void collectRecommendationActivity(Set<Long> activeUserIds, LocalDate today) {
+        if (userActionLogRepository == null) {
+            return;
+        }
+        for (User user : userRepository.findAll()) {
+            List<UserActionLog> logs = userActionLogRepository.findByUserId(user.getId());
+            logs.stream()
+                .filter(log -> isSameDate(log.getCreatedAt(), today))
+                .map(UserActionLog::getUserId)
+                .forEach(activeUserIds::add);
+        }
+    }
+
+    private List<Review> listAllReviews() {
+        return userRepository.findAll().stream()
+            .flatMap(user -> reviewRepository.findByTargetId(user.getId()).stream())
+            .distinct()
+            .toList();
     }
 
     private boolean isSameDate(LocalDateTime time, LocalDate date) {
@@ -282,5 +370,13 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
                 "admin reason length must not exceed " + MAX_ADMIN_REASON_LENGTH
             );
         }
+    }
+
+    private String normalizeRejectReason(String reason) {
+        if (reason == null || reason.isBlank()) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "reject reason must not be blank");
+        }
+        validateReason(reason);
+        return reason.trim();
     }
 }

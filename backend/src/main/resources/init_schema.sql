@@ -112,11 +112,17 @@ CREATE TABLE IF NOT EXISTS`ord_demand` (
 
   `note` varchar(500) DEFAULT NULL COMMENT '需求补充说明',
 
+  `reviewed_by` bigint DEFAULT NULL COMMENT '审核人ID',
+
+  `reviewed_at` datetime DEFAULT NULL COMMENT '审核时间',
+
+  `review_reason` varchar(500) DEFAULT NULL COMMENT '审核理由/拒绝原因',
+
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '发布时间',
 
   `updated_at` datetime DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
 
-  CONSTRAINT `chk_demand_category` CHECK (`category` IN ('EXPRESS','STUDY_TUTORING','SECOND_HAND','TEAM_UP','OTHER')),
+  CONSTRAINT `chk_demand_category` CHECK (`category` IN ('EXPRESS','ERRAND','STUDY_TUTORING','SECOND_HAND','TEAM_UP','OTHER')),
 
   CONSTRAINT `chk_demand_status` CHECK (`status` IN ('PENDING','REVIEWING','IN_PROGRESS','COMPLETED','CANCELLED'))
 
@@ -278,7 +284,7 @@ CREATE TABLE IF NOT EXISTS`sys_notification` (
 
   KEY `idx_notify_user_read` (`user_id`, `is_read`) COMMENT '加速未读消息列表查询',
 
-  CONSTRAINT `chk_notify_type` CHECK (`type` IN ('ORDER_ACCEPTED','STATUS_CHANGED','REVIEW_RECEIVED'))
+  CONSTRAINT `chk_notify_type` CHECK (`type` IN ('ORDER_ACCEPTED','STATUS_CHANGED','REVIEW_RECEIVED','REVIEW_REQUEST','DEMAND_REJECTED'))
 
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='站内信通知表';
 

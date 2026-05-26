@@ -12,6 +12,7 @@ import com.campushub.backend.common.model.PageQuery;
 import com.campushub.backend.notification.dto.NotificationQuery;
 import com.campushub.backend.notification.dto.NotificationResponse;
 import com.campushub.backend.notification.repository.InMemoryNotificationRepository;
+import com.campushub.backend.order.domain.OrderStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -26,8 +27,8 @@ class NotificationApplicationServiceImplTest {
 
     @Test
     void shouldListUnreadNotifications() {
-        notificationApplicationService.notifyOrderAccepted(1L, 100L, "接单成功");
-        notificationApplicationService.notifyStatusChanged(1L, 100L, "状态变更");
+        notificationApplicationService.notifyOrderAcceptedForPublisher(1L, 100L);
+        notificationApplicationService.notifyOrderStatusChanged(1L, 100L, OrderStatus.IN_PROGRESS);
 
         PageResponse<NotificationResponse> page = notificationApplicationService.list(
             1L,
@@ -36,11 +37,13 @@ class NotificationApplicationServiceImplTest {
 
         assertEquals(2, page.total());
         assertTrue(page.items().stream().allMatch(item -> !item.read()));
+        assertTrue(page.items().stream().allMatch(item -> "ORDER".equals(item.targetType())));
+        assertTrue(page.items().stream().allMatch(item -> "VIEW_ORDER".equals(item.actionHint())));
     }
 
     @Test
     void shouldMarkOwnNotificationAsRead() {
-        notificationApplicationService.notifyOrderAccepted(1L, 100L, "接单成功");
+        notificationApplicationService.notifyOrderAcceptedForPublisher(1L, 100L);
         NotificationResponse notification = notificationApplicationService.list(
             1L,
             new NotificationQuery(false, new PageQuery(1, 20))
@@ -57,7 +60,7 @@ class NotificationApplicationServiceImplTest {
 
     @Test
     void shouldRejectMarkingOthersNotificationAsRead() {
-        notificationApplicationService.notifyOrderAccepted(1L, 100L, "接单成功");
+        notificationApplicationService.notifyOrderAcceptedForPublisher(1L, 100L);
         NotificationResponse notification = notificationApplicationService.list(
             1L,
             new NotificationQuery(false, new PageQuery(1, 20))
@@ -74,5 +77,18 @@ class NotificationApplicationServiceImplTest {
             new NotificationQuery(false, new PageQuery(1, 20))
         ).items().get(0);
         assertFalse(unchanged.read());
+    }
+
+    @Test
+    void shouldBuildStructuredContentWithFallbackWhenRelatedResourceMissing() {
+        notificationApplicationService.notifyDemandRejected(1L, 999L, "信息不完整");
+        NotificationResponse notification = notificationApplicationService.list(
+            1L,
+            new NotificationQuery(false, new PageQuery(1, 20))
+        ).items().get(0);
+
+        assertEquals("需求审核未通过", notification.title());
+        assertTrue(notification.content().contains("相关需求"));
+        assertTrue(notification.content().contains("信息不完整"));
     }
 }

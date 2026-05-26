@@ -1,6 +1,7 @@
 package com.campushub.backend.api;
 
 import com.campushub.backend.api.view.DemandView;
+import com.campushub.backend.api.view.RecommendedDemandView;
 import com.campushub.backend.common.api.ApiResponse;
 import com.campushub.backend.common.api.PageResponse;
 import com.campushub.backend.common.model.PageQuery;
@@ -8,8 +9,8 @@ import com.campushub.backend.common.security.CurrentUser;
 import com.campushub.backend.common.security.RequestUserExtractor;
 import com.campushub.backend.demand.domain.DemandSort;
 import com.campushub.backend.demand.dto.DemandQuery;
-import com.campushub.backend.demand.dto.DemandSummaryResponse;
 import com.campushub.backend.demand.repository.DemandRepository;
+import com.campushub.backend.recommendation.dto.RecommendationItemResponse;
 import com.campushub.backend.recommendation.service.RecommendationApplicationService;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
@@ -40,7 +41,7 @@ public class RecommendationController {
     }
 
     @GetMapping
-    public ApiResponse<PageResponse<DemandView>> recommend(
+    public ApiResponse<PageResponse<RecommendedDemandView>> recommend(
         HttpServletRequest request,
         @RequestParam(required = false) String q,
         @RequestParam(required = false) String category,
@@ -50,14 +51,20 @@ public class RecommendationController {
         @RequestParam(defaultValue = "20") int size
     ) {
         CurrentUser currentUser = requestUserExtractor.requireCurrentUser(request);
-        PageResponse<DemandSummaryResponse> rawPage = recommendationApplicationService.recommendDemandList(
+        PageResponse<RecommendationItemResponse> rawPage = recommendationApplicationService.recommend(
             currentUser.userId(),
             new DemandQuery(q, category, campusZone, location, null, null, DemandSort.RECOMMEND, new PageQuery(page, size))
         );
-        List<DemandView> items = rawPage.items().stream()
-            .map(item -> demandRepository.findById(item.id()).orElseThrow())
-            .map(demand -> apiViewMapper.toDemandView(demand, currentUser))
+        List<RecommendedDemandView> items = rawPage.items().stream()
+            .map(item -> toRecommendedDemandView(item, currentUser))
             .toList();
         return ApiResponse.success(new PageResponse<>(items, rawPage.page(), rawPage.size(), rawPage.total()));
+    }
+
+    private RecommendedDemandView toRecommendedDemandView(RecommendationItemResponse item, CurrentUser currentUser) {
+        DemandView demand = demandRepository.findById(item.demandId())
+            .map(saved -> apiViewMapper.toDemandView(saved, currentUser))
+            .orElseThrow();
+        return new RecommendedDemandView(item.rank(), item.score(), item.reasonTags(), demand);
     }
 }

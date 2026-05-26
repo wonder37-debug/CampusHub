@@ -81,6 +81,15 @@ public class DemandEntity {
     @TableField("publisher_display_name")
     private String publisherDisplayName;
 
+    @TableField("reviewed_by")
+    private Long reviewedBy;
+
+    @TableField("reviewed_at")
+    private LocalDateTime reviewedAt;
+
+    @TableField("review_reason")
+    private String reviewReason;
+
     @TableField("created_at")
     private LocalDateTime createdAt;
 
@@ -114,6 +123,9 @@ public class DemandEntity {
         entity.isApproved = demand.getIsApproved();
         entity.anonymous = demand.isAnonymous();
         entity.anonymousCode = demand.getAnonymousCode();
+        entity.reviewedBy = demand.getReviewedBy();
+        entity.reviewedAt = demand.getReviewedAt();
+        entity.reviewReason = demand.getReviewReason();
         entity.createdAt = demand.getCreatedAt();
         entity.updatedAt = demand.getUpdatedAt();
         return entity;
@@ -139,6 +151,9 @@ public class DemandEntity {
         demand.setIsApproved(this.isApproved != null && this.isApproved);
         demand.setAnonymous(this.anonymous != null && this.anonymous);
         demand.setAnonymousCode(this.anonymousCode);
+        demand.setReviewedBy(this.reviewedBy);
+        demand.setReviewedAt(this.reviewedAt);
+        demand.setReviewReason(this.reviewReason);
         demand.setCreatedAt(this.createdAt);
         demand.setUpdatedAt(this.updatedAt);
         return demand;
@@ -278,6 +293,30 @@ public class DemandEntity {
 
     public void setPublisherDisplayName(String publisherDisplayName) {
         this.publisherDisplayName = publisherDisplayName;
+    }
+
+    public Long getReviewedBy() {
+        return reviewedBy;
+    }
+
+    public void setReviewedBy(Long reviewedBy) {
+        this.reviewedBy = reviewedBy;
+    }
+
+    public LocalDateTime getReviewedAt() {
+        return reviewedAt;
+    }
+
+    public void setReviewedAt(LocalDateTime reviewedAt) {
+        this.reviewedAt = reviewedAt;
+    }
+
+    public String getReviewReason() {
+        return reviewReason;
+    }
+
+    public void setReviewReason(String reviewReason) {
+        this.reviewReason = reviewReason;
     }
 
     public LocalDateTime getCreatedAt() {

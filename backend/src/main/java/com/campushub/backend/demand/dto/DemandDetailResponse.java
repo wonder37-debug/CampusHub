@@ -22,6 +22,9 @@ public record DemandDetailResponse(
     String status,
     boolean anonymous,
     String anonymousCode,
+    Long reviewedBy,
+    LocalDateTime reviewedAt,
+    String reviewReason,
     LocalDateTime createdAt,
     LocalDateTime updatedAt
 ) {
@@ -46,6 +49,9 @@ public record DemandDetailResponse(
             demand.getStatus().name(),
             demand.isAnonymous(),
             demand.getAnonymousCode(),
+            demand.getReviewedBy(),
+            demand.getReviewedAt(),
+            demand.getReviewReason(),
             demand.getCreatedAt(),
             demand.getUpdatedAt()
         );

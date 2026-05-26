@@ -197,6 +197,45 @@ class DemandApplicationServiceImplTest {
     }
 
     @Test
+    void shouldSupportErrandCategoryAndLegacyAlias() {
+        DemandDetailResponse errandDemand = demandApplicationService.publish(
+            publisherId,
+            new PublishDemandCommand(
+                "代办校园卡",
+                "帮忙代办一项业务",
+                null,
+                "ERRAND",
+                "XIANLIN",
+                "行政楼",
+                null,
+                null,
+                BigDecimal.ZERO,
+                List.of(),
+                false
+            )
+        );
+        DemandDetailResponse legacyAliasDemand = demandApplicationService.publish(
+            publisherId,
+            new PublishDemandCommand(
+                "顺路代办",
+                "走流程代办",
+                null,
+                "RUN_ERRAND",
+                "GULOU",
+                "行政楼",
+                null,
+                null,
+                BigDecimal.ZERO,
+                List.of(),
+                false
+            )
+        );
+
+        assertEquals("ERRAND", errandDemand.category());
+        assertEquals("ERRAND", legacyAliasDemand.category());
+    }
+
+    @Test
     void shouldRejectUpdateByNonPublisher() {
         DemandDetailResponse published = demandApplicationService.publish(
             publisherId,
@@ -290,6 +329,9 @@ class DemandApplicationServiceImplTest {
             DemandStatus.COMPLETED,
             true,
             false,
+            null,
+            null,
+            null,
             null,
             LocalDateTime.now(),
             LocalDateTime.now()

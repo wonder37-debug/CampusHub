@@ -11,8 +11,11 @@ import com.campushub.backend.common.security.CurrentUser;
 import com.campushub.backend.demand.domain.Demand;
 import com.campushub.backend.demand.repository.DemandRepository;
 import com.campushub.backend.order.domain.Order;
+import com.campushub.backend.order.domain.OrderStatus;
 import com.campushub.backend.order.domain.OrderStatusHistoryEntry;
+import com.campushub.backend.order.repository.OrderRepository;
 import com.campushub.backend.review.domain.Review;
+import com.campushub.backend.review.repository.ReviewRepository;
 import java.util.List;
 import org.springframework.stereotype.Component;
 
@@ -21,26 +24,49 @@ public class ApiViewMapper {
 
     private final DemandRepository demandRepository;
     private final UserRepository userRepository;
+    private final OrderRepository orderRepository;
+    private final ReviewRepository reviewRepository;
 
-    public ApiViewMapper(DemandRepository demandRepository, UserRepository userRepository) {
+    public ApiViewMapper(
+        DemandRepository demandRepository,
+        UserRepository userRepository,
+        OrderRepository orderRepository,
+        ReviewRepository reviewRepository
+    ) {
         this.demandRepository = demandRepository;
         this.userRepository = userRepository;
+        this.orderRepository = orderRepository;
+        this.reviewRepository = reviewRepository;
     }
 
     public DemandView toDemandView(Demand demand, CurrentUser currentUser) {
         boolean canSeePublisher = !demand.isAnonymous()
             || currentUser != null && (currentUser.isAdmin() || demand.getPublisherId().equals(currentUser.userId()));
+        User publisherUser = demand.getPublisherId() == null ? null : userRepository.findById(demand.getPublisherId()).orElse(null);
         Long publisherId = canSeePublisher ? demand.getPublisherId() : null;
         String publisherDisplayName = canSeePublisher ? demand.getPublisherDisplayName() : demand.getAnonymousCode();
-        UserSummaryView publisher = canSeePublisher && demand.getPublisherId() != null
-            ? userRepository.findById(demand.getPublisherId()).map(UserSummaryView::from).orElse(null)
-            : null;
+        UserSummaryView publisher = canSeePublisher && publisherUser != null ? UserSummaryView.from(publisherUser) : null;
+        boolean publisherIdentityVisible = publisherUser != null
+            && (!demand.isAnonymous()
+            || currentUser != null && (currentUser.isAdmin() || demand.getPublisherId().equals(currentUser.userId())));
+        String publisherStudentIdMasked = publisherUser == null ? null : resolvePublisherStudentIdMasked(
+            publisherUser,
+            publisherIdentityVisible
+        );
+        Order relatedOrder = demand.getId() == null ? null : orderRepository.findByDemandId(demand.getId()).orElse(null);
+        boolean canAccept = canAcceptDemand(demand, relatedOrder, currentUser);
+        String acceptDisabledReason = canAccept ? null : resolveAcceptDisabledReason(demand, relatedOrder, currentUser);
+        boolean canStartExecution = canStartExecution(relatedOrder, currentUser);
+        boolean canViewAcceptNote = canViewAcceptNote(relatedOrder, currentUser);
+        boolean canSubmitAcceptNote = canSubmitAcceptNote(relatedOrder, currentUser);
 
         return new DemandView(
             demand.getId(),
             publisherId,
             publisherDisplayName,
             publisher,
+            publisherStudentIdMasked,
+            publisherIdentityVisible,
             demand.getTitle(),
             demand.getDescription(),
             demand.getCategory().name(),
@@ -53,6 +79,11 @@ public class ApiViewMapper {
             demand.getStatus().name(),
             demand.isAnonymous(),
             demand.getAnonymousCode(),
+            canAccept,
+            acceptDisabledReason,
+            canStartExecution,
+            canViewAcceptNote,
+            canSubmitAcceptNote,
             demand.getCreatedAt(),
             demand.getUpdatedAt()
         );
@@ -62,6 +93,13 @@ public class ApiViewMapper {
         Demand demand = demandRepository.findById(order.getDemandId()).orElse(null);
         User requester = userRepository.findById(order.getPublisherId()).orElse(null);
         User provider = userRepository.findById(order.getAccepterId()).orElse(null);
+        List<ReviewView> reviews = reviewRepository.findByOrderId(order.getId()).stream()
+            .map(this::toReviewView)
+            .toList();
+        boolean currentUserReviewed = currentUser != null
+            && reviewRepository.findByOrderIdAndAuthorId(order.getId(), currentUser.userId()).isPresent();
+        Long pendingReviewTarget = resolvePendingReviewTarget(order, currentUser, currentUserReviewed);
+        String completionHint = resolveCompletionHint(order, currentUser);
 
         return new OrderView(
             order.getId(),
@@ -79,7 +117,11 @@ public class ApiViewMapper {
             demand == null ? null : toDemandView(demand, currentUser),
             requester == null ? null : UserSummaryView.from(requester),
             provider == null ? null : UserSummaryView.from(provider),
-            order.getStatusHistory().stream().map(this::toTimelineView).toList()
+            order.getStatusHistory().stream().map(this::toTimelineView).toList(),
+            reviews,
+            currentUserReviewed,
+            pendingReviewTarget,
+            completionHint
         );
     }
 
@@ -106,5 +148,126 @@ public class ApiViewMapper {
             entry.operatorId(),
             entry.note()
         );
+    }
+
+    private boolean canAcceptDemand(Demand demand, Order relatedOrder, CurrentUser currentUser) {
+        return resolveAcceptDisabledReason(demand, relatedOrder, currentUser) == null;
+    }
+
+    private String resolveAcceptDisabledReason(Demand demand, Order relatedOrder, CurrentUser currentUser) {
+        if (currentUser == null) {
+            return "LOGIN_REQUIRED";
+        }
+        if (currentUser.isAdmin()) {
+            return "ADMIN_FORBIDDEN";
+        }
+        if (demand.getPublisherId() != null && demand.getPublisherId().equals(currentUser.userId())) {
+            return "OWN_DEMAND";
+        }
+        if (demand.getEndTime() != null && demand.getEndTime().isBefore(java.time.LocalDateTime.now())) {
+            return "DEMAND_EXPIRED";
+        }
+        if (demand.getStatus() == null || demand.getStatus() != com.campushub.backend.demand.domain.DemandStatus.PENDING) {
+            return "DEMAND_NOT_PENDING";
+        }
+        if (relatedOrder != null) {
+            return switch (relatedOrder.getStatus()) {
+                case ACCEPTED, IN_PROGRESS -> "DEMAND_ALREADY_ACCEPTED";
+                case COMPLETED, CANCELLED -> "DEMAND_ORDER_CLOSED";
+            };
+        }
+        return null;
+    }
+
+    private boolean canStartExecution(Order order, CurrentUser currentUser) {
+        return order != null
+            && currentUser != null
+            && currentUser.userId().equals(order.getAccepterId())
+            && order.getStatus() == OrderStatus.ACCEPTED;
+    }
+
+    private boolean canViewAcceptNote(Order order, CurrentUser currentUser) {
+        return order != null
+            && currentUser != null
+            && (currentUser.isAdmin() || order.isParticipant(currentUser.userId()));
+    }
+
+    private boolean canSubmitAcceptNote(Order order, CurrentUser currentUser) {
+        return order != null
+            && currentUser != null
+            && currentUser.userId().equals(order.getAccepterId())
+            && order.getStatus() == OrderStatus.ACCEPTED;
+    }
+
+    private String resolvePublisherStudentIdMasked(User publisherUser, boolean identityVisible) {
+        if (publisherUser == null || publisherUser.getStudentId() == null) {
+            return null;
+        }
+        return identityVisible ? publisherUser.getStudentId() : maskStudentId(publisherUser.getStudentId());
+    }
+
+    private String maskStudentId(String studentId) {
+        if (studentId == null || studentId.length() < 3) {
+            return studentId;
+        }
+        int prefixLength = Math.min(3, studentId.length());
+        int suffixLength = studentId.length() > 5 ? 2 : 1;
+        return studentId.substring(0, prefixLength) + "***" + studentId.substring(studentId.length() - suffixLength);
+    }
+
+    private Long resolvePendingReviewTarget(Order order, CurrentUser currentUser, boolean currentUserReviewed) {
+        if (order == null || currentUser == null || currentUserReviewed || order.getStatus() != OrderStatus.COMPLETED) {
+            return null;
+        }
+        if (currentUser.userId().equals(order.getPublisherId())) {
+            return order.getAccepterId();
+        }
+        if (currentUser.userId().equals(order.getAccepterId())) {
+            return order.getPublisherId();
+        }
+        return null;
+    }
+
+    private String resolveCompletionHint(Order order, CurrentUser currentUser) {
+        if (order == null || currentUser == null) {
+            return null;
+        }
+        if (order.getStatus() == OrderStatus.COMPLETED) {
+            return "双方已确认完成";
+        }
+        if (order.getStatus() != OrderStatus.IN_PROGRESS) {
+            return null;
+        }
+        boolean publisherConfirmed = hasCompletionConfirmation(order, order.getPublisherId());
+        boolean accepterConfirmed = hasCompletionConfirmation(order, order.getAccepterId());
+        if (!publisherConfirmed && !accepterConfirmed) {
+            return null;
+        }
+        if (currentUser.userId().equals(order.getPublisherId())) {
+            if (publisherConfirmed && !accepterConfirmed) {
+                return "已确认完成，等待接单人确认";
+            }
+            if (!publisherConfirmed && accepterConfirmed) {
+                return "接单人已确认完成，等待您确认";
+            }
+        }
+        if (currentUser.userId().equals(order.getAccepterId())) {
+            if (accepterConfirmed && !publisherConfirmed) {
+                return "已确认完成，等待发布者确认";
+            }
+            if (!accepterConfirmed && publisherConfirmed) {
+                return "发布者已确认完成，等待您确认";
+            }
+        }
+        return null;
+    }
+
+    private boolean hasCompletionConfirmation(Order order, Long userId) {
+        return userId != null && order.getStatusHistory().stream()
+            .anyMatch(entry -> entry.operatorId() != null
+                && entry.operatorId().equals(userId)
+                && entry.fromStatus() == OrderStatus.IN_PROGRESS
+                && entry.toStatus() == OrderStatus.IN_PROGRESS
+                && "已确认完成，等待对方确认".equals(entry.note()));
     }
 }

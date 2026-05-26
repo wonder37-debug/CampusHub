@@ -114,10 +114,20 @@ class MyBatisNotificationRepositoryTest {
         Notification notification = new Notification();
         notification.setUserId(userId);
         notification.setType(type);
-        notification.setTitle(type == NotificationType.ORDER_ACCEPTED ? "订单已接单"
-            : type == NotificationType.STATUS_CHANGED ? "状态已变更" : "收到新评价");
-        notification.setContent(type == NotificationType.ORDER_ACCEPTED ? "接单成功"
-            : type == NotificationType.STATUS_CHANGED ? "状态已变更" : "有人评价了你");
+        notification.setTitle(switch (type) {
+            case ORDER_ACCEPTED -> "订单已接单";
+            case STATUS_CHANGED -> "状态已变更";
+            case REVIEW_RECEIVED -> "收到新评价";
+            case REVIEW_REQUEST -> "需求待审核";
+            case DEMAND_REJECTED -> "需求审核未通过";
+        });
+        notification.setContent(switch (type) {
+            case ORDER_ACCEPTED -> "接单成功";
+            case STATUS_CHANGED -> "状态已变更";
+            case REVIEW_RECEIVED -> "有人评价了你";
+            case REVIEW_REQUEST -> "有新的需求等待审核";
+            case DEMAND_REJECTED -> "需求审核未通过";
+        });
         notification.setRead(false);
         notification.setCreatedAt(LocalDateTime.now());
         return notification;

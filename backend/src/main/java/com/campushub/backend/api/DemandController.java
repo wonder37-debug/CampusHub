@@ -4,6 +4,8 @@ import com.campushub.backend.api.view.DemandView;
 import com.campushub.backend.api.view.OrderView;
 import com.campushub.backend.common.api.ApiResponse;
 import com.campushub.backend.common.api.PageResponse;
+import com.campushub.backend.common.exception.BusinessException;
+import com.campushub.backend.common.exception.ErrorCode;
 import com.campushub.backend.common.model.PageQuery;
 import com.campushub.backend.common.security.CurrentUser;
 import com.campushub.backend.common.security.RequestUserExtractor;
@@ -76,19 +78,40 @@ public class DemandController {
         @RequestParam(required = false) String location,
         @RequestParam(required = false) LocalDateTime startTimeFrom,
         @RequestParam(required = false) LocalDateTime startTimeTo,
-        @RequestParam(required = false) DemandSort sort,
+        @RequestParam(required = false) String sort,
         @RequestParam(defaultValue = "1") int page,
         @RequestParam(defaultValue = "20") int size
     ) {
         CurrentUser currentUser = requestUserExtractor.tryExtract(request);
+        DemandSort resolvedSort = parseSort(sort);
         PageResponse<DemandSummaryResponse> rawPage = demandApplicationService.list(
-            new DemandQuery(q, category, campusZone, location, startTimeFrom, startTimeTo, sort, new PageQuery(page, size))
+            new DemandQuery(
+                q,
+                category,
+                campusZone,
+                location,
+                startTimeFrom,
+                startTimeTo,
+                resolvedSort,
+                new PageQuery(page, size)
+            )
         );
         List<DemandView> items = rawPage.items().stream()
             .map(item -> demandRepository.findById(item.id()).orElseThrow())
             .map(demand -> apiViewMapper.toDemandView(demand, currentUser))
             .toList();
         return ApiResponse.success(new PageResponse<>(items, rawPage.page(), rawPage.size(), rawPage.total()));
+    }
+
+    private DemandSort parseSort(String sort) {
+        if (sort == null || sort.isBlank()) {
+            return null;
+        }
+        try {
+            return DemandSort.fromValue(sort);
+        } catch (IllegalArgumentException exception) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, exception.getMessage());
+        }
     }
 
     @GetMapping("/{demandId}")

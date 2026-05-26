@@ -19,6 +19,10 @@ public record OrderView(
     DemandView demand,
     UserSummaryView requester,
     UserSummaryView provider,
-    List<OrderTimelineView> statusHistory
+    List<OrderTimelineView> statusHistory,
+    List<ReviewView> reviews,
+    boolean currentUserReviewed,
+    Long pendingReviewTarget,
+    String completionHint
 ) {
 }

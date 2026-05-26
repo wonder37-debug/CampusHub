@@ -18,9 +18,7 @@ import com.campushub.backend.demand.dto.DemandSummaryResponse;
 import com.campushub.backend.demand.dto.PublishDemandCommand;
 import com.campushub.backend.demand.dto.UpdateDemandCommand;
 import com.campushub.backend.demand.repository.DemandRepository;
-import com.campushub.backend.notification.domain.Notification;
-import com.campushub.backend.notification.domain.NotificationType;
-import com.campushub.backend.notification.repository.NotificationRepository;
+import com.campushub.backend.notification.service.NotificationApplicationService;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Comparator;
@@ -37,18 +35,27 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
     private final DemandRepository demandRepository;
     private final UserRepository userRepository;
     private final SensitiveWordChecker sensitiveWordChecker;
-
-    @Autowired(required = false)
-    private NotificationRepository notificationRepository;
+    private final NotificationApplicationService notificationApplicationService;
 
     public DemandApplicationServiceImpl(
         DemandRepository demandRepository,
         UserRepository userRepository,
         SensitiveWordChecker sensitiveWordChecker
     ) {
+        this(demandRepository, userRepository, sensitiveWordChecker, null);
+    }
+
+    @Autowired
+    public DemandApplicationServiceImpl(
+        DemandRepository demandRepository,
+        UserRepository userRepository,
+        SensitiveWordChecker sensitiveWordChecker,
+        @Autowired(required = false) NotificationApplicationService notificationApplicationService
+    ) {
         this.demandRepository = demandRepository;
         this.userRepository = userRepository;
         this.sensitiveWordChecker = sensitiveWordChecker;
+        this.notificationApplicationService = notificationApplicationService;
     }
 
     @Override
@@ -78,6 +85,9 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
             false,
             command.anonymous(),
             command.anonymous() ? generateAnonymousCode() : null,
+            null,
+            null,
+            null,
             now,
             now
         );
@@ -269,11 +279,11 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
         if (category == null || category.isBlank()) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "category must not be blank");
         }
-        try {
-            return DemandCategory.valueOf(category.trim().toUpperCase(Locale.ROOT));
-        } catch (IllegalArgumentException exception) {
+        DemandCategory resolved = DemandCategory.fromValue(category);
+        if (resolved == null) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "unsupported category: " + category);
         }
+        return resolved;
     }
 
     private CampusZone parseCampusZone(String campusZone) {
@@ -357,24 +367,14 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
     }
 
     private void notifyAdminsForReview(Demand demand) {
-        if (notificationRepository == null || demand == null || demand.getId() == null) {
+        if (notificationApplicationService == null || demand == null || demand.getId() == null) {
             return;
         }
-        LocalDateTime now = LocalDateTime.now();
         for (User admin : userRepository.findByRole(UserRole.ADMIN)) {
             if (admin.getId() == null || admin.getStatus() == UserStatus.BANNED) {
                 continue;
             }
-            notificationRepository.save(new Notification(
-                null,
-                admin.getId(),
-                NotificationType.STATUS_CHANGED,
-                "需求待审核",
-                "有新的需求等待审核：" + demand.getTitle(),
-                false,
-                demand.getId(),
-                now
-            ));
+            notificationApplicationService.notifyDemandReviewRequested(admin.getId(), demand.getId());
         }
     }
 }

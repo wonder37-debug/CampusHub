@@ -54,14 +54,14 @@ class AdminApplicationServiceImplTest {
     private Long adminId;
     private Long publisherId;
     private Long accepterId;
+    private NotificationApplicationService notificationApplicationService;
 
     @BeforeEach
     void setUp() {
         userRepository = new InMemoryUserRepository();
         demandRepository = new InMemoryDemandRepository();
         orderRepository = new InMemoryOrderRepository();
-        NotificationApplicationService notificationApplicationService =
-            new NotificationApplicationServiceImpl(new InMemoryNotificationRepository());
+        notificationApplicationService = new NotificationApplicationServiceImpl(new InMemoryNotificationRepository());
         demandApplicationService = new DemandApplicationServiceImpl(
             demandRepository,
             userRepository,
@@ -76,7 +76,8 @@ class AdminApplicationServiceImplTest {
         adminApplicationService = new AdminApplicationServiceImpl(
             userRepository,
             demandRepository,
-            orderRepository
+            orderRepository,
+            notificationApplicationService
         );
 
         adminId = userRepository.save(new User(
@@ -131,7 +132,7 @@ class AdminApplicationServiceImplTest {
         BusinessException exception = assertThrows(BusinessException.class, () ->
             adminApplicationService.listUsers(
                 publisherId,
-                new AdminUserQuery(null, new PageQuery(1, 20))
+                new AdminUserQuery(null, null, null, null, null, null, new PageQuery(1, 20))
             )
         );
 
@@ -158,11 +159,55 @@ class AdminApplicationServiceImplTest {
 
         PageResponse<UserProfileResponse> page = adminApplicationService.listUsers(
             adminId,
-            new AdminUserQuery("20260003", new PageQuery(1, 20))
+            new AdminUserQuery("20260003", "studentId", null, null, null, null, new PageQuery(1, 20))
         );
 
         assertEquals(1, page.total());
         assertEquals("20260003", page.items().get(0).studentId());
+    }
+
+    @Test
+    void shouldFilterAndSortUsersByRoleStatusAndCreditScore() {
+        userRepository.save(new User(
+            null,
+            "lower-score@example.edu.cn",
+            "20260111",
+            "hash",
+            "低分用户",
+            null,
+            UserRole.USER,
+            UserStatus.ACTIVE,
+            60,
+            new BigDecimal("100.00"),
+            BigDecimal.ZERO,
+            LocalDateTime.now(),
+            LocalDateTime.now()
+        ));
+        userRepository.save(new User(
+            null,
+            "higher-score@example.edu.cn",
+            "20260112",
+            "hash",
+            "高分用户",
+            null,
+            UserRole.USER,
+            UserStatus.ACTIVE,
+            95,
+            new BigDecimal("100.00"),
+            BigDecimal.ZERO,
+            LocalDateTime.now(),
+            LocalDateTime.now()
+        ));
+
+        PageResponse<UserProfileResponse> page = adminApplicationService.listUsers(
+            adminId,
+            new AdminUserQuery(null, null, "USER", "ACTIVE", "creditScore", "desc", new PageQuery(1, 20))
+        );
+
+        assertTrue(page.items().size() >= 2);
+        assertEquals(100, page.items().get(0).creditScore());
+        assertTrue(page.items().stream().allMatch(item -> item.role() == UserRole.USER));
+        assertTrue(page.items().stream().allMatch(item -> item.status() == UserStatus.ACTIVE));
     }
 
     @Test
@@ -196,6 +241,22 @@ class AdminApplicationServiceImplTest {
 
     @Test
     void shouldBuildDashboardStats() {
+        userRepository.save(new User(
+            null,
+            "inactive-today@example.edu.cn",
+            "20269999",
+            "hash",
+            "今日未活跃",
+            null,
+            UserRole.USER,
+            UserStatus.ACTIVE,
+            100,
+            new BigDecimal("100.00"),
+            BigDecimal.ZERO,
+            LocalDateTime.now(),
+            LocalDateTime.now()
+        ));
+
         DemandDetailResponse reviewingDemand = createDemand("待审核咨询", "STUDY_TUTORING");
 
         DemandDetailResponse completedDemand = createDemand("已完成快递", "EXPRESS");
@@ -226,12 +287,12 @@ class AdminApplicationServiceImplTest {
 
         AdminDashboardResponse dashboard = adminApplicationService.getDashboard(adminId);
 
-        assertEquals(3, dashboard.totalUsers());
+        assertEquals(4, dashboard.totalUsers());
         assertEquals(2, dashboard.totalDemands());
         assertEquals(1, dashboard.pendingReviewDemands());
         assertEquals(1, dashboard.totalOrders());
         assertEquals(1, dashboard.completedOrders());
-        assertTrue(dashboard.dailyActiveUsers() >= 3);
+        assertEquals(2, dashboard.dailyActiveUsers());
         assertTrue(dashboard.categoryDistribution().stream()
             .anyMatch(item -> item.category().equals("EXPRESS") && item.count() == 1));
         assertTrue(dashboard.categoryDistribution().stream()
@@ -255,6 +316,30 @@ class AdminApplicationServiceImplTest {
         );
 
         assertEquals(ErrorCode.BUSINESS_CONFLICT, exception.getErrorCode());
+    }
+
+    @Test
+    void shouldPersistRejectReasonAndNotifyPublisher() {
+        DemandDetailResponse reviewingDemand = createDemand("待驳回需求", "OTHER");
+
+        DemandDetailResponse rejected = adminApplicationService.reviewDemand(
+            adminId,
+            reviewingDemand.id(),
+            new AdminDemandReviewCommand("reject", "信息不完整")
+        );
+
+        assertEquals(DemandStatus.CANCELLED.name(), rejected.status());
+        assertEquals("信息不完整", rejected.reviewReason());
+        assertEquals(adminId, rejected.reviewedBy());
+
+        var notifications = notificationApplicationService.list(
+            publisherId,
+            new com.campushub.backend.notification.dto.NotificationQuery(false, new PageQuery(1, 20))
+        );
+        assertTrue(notifications.items().stream()
+            .anyMatch(item -> "DEMAND_REJECTED".equals(item.type())
+                && reviewingDemand.id().equals(item.targetId())
+                && item.content().contains("信息不完整")));
     }
 
     private DemandDetailResponse createDemand(String title, String category) {

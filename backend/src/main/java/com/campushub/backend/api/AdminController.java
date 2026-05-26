@@ -38,13 +38,18 @@ public class AdminController {
     public ApiResponse<PageResponse<UserSummaryView>> listUsers(
         HttpServletRequest request,
         @RequestParam(required = false) String q,
+        @RequestParam(required = false) String searchField,
+        @RequestParam(required = false) String role,
+        @RequestParam(required = false) String status,
+        @RequestParam(required = false) String sortBy,
+        @RequestParam(required = false) String sortDirection,
         @RequestParam(defaultValue = "1") int page,
         @RequestParam(defaultValue = "20") int size
     ) {
         CurrentUser currentUser = requestUserExtractor.requireCurrentUser(request);
         PageResponse<com.campushub.backend.auth.dto.UserProfileResponse> rawPage = adminApplicationService.listUsers(
             currentUser.userId(),
-            new AdminUserQuery(q, new PageQuery(page, size))
+            new AdminUserQuery(q, searchField, role, status, sortBy, sortDirection, new PageQuery(page, size))
         );
         return ApiResponse.success(new PageResponse<>(
             rawPage.items().stream().map(UserSummaryView::from).toList(),

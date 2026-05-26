@@ -159,6 +159,7 @@ class ReviewApplicationServiceImplTest {
         );
 
         assertEquals(ErrorCode.BUSINESS_CONFLICT, exception.getErrorCode());
+        assertEquals(1, reviewRepository.findByOrderId(order.orderId()).size());
     }
 
     @Test

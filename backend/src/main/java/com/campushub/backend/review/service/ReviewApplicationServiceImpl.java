@@ -79,7 +79,7 @@ public class ReviewApplicationServiceImpl implements ReviewApplicationService {
         );
         review = reviewRepository.save(review);
         recalculateCreditScore(targetId);
-        notificationApplicationService.notifyReviewReceived(targetId, orderId, "您收到了一条新的订单评价");
+        notificationApplicationService.notifyReviewReceived(targetId, orderId);
         return ReviewResponse.from(review);
     }
 

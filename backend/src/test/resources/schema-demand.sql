@@ -18,6 +18,9 @@ CREATE TABLE ord_demand (
   status VARCHAR(32) NOT NULL DEFAULT 'REVIEWING',
   is_approved BOOLEAN NOT NULL DEFAULT FALSE,
   note VARCHAR(500),
+  reviewed_by BIGINT,
+  reviewed_at DATETIME,
+  review_reason VARCHAR(500),
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME
 );

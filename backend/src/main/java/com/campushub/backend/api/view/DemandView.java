@@ -9,6 +9,8 @@ public record DemandView(
     Long publisherId,
     String publisherDisplayName,
     UserSummaryView publisher,
+    String publisherStudentIdMasked,
+    boolean publisherIdentityVisible,
     String title,
     String description,
     String category,
@@ -21,6 +23,11 @@ public record DemandView(
     String status,
     boolean anonymous,
     String anonymousCode,
+    boolean canAccept,
+    String acceptDisabledReason,
+    boolean canStartExecution,
+    boolean canViewAcceptNote,
+    boolean canSubmitAcceptNote,
     LocalDateTime createdAt,
     LocalDateTime updatedAt
 ) {

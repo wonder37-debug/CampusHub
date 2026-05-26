@@ -1,204 +1,108 @@
-# 变更日志
+﻿# 变更日志
 
-说明：以下内容根据最近约 50 条 git 提交记录整理，按日期分组并保留主要功能演进。
+说明：以下内容根据近期项目演进整理，按日期归纳主要功能、修复与联调变更，统一使用 UTF-8 编码维护。
 
 ## 2026-05-11
 
-- bcc6763 feat: 初步完成展示层框架，留待后续测试功能及调整交互样式
-	- 搭建展示层基础骨架。
-
-- 7f589d1 Merge branch 'dev_ai' of https://git.nju.edu.cn/cumpushub/sec-ii-2026 into dev_ai
-	- 同步 dev_ai 分支内容。
-
-- 30927ee Merge branch 'main' into 'dev_ai'
-	- 将主分支内容合并进 dev_ai。
-
-- 7be626b feat：业务逻辑层初步建立
-	- 搭建后端业务逻辑层雏形。
-
-- b70079a feat: 初步搭建前端路由和页面框架
-	- 建立前端路由与页面骨架。
-
-- 5ab0737 Merge branch 'main' into 'dev_ai'
-	- 继续同步主分支变更。
-
-- 5985fb2 Merge branch 'P3' into 'main'
-	- 合并阶段性设计成果到主线。
-
-- df7b75f feat: 修改了注册方法，为验学邮
-	- 对注册方法做早期验证邮箱相关调整。
+- `feat(ui)` 初步搭建展示层与前端路由骨架。
+- `feat(service)` 初步搭建后端业务逻辑层。
+- `feat(auth)` 调整注册流程中的基础校验与邮箱相关逻辑。
 
 ## 2026-05-12
 
-- 2a85a39 feat: 隐藏了非主页的 demo-strip 组件
-	- 清理非首页展示内容。
-
-- ffe65cc feat: 优化页面文案，提升用户体验和信息清晰度
-	- 文案统一和可读性优化。
+- `feat(ui)` 清理非首页演示内容，优化页面文案与可读性。
 
 ## 2026-05-14
 
-- 033d326 feat: 重新设计了页面
-	- 页面结构和视觉布局重构。
+- `feat(ui)` 重构页面结构与视觉布局。
 
 ## 2026-05-15
 
-- 030d37d feat: 修复后端 token 解析问题
-	- 修复登录态 token 解析异常。
-
-- a58eb56 feat: 后端对接前端，补齐邮箱逻辑（不过现在验证码在后端日志里），并补齐前端 vite 代理
-	- 打通前后端联调。
-	- 增加邮箱相关逻辑。
-	- 补齐前端代理配置。
-
-- 54778af feat: 删除了前端预设数据，改为从后端接口获取数据
-	- 前端彻底切换为真实后端数据源。
+- `fix(auth)` 修复后端 token 解析问题。
+- `feat(integration)` 打通前后端基础联调，补齐邮箱相关逻辑与前端代理配置。
+- `feat(frontend)` 前端移除预置假数据，切换为后端接口驱动。
 
 ## 2026-05-16
 
-- 2605b52 / 47fc202 feat(auth): 完成 USR-02 任务，提供 MyBatis 版 UserRepository 实现及单测
-	- 用户仓储切换到 MyBatis 实现。
-	- 增加单元测试。
-
-- 1a579db chore(db): 初始化本地 MySQL 表结构，添加建表初始化 SQL 和使用说明并隔离本地敏感密码配置
-	- 完成本地数据库初始化说明。
-	- 配置脚本和敏感信息隔离更清晰。
+- `feat(auth)` 完成用户仓储的 MyBatis 实现与单测。
+- `chore(db)` 新增本地 MySQL 初始化脚本、使用说明与敏感配置隔离方案。
 
 ## 2026-05-17
 
-- 1966646 / 28fa55d feat(notification): 完成 NOT-02，实现通知模块完整 DAO 与测试
-	- 通知模块完成 DAO 层实现。
-	- 补齐相关测试。
-
-- e52aad3 / e287de0 feat(review): 完成 REV-02，实现评价模块 DAO 及并发防重底线
-	- 评价模块 DAO 实现完成。
-	- 增加并发防重底线。
-
-- 71e111b / d5d31b4 feat(order): 完成 ORD-02，实现订单一主多从级联持久化与并发防重
-	- 订单级联持久化链路完善。
-	- 增加并发防重处理。
-
-- a3b32cb / be9153c feat(demand): 完成 DEM-02 任务，提供 DemandDAO 实现并且对齐 Demand 实体与底层 SQL 表结构
-	- 需求 DAO 实现完成。
-	- 实体与底层表结构对齐。
+- `feat(notification)` 完成通知模块 DAO 实现与测试。
+- `feat(review)` 完成评价模块 DAO 实现，并补充并发防重底线。
+- `feat(order)` 完成订单持久化链路与并发防重处理。
+- `feat(demand)` 完成需求持久化实现，并对齐实体与底层表结构。
 
 ## 2026-05-18
 
-- 0797e3c / 17ce348 fix(dao): 修复架构一致性，补齐 updated_at
-	- 补全数据一致性所需字段。
-
-- 7998d4a / e1e231e feat(admin): 完成 ADM-01/02，扩展后台查询能力并补齐 is_approved 字段
-	- 扩展管理员后台查询能力。
-	- 补齐审批相关字段，增强后台可用性。
-
-- fcb90d3 / d2c18f3 feat(recommendation): 完成 MAT-02，新增用户行为日志 DAO 层实现及测试
-	- 增加推荐系统用户行为日志 DAO 实现。
-	- 补充对应测试覆盖。
-
-- ceb148d feat: 增加了管理员后台的统计数据和用户管理功能，修复了部分界面文案，优化了数据刷新逻辑
-	- 管理后台增加统计信息。
-	- 用户管理能力完善。
-	- 修复部分界面文案并优化刷新逻辑。
+- `fix(dao)` 修复持久化层结构一致性问题，补齐 `updated_at` 等关键字段。
+- `feat(admin)` 增强管理后台查询能力，并补充 `is_approved` 等审核字段。
+- `feat(recommendation)` 新增推荐系统用户行为日志 DAO 与测试。
+- `feat(admin-ui)` 增加后台统计数据与用户管理能力，优化刷新与部分文案。
 
 ## 2026-05-19
 
-- 5a1074a chore: 移除并忽略本地 AI 工具生成的 AGENTS.md
-	- 清理本地生成文件，避免误提交。
-
-- 4e87b61 feat: 后端现在在有数据库实现时会优先使用数据库
-	- 后端数据源优先级调整为优先使用数据库实现。
+- `chore(repo)` 清理本地 AI 工具生成文件，避免误提交。
+- `feat(storage)` 后端在存在数据库实现时优先使用数据库作为数据源。
 
 ## 2026-05-22
 
-- a064c31 feat: 修复脚本（重复创表问题）
-	- 修正初始化脚本中的重复建表问题。
+- `fix(db)` 修复初始化脚本中的重复建表问题。
 
 ## 2026-05-24
 
-- 3bd2e2c feat: 修改注册流程，新增邮箱前缀输入检测和后缀选择功能
-	- 改进邮箱输入交互。
-	- 注册体验更清晰。
-
-- 0d0d753 chore: 修订数据库配置快速指南（团队成员必读）
-	- 更新数据库配置说明文档。
+- `feat(auth-ui)` 优化注册流程，增加邮箱前缀检测与后缀选择能力。
+- `chore(db-docs)` 更新数据库配置快速指引文档。
 
 ## 2026-05-25
 
-- 33ffb4e feat: 增加订单完成确认流程，优化用户反馈信息
-	- 订单完成改为双方确认后才算真正完成。
-	- 优化订单流程中的反馈提示，减少歧义。
-
-- b8424c6 feat: 增加用户信用分显示
-	- 在订单列表、订单详情、需求列表和需求详情中展示用户信用分。
-	- 后端接口补充信用分字段，前端同步展示。
-	- 余额与冻结余额字段已接入，暂未在页面展示。
-
-- 4ce6ad7 / 939e524 feat: 更新通知已读状态为异步操作
-	- 将单条通知已读和批量已读改为异步处理。
-	- 避免单个请求失败影响整批操作。
-
-- 420ccde / db3f7cb 构建 CI/CD 流水线环境
-	- 完成流水线环境搭建与基础配置。
-
-- 16aa439 集成测试一个正常流程和若干异常流程
-	- 补充正常路径与异常路径的集成测试。
-
-- 516b86d 声明 .vue 可 import
-	- 调整项目配置，使 Vue 单文件组件能够被正确导入。
-
-- ce01ee9 feat: 增加注册时上传头像功能；优化验证码发送状态显示，防止重复发送；完善错误提示信息
-	- 注册流程支持头像上传。
-	- 优化验证码发送状态，避免重复提交。
-	- 强化错误提示，提升可用性。
-
-- 2c9da9c feat: 持久化登录状态到 localStorage，支持页面刷新后保持登录态
-	- 登录信息刷新后仍可保留。
-
-- 54b3533 feat: 完善服务层邮箱发送逻辑和检验逻辑
-	- 调整邮箱发送与校验链路。
-	- 前端接口随之做了适配。
-
+- `feat(order)` 订单完成改为双确认流程，并优化用户反馈文案。
+- `feat(profile)` 在订单、需求等页面补充用户信用分展示。
+- `feat(notification)` 通知已读状态改为异步处理模式。
+- `chore(cicd)` 构建 CI/CD 基础流水线环境。
+- `test(integration)` 补充正常与异常流程的集成测试。
+- `feat(auth)` 注册流程支持头像上传，优化验证码发送状态与错误提示。
+- `feat(frontend)` 登录状态持久化到 `localStorage`。
+- `feat(mail)` 完善服务层邮件发送与校验逻辑。
 
 ## 2026-05-26
 
-- 9f1a2b4 fix(order): 实现订单“双确认”完成流程，并保留接单方凭证信息
-	- 订单从“接单方提交完成（上传凭证）→发布者确认完成”的双步流程变为最终完成。
-	- 接单方上传的 `proofSubmitted` / `proofImageCount` 会被记录，发布者确认时不会覆盖已有凭证。
-	- 优化了完成状态的通知文案（中文化）。
-
-- a4c3d8e test: 更新并修复受影响的单元/集成测试
-	- 更新 `OrderApplicationServiceImplTest`、`ReviewApplicationServiceImplTest`、`AdminApplicationServiceImplTest`、`FrontendIntegrationFlowTest`，使其模拟双方确认的流程。
-	- 本地 `mvn test` 通过（104 tests, 0 failures）。
-
-- b7d9f11 feat(api): `submitReview` 返回视图包含作者信息，前端评价显示修正
-	- 修复评价刚提交后显示匿名的问题，后端返回带 author 的 `ReviewView`。
-
-- c2e5a77 feat(frontend): 文案与状态显示中文化、按钮行为调整
-	- 将订单进度提示映射为中文（例如“进行中”、“已完成”），并同步前端 timeline 与按钮文案。
-	- 提交完成后按钮锁定、角色区分与错误提示映射已同步。
-
-- d1f4b88 chore: 变更说明与测试日志更新
-	- 增补变更日志并记录本次主要改动；标注测试已修复并通过。
+- `fix(order)` 实现订单“双确认完成”流程，保留接单方凭证信息。
+- `test(order)` 更新并修复受影响的单元测试与集成测试。
+- `feat(api)` `submitReview` 返回视图补充作者信息，修复前端评价显示问题。
+- `feat(frontend)` 统一订单状态中文展示、时间线文案与按钮交互。
+- `feat(api)` 补齐第二轮后端联调用字段与聚合能力：
+  - 推荐接口升级为返回 `rank / score / reasonTags / demand`
+  - 需求详情补充 `canAccept / acceptDisabledReason / canStartExecution / canViewAcceptNote / canSubmitAcceptNote`
+  - 订单详情补充 `reviews / currentUserReviewed / pendingReviewTarget / completionHint`
+  - 通知接口补充 `targetType / targetId / targetTitle / actionHint`
+- `feat(admin)` 完成第二轮审核闭环与后台增强：
+  - 审核拒绝持久化 `reviewedBy / reviewedAt / reviewReason`
+  - 后台用户列表支持 `searchField / role / status / sortBy / sortDirection`
+  - `dailyActiveUsers` 改为基于真实业务动作聚合
+- `feat(contract)` 补齐第二轮枚举、异常与兼容输出：
+  - 新增需求分类 `ERRAND`
+  - 兼容排序别名 `RECOMMENDED / TIME_RECENT / HIGHEST_REWARD`
+  - 错误响应补充 `errorCode / details`，保留 `errors` 兼容字段
+  - 用户资料与摘要同时输出 `creditScore` 与 `credit_score`
+- `test(contract)` 补充推荐、通知、viewer-aware 字段、审核拒绝、分类兼容、后台查询与 DAU 统计相关测试。
+- `fix(service)` 收紧服务层规则：
+  - 公开需求列表仅返回 `PENDING` 且未过期的需求
+  - 发布与编辑需求时校验 `reward <= balance - frozenBalance`
+  - 管理员禁止发布需求与接单
+  - 资料更新新增昵称唯一性校验
+  - 信用分改为平滑更新算法
+- `fix(notification)` 统一通知模板生成与审核提醒收口：
+  - 将订单接单、订单状态更新、待确认完成、收到评价、需求待审核、需求驳回等通知，统一收口到 `NotificationApplicationServiceImpl` 内部模板构造
+  - 需求发布后的管理员审核提醒改为通过通知服务统一创建
+  - 驳回通知增加历史调用兼容处理，避免旧调用方传入整段文案时造成正文重复拼接
+  - 本地在 `backend` 目录执行 `mvn test`，结果为 `108 tests, 0 failures`
+- `docs(sync)` 同步联调与协作文档：
+  - 更新 `P4-前后端对接修订规范.md` 的通知联调口径
+  - 新增 `P4-数据库同学更新清单.md`
 
 ## 补充说明
 
-- 05-11 以前的提交主要集中在项目初始框架、路由、业务层和注册验证链路，属于后续功能演进的基础。
-
-## 说明
-
-- 近期重点集中在真实后端接入、订单流程、通知、评价、信用分展示和 CI/CD 基础建设。
-- 当前日志保留了 git 中最能反映产品演进的提交摘要，适合作为阶段性变更记录。
-- local fix(service): 修复后端服务层的发布、接单、信用分与联调约束
-	- 需求公开列表现在仅返回 `PENDING` 且未过期的需求，避免审核中或已过期需求进入首页大厅
-	- 发布与编辑需求新增可用余额校验，`reward` 不得超过 `balance - frozenBalance`
-	- 管理员账号已禁止发布需求和接单，收紧普通交易流程的角色边界
-	- 用户发布需求后，后端会向管理员写入“需求待审核”站内通知，`relatedId` 指向需求 ID
-	- 资料更新新增昵称唯一性校验，重复昵称会被后端拒绝
-	- 信用分改为平滑更新算法，不再按“平均评分乘以 20”直接陡降
-	- 管理后台 `dailyActiveUsers` 统计口径调整为更接近真实业务行为
-
-- local test: 跟进本轮服务层规则变更并修复受影响测试
-	- 重写并清理多份 UTF-8 测试文件，消除原有乱码
-	- 更新单元测试与集成测试中的测试数据，使其满足余额约束和公开列表新规则
-	- 调整订单双确认完成、信用分平滑更新、管理员限制等断言
-	- 本地 `mvn test` 通过，104 tests, 0 failures
+- 本日志偏向阶段性变更归纳，不等同于逐条 git commit 原文。
+- 后续若继续迭代，建议保持“按日期分组 + 按主题归纳”的维护方式，避免再次出现编码与可读性问题。
