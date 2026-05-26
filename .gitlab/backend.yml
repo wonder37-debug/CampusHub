@@ -10,10 +10,18 @@ backend:verify:
     - cd backend
     - mvn -version
   script:
+    - printf "section_start:%s:backend_compile[collapsed=false]\r\e[0KBackend compile and dependency check\n" "$(date +%s)"
     - mvn $MAVEN_CLI_OPTS -DskipTests test-compile
+    - printf "section_end:%s:backend_compile\r\e[0K\n" "$(date +%s)"
+    - printf "section_start:%s:backend_unit_tests[collapsed=false]\r\e[0KBackend unit tests\n" "$(date +%s)"
     - mvn $MAVEN_CLI_OPTS -Dtest='*ServiceImplTest,RequestUserExtractorTest' test
+    - printf "section_end:%s:backend_unit_tests\r\e[0K\n" "$(date +%s)"
+    - printf "section_start:%s:backend_integration_tests[collapsed=false]\r\e[0KBackend integration tests\n" "$(date +%s)"
     - mvn $MAVEN_CLI_OPTS -Dtest=FrontendIntegrationFlowTest test
+    - printf "section_end:%s:backend_integration_tests\r\e[0K\n" "$(date +%s)"
+    - printf "section_start:%s:backend_package[collapsed=false]\r\e[0KBackend package\n" "$(date +%s)"
     - mvn $MAVEN_CLI_OPTS -DskipTests package
+    - printf "section_end:%s:backend_package\r\e[0K\n" "$(date +%s)"
   artifacts:
     when: always
     reports:

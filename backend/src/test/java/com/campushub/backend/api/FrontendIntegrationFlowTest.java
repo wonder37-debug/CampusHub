@@ -23,7 +23,16 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultActions;
 
-@SpringBootTest(properties = "app.auth.allowed-email-domains=nju.edu.cn,smail.nju.edu.cn")
+@SpringBootTest(properties = {
+    "app.auth.allowed-email-domains=nju.edu.cn,smail.nju.edu.cn",
+    "spring.datasource.url=jdbc:h2:mem:campushub_integration;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1",
+    "spring.datasource.driver-class-name=org.h2.Driver",
+    "spring.datasource.username=sa",
+    "spring.datasource.password=",
+    "spring.sql.init.mode=always",
+    "spring.sql.init.schema-locations=classpath:schema.sql",
+    "spring.datasource.hikari.connection-timeout=3000"
+})
 @AutoConfigureMockMvc
 class FrontendIntegrationFlowTest {
 
