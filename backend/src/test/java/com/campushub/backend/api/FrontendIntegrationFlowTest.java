@@ -14,7 +14,9 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -34,6 +36,7 @@ import org.springframework.test.web.servlet.ResultActions;
     "spring.datasource.hikari.connection-timeout=3000"
 })
 @AutoConfigureMockMvc
+@Timeout(value = 3, unit = TimeUnit.MINUTES)
 class FrontendIntegrationFlowTest {
 
     @Autowired

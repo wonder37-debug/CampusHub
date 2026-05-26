@@ -3,7 +3,7 @@ backend:verify:
   stage: build
   timeout: 30m
   variables:
-    MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
+    MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository -Djava.security.egd=file:/dev/./urandom"
     MAVEN_CLI_OPTS: "-B -ntp -s ../.gitlab/maven-settings.xml -Daether.connector.connectTimeout=30000 -Daether.connector.requestTimeout=120000 -Dmaven.wagon.rto=120000 -Dmaven.wagon.http.retryHandler.count=1"
     SPRING_PROFILES_ACTIVE: "default"
   before_script:
@@ -17,7 +17,7 @@ backend:verify:
     - mvn $MAVEN_CLI_OPTS -Dtest='*ServiceImplTest,RequestUserExtractorTest' test
     - printf "section_end:%s:backend_unit_tests\r\e[0K\n" "$(date +%s)"
     - printf "section_start:%s:backend_integration_tests[collapsed=false]\r\e[0KBackend integration tests\n" "$(date +%s)"
-    - mvn $MAVEN_CLI_OPTS -Dtest=FrontendIntegrationFlowTest test
+    - timeout 8m mvn $MAVEN_CLI_OPTS -Dtest=FrontendIntegrationFlowTest "-Dsurefire.timeout=360" "-Dsurefire.exitTimeout=30" test
     - printf "section_end:%s:backend_integration_tests\r\e[0K\n" "$(date +%s)"
     - printf "section_start:%s:backend_package[collapsed=false]\r\e[0KBackend package\n" "$(date +%s)"
     - mvn $MAVEN_CLI_OPTS -DskipTests package
