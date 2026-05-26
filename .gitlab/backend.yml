@@ -4,22 +4,13 @@
     MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
     MAVEN_CLI_OPTS: "-B -ntp"
     SPRING_PROFILES_ACTIVE: "default"
-  cache:
-    key: "maven-v2-$CI_COMMIT_REF_SLUG"
-    paths:
-      - .m2/repository/
-    policy: pull
+  cache: []
   before_script:
     - cd backend
 
 backend:dependencies:
   extends: .backend-template
   stage: deps
-  cache:
-    key: "maven-v2-$CI_COMMIT_REF_SLUG"
-    paths:
-      - .m2/repository/
-    policy: pull-push
   script:
     - mvn $MAVEN_CLI_OPTS dependency:go-offline
   rules:
