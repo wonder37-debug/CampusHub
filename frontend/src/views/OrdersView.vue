@@ -36,7 +36,9 @@ const visibleOrders = computed(() => {
     serviceProviderName: '',
     serviceProviderAvatar: '',
     serviceProviderCreditScore: 0,
-    status: 'PENDING' as unknown as import('@/types/campushub').OrderStatus,
+    // keep demand status for placeholders (could be EXPIRED)
+    status: d.status as unknown as import('@/types/campushub').OrderStatus,
+    demandStatus: d.status,
     note: '',
     proofSubmitted: false,
     proofImageCount: 0,
@@ -113,7 +115,7 @@ onMounted(() => {
       <article v-for="order in visibleOrders" :key="order.id" class="list-card order-card" @click="openOrder(order.id)">
         <div class="status-row">
           <template v-if="(order as any).isPlaceholder">
-            <span class="chip" :class="statusToneClass('PENDING')">{{ formatDemandStatus('PENDING') }}</span>
+            <span class="chip" :class="statusToneClass((order as any).demandStatus || 'PENDING')">{{ formatDemandStatus((order as any).demandStatus || 'PENDING') }}</span>
             <span class="chip">发布单</span>
           </template>
           <template v-else>

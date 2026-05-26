@@ -29,6 +29,7 @@ const visibleDemands = computed(() => {
   const selectedStatus = filters.status
   const source = filters.sort === 'recommend' && recommendedDemands.value.length ? recommendedDemands.value : [...store.demands]
   const sorted = source
+    .filter((demand) => demand.status !== 'EXPIRED')
     .filter((demand) => !selectedCategory || demand.category === selectedCategory)
     .filter((demand) => !selectedCampusZone || demand.campusZone === selectedCampusZone)
     .filter((demand) => {
@@ -63,26 +64,36 @@ const visibleDemands = computed(() => {
   return sorted.slice(0, filters.page * filters.size)
 })
 
-const totalCount = computed(() =>
-  store.demands.filter(
+const totalCount = computed(() => {
+  if (filters.sort === 'recommend' && recommendedDemands.value.length) {
+    return recommendedDemands.value.filter((demand) =>
+      (!filters.category || demand.category === filters.category) &&
+      (!filters.campusZone || demand.campusZone === filters.campusZone) &&
+      (!filters.status || demand.status === filters.status)
+    ).length
+  }
+
+  return store.demands.filter(
     (demand) =>
       (!filters.category || demand.category === filters.category) &&
       (!filters.campusZone || demand.campusZone === filters.campusZone) &&
       (!filters.status || demand.status === filters.status)
   ).length
-)
+})
 const hasMore = computed(() => visibleDemands.value.length < totalCount.value)
 
 function refreshList(): void {
   refreshing.value = true
   filters.page = 1
-  window.setTimeout(() => {
-    void store.fetchDemands().finally(() => {
+  window.setTimeout(async () => {
+    try {
+      await store.fetchDemands()
       if (filters.sort === 'recommend') {
-        void syncRecommendations()
+        await syncRecommendations()
       }
+    } finally {
       refreshing.value = false
-    })
+    }
   }, 0)
 }
 
@@ -160,7 +171,7 @@ onBeforeUnmount(() => {
           <h1 class="page-title">需求列表</h1>
           <p class="page-summary">筛选最新需求，点击卡片查看详情并可直接接单。</p>
         </div>
-        <button type="button" class="button secondary" @click="refreshList">下拉刷新</button>
+        <!-- 已有刷新列表按钮，移除重复的“下拉刷新”按钮 -->
       </div>
 
       <div class="filters">
@@ -237,7 +248,7 @@ onBeforeUnmount(() => {
 
         <div class="card-head">
           <h3>{{ demand.title }}</h3>
-          <strong>{{ demand.reward > 0 ? formatMoney(demand.reward) : '一杯奶茶' }}</strong>
+          <strong>{{ formatMoney(demand.reward) }}</strong>
         </div>
 
         <div class="meta">{{ demand.location }}</div>

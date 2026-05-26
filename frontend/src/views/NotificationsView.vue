@@ -20,16 +20,31 @@ function iconFor(type: string): string {
   return '🔔'
 }
 
-async function openNotification(notificationId: string, relatedId: string): Promise<void> {
-  await store.markNotificationRead(notificationId)
-  if (relatedId.startsWith('d-')) {
+async function openNotification(notification: any): Promise<void> {
+  try {
+    await store.markNotificationRead(notification.id)
+  } catch {
+    // ignore mark-read error but continue navigation
+  }
+
+  const relatedId = String(notification.relatedId ?? '')
+  const type = String(notification.type ?? '')
+
+  if (type === 'ORDER_ACCEPTED' || type === 'STATUS_CHANGED') {
     router.push(`/demands/${relatedId}`)
     return
   }
-  if (relatedId.startsWith('o-')) {
+
+  if (type === 'REVIEW_RECEIVED') {
     router.push(`/orders/${relatedId}`)
     return
   }
+
+  if (type === 'REVIEW_REQUEST') {
+    router.push(`/admin?tab=review&demandId=${relatedId}`)
+    return
+  }
+
   router.push('/notifications')
 }
 
@@ -66,7 +81,7 @@ onMounted(() => {
         :key="notification.id"
         class="list-card notification-card"
         :class="{ faded: notification.isRead }"
-        @click="openNotification(notification.id, notification.relatedId)"
+        @click="openNotification(notification)"
       >
         <div class="status-row">
           <span class="badge is-neutral">{{ iconFor(notification.type) }}</span>

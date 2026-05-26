@@ -73,7 +73,7 @@ export function statusToneClass(value: string): string {
     return 'is-success'
   }
 
-  if (normalized.includes('CANCELLED') || normalized.includes('BANNED') || normalized.includes('REJECT')) {
+  if (normalized.includes('CANCELLED') || normalized.includes('BANNED') || normalized.includes('REJECT') || normalized.includes('EXPIRED')) {
     return 'is-danger'
   }
 
@@ -114,6 +114,8 @@ export function formatDemandStatus(status: DemandStatus): string {
       return '审核中'
     case 'IN_PROGRESS':
       return '进行中'
+    case 'EXPIRED':
+      return '已过期'
     case 'COMPLETED':
       return '已完成'
     case 'CANCELLED':
@@ -160,6 +162,8 @@ export function formatNotificationType(type: NotificationType): string {
       return '状态变更'
     case 'REVIEW_RECEIVED':
       return '收到评价'
+    default:
+      return String(type)
   }
 }
 

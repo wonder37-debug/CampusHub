@@ -10,6 +10,9 @@ const router = useRouter()
 const store = useCampusHubStore()
 const message = ref('')
 const error = ref('')
+const rewardError = ref('')
+const submitting = ref(false)
+const published = ref(false)
 
 const form = reactive({
   title: '',
@@ -28,17 +31,50 @@ async function submitDemand(): Promise<void> {
   error.value = ''
   message.value = ''
 
+  if (rewardError.value) {
+    error.value = rewardError.value
+    return
+  }
+
+  if (submitting.value || published.value) {
+    return
+  }
+
+  submitting.value = true
+
   if (!form.campusZone) {
     error.value = '请选择校区后再发布需求'
+    submitting.value = false
     return
   }
 
   try {
-    const demand = await store.createDemand(form)
-    message.value = `已创建需求“${demand.title}”。`
-    router.push(`/demands/${demand.id}`)
+    await store.createDemand(form)
+    // 显示发布成功，并展示单独成功界面后跳转到首页，避免用户重复发布
+    message.value = `发布成功，等待审核` 
+    published.value = true
+    // 1.5s 后返回首页
+    setTimeout(() => {
+      router.push('/')
+    }, 1500)
   } catch (submitError) {
     error.value = submitError instanceof Error ? submitError.message : '发布失败'
+    submitting.value = false
+  }
+}
+
+async function checkRewardBalance(): Promise<void> {
+  rewardError.value = ''
+  const amount = Number(form.reward || 0)
+  if (!amount || amount <= 0) return
+  try {
+    const balance = await store.fetchBalance()
+    const available = Number(balance)
+    if (amount > available) {
+      rewardError.value = `报酬不能超过当前可用余额 ¥${available}`
+    }
+  } catch {
+    // ignore balance check errors
   }
 }
 </script>
@@ -46,12 +82,22 @@ async function submitDemand(): Promise<void> {
 <template>
   <div class="page-grid two-column">
     <section class="form-panel">
+      <template v-if="published">
+        <div class="page-head">
+          <div>
+            <p class="eyebrow">发布需求</p>
+            <p class="page-summary">发布成功，等待审核</p>
+          </div>
+        </div>
+        <div style="padding: 24px;">
+          <p class="hero-badge">发布成功，等待审核</p>
+        </div>
+      </template>
+      <template v-else>
       <div class="page-head">
         <div>
           <p class="eyebrow">发布需求</p>
-          <label for="demand-zone">校区</label>
           <p class="page-summary">填写标题、地点和时间后即可发布，让同学更快看到你的需求。</p>
-            <option value="">请选择校区</option>
         </div>
       </div>
 
@@ -91,7 +137,8 @@ async function submitDemand(): Promise<void> {
         </div>
         <div class="field">
           <label for="demand-reward">报酬</label>
-          <input id="demand-reward" v-model="form.reward" type="number" min="0" step="1" />
+          <input id="demand-reward" v-model="form.reward" type="number" min="0" step="1" @blur="checkRewardBalance" />
+          <p v-if="rewardError" style="color: var(--danger); margin-top: 6px">{{ rewardError }}</p>
         </div>
         <div class="field">
           <label for="demand-tags">标签</label>
@@ -101,11 +148,14 @@ async function submitDemand(): Promise<void> {
           <input v-model="form.anonymous" type="checkbox" style="margin: 0 8px 0 0;" />
           匿名发布
         </label>
-        <button type="button" class="button primary" style="grid-column: 1 / -1;" @click="submitDemand">发布需求</button>
+        <button type="button" class="button primary" style="grid-column: 1 / -1;" @click="submitDemand" :disabled="submitting">
+          {{ submitting ? '发布中...' : '发布需求' }}
+        </button>
       </div>
 
       <p v-if="message" class="hero-badge">{{ message }}</p>
       <p v-if="error" class="hero-badge" style="background: rgba(181, 71, 71, 0.14); color: var(--danger)">{{ error }}</p>
+      </template>
     </section>
 
     <section class="panel">

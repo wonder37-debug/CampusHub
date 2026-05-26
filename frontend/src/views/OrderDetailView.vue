@@ -44,6 +44,8 @@ async function completeOrder(): Promise<void> {
 async function cancelOrder(): Promise<void> {
   if (order.value) await store.cancelOrder(order.value.id)
 }
+
+// (no automatic demand enrichment) keep original simple behavior
 </script>
 
 <template>
@@ -66,6 +68,13 @@ async function cancelOrder(): Promise<void> {
         <div class="mini-stat"><span class="subtle">需求方</span><strong>{{ order.requesterName }}</strong><div class="meta">信用分 {{ formatScore(order.requesterCreditScore) }}</div></div>
         <div class="mini-stat"><span class="subtle">接单方</span><strong>{{ order.serviceProviderName }}</strong><div class="meta">信用分 {{ formatScore(order.serviceProviderCreditScore) }}</div></div>
         <div class="mini-stat"><span class="subtle">留言</span><strong>{{ order.note || '无' }}</strong></div>
+      </div>
+
+      <div class="mini-grid" style="margin-top:12px;">
+        <div class="mini-stat"><span class="subtle">地点</span><strong>{{ order.demandLocation || '未填写' }}</strong></div>
+        <div class="mini-stat"><span class="subtle">开始时间</span><strong>{{ order.demandStartTime ? new Date(order.demandStartTime).toLocaleString() : '—' }}</strong></div>
+        <div class="mini-stat"><span class="subtle">结束时间</span><strong>{{ order.demandEndTime ? new Date(order.demandEndTime).toLocaleString() : '—' }}</strong></div>
+        <div class="mini-stat"><span class="subtle">报酬</span><strong>{{ order.demandReward ? order.demandReward + ' 元' : '无' }}</strong></div>
       </div>
 
       <p v-if="message" class="hero-badge">{{ message }}</p>

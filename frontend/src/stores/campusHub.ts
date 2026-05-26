@@ -53,152 +53,9 @@ function unwrapApiPayload<T>(payload: any): T {
   return payload as T
 }
 
-function translateFieldName(field: string): string {
-  const fieldMap: Record<string, string> = {
-    email: '邮箱',
-    verificationCode: '验证码',
-    studentId: '学号',
-    password: '密码',
-    nickname: '昵称',
-    avatarUrl: '头像链接',
-    loginId: '登录标识',
-    userId: '用户ID',
-    orderId: '订单ID',
-    demandId: '需求ID',
-    title: '标题',
-    description: '描述',
-    location: '地点',
-    startTime: '开始时间',
-    endTime: '结束时间',
-    category: '分类',
-    campusZone: '校区',
-    reward: '悬赏金额',
-    tags: '标签',
-    page: '页码',
-    rating: '评分',
-    comment: '评价内容',
-    targetStatus: '目标状态',
-    proofImageCount: '证明图片数量',
-    action: '操作类型'
-  }
+// translateFieldName is defined in utils/errorHandler and intentionally not duplicated here
 
-  return fieldMap[field] ?? field
-}
-
-function translateApiError(payload: any): string {
-  const code = Number(payload?.code ?? 0)
-  const rawMessage = String(payload?.message ?? payload?.error ?? '').trim()
-
-  const directMap: Record<string, string> = {
-    'verification code is invalid': '验证码无效',
-    'verification code does not match studentId': '验证码与学号不匹配',
-    'verification code sent too frequently': '验证码发送过于频繁，请稍后再试',
-    'failed to send verification email': '验证码邮件发送失败，请检查邮箱配置后重试',
-    'email already registered': '该邮箱已被注册',
-    'studentId already registered': '该学号已被注册',
-    'user has been banned': '账号已被封禁',
-    'loginId or password is incorrect': '学号或密码错误',
-    'missing bearer token': '缺少登录令牌，请重新登录',
-    'invalid token format': '登录令牌格式无效，请重新登录',
-    'token has expired': '登录已过期，请重新登录',
-    'invalid token': '登录令牌无效，请重新登录',
-    'cannot update another user\'s profile': '不能修改其他用户的资料',
-    'only participants can review this order': '只有订单参与者才能评价',
-    'only completed orders can be reviewed': '只有已完成的订单才能评价',
-    'review already submitted for this order': '该订单已经提交过评价',
-    'completion already confirmed by this user': '你已经提交过完成确认，请等待对方确认',
-    'admin cannot ban self': '不能封禁自己',
-    'user is already banned': '该用户已经被封禁',
-    'user is already active': '该用户已经是正常状态',
-    'only reviewing demands can be reviewed': '只有待审核的需求才能处理',
-    'admin role is required': '需要管理员权限',
-    'publisher cannot accept own demand': '发布者不能接自己的需求',
-    'demand is not available for acceptance': '该需求当前不可接单',
-    'demand has already been accepted': '该需求已经被接单',
-    'only order participants can update order status': '只有订单参与者才能更新订单状态',
-    'only participants or admins can view order': '只有订单参与者或管理员才能查看订单',
-    'order is already in target status': '订单已经处于目标状态',
-    'only accepted orders can move to in progress': '只有已接单的订单才能进入进行中',
-    'only accepter can start the order': '只有接单人才能开始订单',
-    'only in progress orders can be completed': '只有进行中的订单才能完成',
-    'only accepter can complete the order': '只有接单人才能完成订单',
-    'only accepted orders can be cancelled': '只有已接单的订单才能取消',
-    'only participants can cancel order': '只有订单参与者才能取消订单',
-    'cannot transition back to accepted': '不能回退到已接单状态',
-    'banned user cannot operate orders': '已封禁用户不能操作订单',
-    'banned user cannot publish demands': '已封禁用户不能发布需求',
-    'demand contains forbidden words': '需求内容包含敏感词',
-    'verification code service is not available': '验证码服务不可用',
-    'request too frequent': '请求过于频繁，请稍后再试'
-  }
-
-  if (rawMessage in directMap) {
-    return directMap[rawMessage]
-  }
-
-  if (code === 5000) {
-    return '系统发生错误，请稍后重试'
-  }
-
-  if (code === 1001) {
-    return '登录失败，请检查账号和密码'
-  }
-
-  if (code === 1004) {
-    return '没有权限执行该操作'
-  }
-
-  if (code === 1005 && rawMessage) {
-    return directMap[rawMessage] ?? '业务冲突，请检查输入后重试'
-  }
-
-  const nullMatch = rawMessage.match(/^([a-zA-Z][a-zA-Z0-9]*) must not be null$/)
-  if (nullMatch) {
-    return `${translateFieldName(nullMatch[1])}不能为空`
-  }
-
-  const blankMatch = rawMessage.match(/^([a-zA-Z][a-zA-Z0-9]*) must not be blank$/)
-  if (blankMatch) {
-    return `${translateFieldName(blankMatch[1])}不能为空`
-  }
-
-  const minLengthMatch = rawMessage.match(/^([a-zA-Z][a-zA-Z0-9]*) must be at least (\d+) characters$/)
-  if (minLengthMatch) {
-    return `${translateFieldName(minLengthMatch[1])}至少需要 ${minLengthMatch[2]} 个字符`
-  }
-
-  const maxLengthMatch = rawMessage.match(/^([a-zA-Z][a-zA-Z0-9]*) length must not exceed (\d+)$/)
-  if (maxLengthMatch) {
-    return `${translateFieldName(maxLengthMatch[1])}长度不能超过 ${maxLengthMatch[2]} 个字符`
-  }
-
-  const betweenMatch = rawMessage.match(/^([a-zA-Z][a-zA-Z0-9]*) length must be between (\d+) and (\d+)$/)
-  if (betweenMatch) {
-    return `${translateFieldName(betweenMatch[1])}长度必须在 ${betweenMatch[2]} 到 ${betweenMatch[3]} 个字符之间`
-  }
-
-  const rangeMatch = rawMessage.match(/^([a-zA-Z][a-zA-Z0-9]*) must be between (\d+) and (\d+)$/)
-  if (rangeMatch) {
-    return `${translateFieldName(rangeMatch[1])}必须在 ${rangeMatch[2]} 到 ${rangeMatch[3]} 之间`
-  }
-
-  const greaterThanMatch = rawMessage.match(/^([a-zA-Z][a-zA-Z0-9]*) must be greater than or equal to (\d+)$/)
-  if (greaterThanMatch) {
-    return `${translateFieldName(greaterThanMatch[1])}必须大于或等于 ${greaterThanMatch[2]}`
-  }
-
-  const unsupportedMatch = rawMessage.match(/^unsupported ([a-zA-Z][a-zA-Z0-9]*)[: ]+(.+)$/)
-  if (unsupportedMatch) {
-    return `不支持的${translateFieldName(unsupportedMatch[1])}：${unsupportedMatch[2]}`
-  }
-
-  const onlyMatch = rawMessage.match(/^only (.+) can (.+)$/)
-  if (onlyMatch) {
-    return `只有${onlyMatch[1]}才能${onlyMatch[2]}`
-  }
-
-  return rawMessage || '请求失败'
-}
+import { translateApiError } from '@/utils/errorHandler'
 
 async function requestJson<T>(path: string, init: RequestInit = {}, token?: string): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
@@ -212,7 +69,10 @@ async function requestJson<T>(path: string, init: RequestInit = {}, token?: stri
 
   const payload = await response.json().catch(() => null)
   if (!response.ok) {
-    throw new Error(translateApiError(payload))
+    const message = translateApiError(payload)
+    const err = new Error(message) as Error & { status?: number }
+    err.status = response.status
+    throw err
   }
 
   return unwrapApiPayload<T>(payload)
@@ -269,6 +129,12 @@ function mapOrderRecord(raw: any): OrderRecord {
     id: String(raw.orderId ?? raw.id ?? ''),
     demandId: String(demand.id ?? raw.demandId ?? ''),
     demandTitle: String(demand.title ?? raw.demandTitle ?? ''),
+    demandLocation: String(demand.location ?? raw.location ?? ''),
+    demandStartTime: String(demand.startTime ?? raw.startTime ?? ''),
+    demandEndTime: String(demand.endTime ?? raw.endTime ?? ''),
+    demandCategory: String(demand.category ?? raw.category ?? ''),
+    demandCampusZone: String(demand.campusZone ?? raw.campusZone ?? ''),
+    demandReward: Number(demand.reward ?? raw.reward ?? 0),
     requesterId: String(requester.id ?? raw.publisherId ?? raw.requesterId ?? demand.publisherId ?? ''),
     requesterName: String(requester.nickname ?? raw.publisherDisplayName ?? raw.requesterName ?? demand.publisherDisplayName ?? ''),
     requesterAvatar: String(requester.avatarUrl ?? raw.requesterAvatar ?? raw.publisherAvatar ?? buildAvatar(String(requester.nickname ?? raw.publisherDisplayName ?? ''))),
@@ -647,16 +513,24 @@ export const useCampusHubStore = defineStore('campusHub', {
     },
 
     async acceptDemand(demandId: string, note = ''): Promise<OrderRecord> {
-      const order = await requestJson<any>(`/demands/${encodeURIComponent(demandId)}/accept`, {
-        method: 'POST',
-        body: JSON.stringify({ note: note.trim() })
-      }, this.token)
+      try {
+        const order = await requestJson<any>(`/demands/${encodeURIComponent(demandId)}/accept`, {
+          method: 'POST',
+          body: JSON.stringify({ note: note.trim() })
+        }, this.token)
 
-      const mapped = mapOrderRecord(order)
-      await this.fetchDemands()
-      await this.fetchOrders()
-      await this.fetchNotifications()
-      return mapped
+        const mapped = mapOrderRecord(order)
+        await this.fetchDemands()
+        await this.fetchOrders()
+        await this.fetchNotifications()
+        return mapped
+      } catch (err) {
+        const e = err as Error & { status?: number }
+        if (e.status === 409) {
+          throw new Error('该需求已过期，无法接单')
+        }
+        throw err
+      }
     },
 
     async startOrder(orderId: string): Promise<OrderRecord> {
@@ -709,6 +583,12 @@ export const useCampusHubStore = defineStore('campusHub', {
       this.reviews.unshift(mapped)
       await this.fetchOrders()
       await this.fetchNotifications()
+      // 后端可能已经返回更新后的信用分，优先使用；否则主动刷新用户信息
+      try {
+        await this.fetchProfile()
+      } catch {
+        // ignore
+      }
       return mapped
     },
 
@@ -778,6 +658,8 @@ export const useCampusHubStore = defineStore('campusHub', {
       }
     },
 
+    // (recent demand-resolution helpers reverted)
+
     async fetchOrders(): Promise<void> {
       try {
         const payload = await requestJson<any>('/orders?page=1&size=100', {}, this.token)
@@ -843,17 +725,18 @@ export const useCampusHubStore = defineStore('campusHub', {
     async fetchAdminDashboard(): Promise<void> {
       try {
         const payload = await requestJson<any>('/admin/dashboard', {}, this.token)
+        // 兼容不同后端字段命名，优先使用常见字段
         this.adminDashboard = {
-          dailyActiveUsers: Number(payload?.dailyActiveUsers ?? 0),
-          totalUsers: Number(payload?.totalUsers ?? 0),
-          totalDemands: Number(payload?.totalDemands ?? 0),
-          pendingReviewDemands: Number(payload?.pendingReviewDemands ?? 0),
-          totalOrders: Number(payload?.totalOrders ?? 0),
-          completedOrders: Number(payload?.completedOrders ?? 0),
-          categoryDistribution: Array.isArray(payload?.categoryDistribution)
-            ? payload.categoryDistribution.map((item: any) => ({
+          dailyActiveUsers: Number(payload?.dailyActiveUsers ?? payload?.dau ?? payload?.daily_active_users ?? 0),
+          totalUsers: Number(payload?.totalUsers ?? payload?.usersCount ?? 0),
+          totalDemands: Number(payload?.totalDemands ?? payload?.demandsCount ?? payload?.total_demands ?? 0),
+          pendingReviewDemands: Number(payload?.pendingReviewDemands ?? payload?.pendingReview ?? 0),
+          totalOrders: Number(payload?.totalOrders ?? payload?.ordersCount ?? 0),
+          completedOrders: Number(payload?.completedOrders ?? payload?.completed_orders ?? 0),
+          categoryDistribution: Array.isArray(payload?.categoryDistribution) || Array.isArray(payload?.category_distribution)
+            ? (payload?.categoryDistribution ?? payload?.category_distribution).map((item: any) => ({
                 category: String(item.category ?? ''),
-                total: Number(item.total ?? 0)
+                total: Number(item.total ?? item.count ?? 0)
               }))
             : []
         }
@@ -871,9 +754,22 @@ export const useCampusHubStore = defineStore('campusHub', {
         const payload = await requestJson<any>(`/recommendations?page=${page}&size=${size}`, {}, this.token)
         const items = Array.isArray(payload?.items) ? payload.items : Array.isArray(payload?.data?.items) ? payload.data.items : []
 
+        // 按返回的 rank 排序，rank 值越小优先级越高
+        items.sort((a: any, b: any) => (Number(a.rank ?? a.score ?? 0) - Number(b.rank ?? b.score ?? 0)))
+
         return items.map((item: any) => mapDemandRecord(item.demand ?? item))
       } catch {
         return []
+      }
+    }
+
+    ,
+    async fetchBalance(): Promise<number> {
+      try {
+        const payload = await requestJson<any>('/user/balance', {}, this.token)
+        return Number(payload?.balance ?? payload?.available ?? payload ?? 0)
+      } catch {
+        return 0
       }
     }
   }
