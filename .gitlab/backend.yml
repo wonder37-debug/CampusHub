@@ -1,105 +1,31 @@
-.backend-template:
+backend:verify:
   image: maven:3.9.9-eclipse-temurin-21
+  stage: build
+  timeout: 30m
   variables:
     MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
     MAVEN_CLI_OPTS: "-B -ntp -s ../.gitlab/maven-settings.xml -Daether.connector.connectTimeout=30000 -Daether.connector.requestTimeout=120000 -Dmaven.wagon.rto=120000 -Dmaven.wagon.http.retryHandler.count=1"
     SPRING_PROFILES_ACTIVE: "default"
   before_script:
     - cd backend
-
-backend:dependencies:
-  extends: .backend-template
-  stage: deps
-  timeout: 20m
-  script:
-    - mvn $MAVEN_CLI_OPTS -DskipTests test-compile dependency:go-offline
-  artifacts:
-    paths:
-      - .m2/repository/
-    expire_in: 1 day
-  rules:
-    - changes:
-        - backend/**/*
-        - .gitlab/backend.yml
-        - .gitlab-ci.yml
-    - when: manual
-      allow_failure: true
-
-backend:static-check:
-  extends: .backend-template
-  stage: static-check
-  needs:
-    - job: backend:dependencies
-      artifacts: true
-  script:
-    - mvn $MAVEN_CLI_OPTS -DskipTests compile
-  rules:
-    - changes:
-        - backend/**/*
-        - .gitlab/backend.yml
-        - .gitlab-ci.yml
-
-backend:unit-test:
-  extends: .backend-template
-  stage: unit-test
-  timeout: 15m
-  needs:
-    - job: backend:dependencies
-      artifacts: true
-  script:
-    - timeout 12m mvn $MAVEN_CLI_OPTS -Dtest='*ServiceImplTest,RequestUserExtractorTest' test
-  artifacts:
-    when: always
-    reports:
-      junit:
-        - backend/target/surefire-reports/TEST-*.xml
-    paths:
-      - backend/target/surefire-reports/
-    expire_in: 7 days
-  rules:
-    - changes:
-        - backend/**/*
-        - .gitlab/backend.yml
-        - .gitlab-ci.yml
-
-backend:integration-test:
-  extends: .backend-template
-  stage: integration-test
-  timeout: 15m
-  needs:
-    - job: backend:dependencies
-      artifacts: true
-  script:
     - mvn -version
-    - timeout 12m mvn $MAVEN_CLI_OPTS -Dtest=FrontendIntegrationFlowTest test
-  artifacts:
-    when: always
-    reports:
-      junit:
-        - backend/target/surefire-reports/TEST-*.xml
-    paths:
-      - backend/target/surefire-reports/
-    expire_in: 7 days
-  rules:
-    - changes:
-        - backend/**/*
-        - .gitlab/backend.yml
-        - .gitlab-ci.yml
-
-backend:build:
-  extends: .backend-template
-  stage: build
-  needs:
-    - job: backend:dependencies
-      artifacts: true
   script:
+    - mvn $MAVEN_CLI_OPTS -DskipTests test-compile
+    - mvn $MAVEN_CLI_OPTS -Dtest='*ServiceImplTest,RequestUserExtractorTest' test
+    - mvn $MAVEN_CLI_OPTS -Dtest=FrontendIntegrationFlowTest test
     - mvn $MAVEN_CLI_OPTS -DskipTests package
   artifacts:
+    when: always
+    reports:
+      junit:
+        - backend/target/surefire-reports/TEST-*.xml
     paths:
+      - backend/target/surefire-reports/
       - backend/target/*.jar
     expire_in: 7 days
   rules:
     - changes:
         - backend/**/*
         - .gitlab/backend.yml
+        - .gitlab/maven-settings.xml
         - .gitlab-ci.yml
