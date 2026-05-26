@@ -178,10 +178,16 @@ class AdminApplicationServiceImplTest {
             order.orderId(),
             new UpdateOrderStatusCommand("IN_PROGRESS", "开始处理", null)
         );
+        // 双确认流程：接单方提交完成，发布者再确认一次
         orderApplicationService.updateStatus(
             accepterId,
             order.orderId(),
             new UpdateOrderStatusCommand("COMPLETED", "已完成", 1)
+        );
+        orderApplicationService.updateStatus(
+            publisherId,
+            order.orderId(),
+            new UpdateOrderStatusCommand("COMPLETED", "确认完成", null)
         );
 
         AdminDashboardResponse dashboard = adminApplicationService.getDashboard(adminId);

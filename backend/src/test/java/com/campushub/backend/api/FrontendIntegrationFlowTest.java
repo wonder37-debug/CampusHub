@@ -98,11 +98,17 @@ class FrontendIntegrationFlowTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.status").value("IN_PROGRESS"));
 
+        // 接单方提交完成并上传凭证，订单仍为进行中，但凭证已提交，等待发布者确认
         updateOrder(accepter.token(), orderId, "COMPLETED", "delivered", 2)
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.status").value("COMPLETED"))
+            .andExpect(jsonPath("$.data.status").value("IN_PROGRESS"))
             .andExpect(jsonPath("$.data.proofSubmitted").value(true))
             .andExpect(jsonPath("$.data.proofImageCount").value(2));
+
+        // 发布者确认完成，订单变为已完成
+        updateOrder(publisher.token(), orderId, "COMPLETED", "confirm", null)
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.status").value("COMPLETED"));
 
         mockMvc.perform(post("/api/v1/orders/{orderId}/reviews", orderId)
                 .header("Authorization", bearer(publisher.token()))

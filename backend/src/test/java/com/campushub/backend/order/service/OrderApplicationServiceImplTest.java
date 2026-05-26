@@ -127,9 +127,15 @@ class OrderApplicationServiceImplTest {
             accepted.orderId(),
             new UpdateOrderStatusCommand("COMPLETED", "已完成并上传凭证", 2)
         );
+        // 双方确认流程：接单方先提交完成，发布者确认后才真正完成
+        OrderDetailResponse finalCompleted = orderApplicationService.updateStatus(
+            publisherId,
+            accepted.orderId(),
+            new UpdateOrderStatusCommand("COMPLETED", "确认完成", null)
+        );
 
         assertEquals("IN_PROGRESS", inProgress.status());
-        assertEquals("COMPLETED", completed.status());
+        assertEquals("COMPLETED", finalCompleted.status());
         assertTrue(completed.proofSubmitted());
         assertEquals(2, completed.proofImageCount());
         assertEquals("COMPLETED", demandApplicationService.getDetail(demand.id()).status());

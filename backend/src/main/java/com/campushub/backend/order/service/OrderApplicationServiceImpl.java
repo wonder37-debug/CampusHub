@@ -112,7 +112,7 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
 
         OrderStatus targetStatus = parseStatus(command.targetStatus());
         if (targetStatus == OrderStatus.COMPLETED) {
-            return confirmCompletion(operatorId, order, demand);
+            return confirmCompletion(operatorId, order, demand, command);
         }
         validateTransition(order, operatorId, targetStatus, command.proofImageCount());
 
@@ -151,7 +151,7 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         return OrderDetailResponse.from(order, DemandDetailResponse.from(demand));
     }
 
-    private OrderDetailResponse confirmCompletion(Long operatorId, Order order, Demand demand) {
+    private OrderDetailResponse confirmCompletion(Long operatorId, Order order, Demand demand, UpdateOrderStatusCommand command) {
         if (order.getStatus() != OrderStatus.IN_PROGRESS) {
             throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "only in progress orders can be completed");
         }
@@ -167,6 +167,11 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
 
         LocalDateTime now = LocalDateTime.now();
         if (!hasCompletionConfirmation(order, counterpartId)) {
+            // 当接单方提交凭证时，记录凭证信息并写入待确认历史记录
+            if (command != null && command.proofImageCount() != null) {
+                order.setProofSubmitted(true);
+                order.setProofImageCount(command.proofImageCount());
+            }
             order.addHistory(OrderStatus.IN_PROGRESS, OrderStatus.IN_PROGRESS, operatorId, COMPLETION_PENDING_NOTE, now);
             order.setUpdatedAt(now);
             orderRepository.save(order);
@@ -181,6 +186,11 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         order.setStatus(OrderStatus.COMPLETED);
         order.setCompletedAt(now);
         order.setUpdatedAt(now);
+        // 保持之前提交的凭证信息；如果发布者在确认时也传入了 proofImageCount，则不覆盖接单方的凭证
+        if (command != null && command.proofImageCount() != null && !order.isProofSubmitted()) {
+            order.setProofSubmitted(true);
+            order.setProofImageCount(command.proofImageCount());
+        }
         order.addHistory(OrderStatus.IN_PROGRESS, OrderStatus.COMPLETED, operatorId, COMPLETION_FINAL_NOTE, now);
         demand.setStatus(DemandStatus.COMPLETED);
         demand.setUpdatedAt(now);

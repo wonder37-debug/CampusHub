@@ -211,10 +211,16 @@ class ReviewApplicationServiceImplTest {
             accepted.orderId(),
             new UpdateOrderStatusCommand("IN_PROGRESS", "开始", null)
         );
-        return orderApplicationService.updateStatus(
+        // 接单方提交完成，发布者需要确认完成才能算真正完成
+        orderApplicationService.updateStatus(
             accepterId,
             accepted.orderId(),
             new UpdateOrderStatusCommand("COMPLETED", "完成", 2)
+        );
+        return orderApplicationService.updateStatus(
+            publisherId,
+            accepted.orderId(),
+            new UpdateOrderStatusCommand("COMPLETED", "确认完成", null)
         );
     }
 }

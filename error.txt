@@ -1,0 +1,82 @@
+com.campushub.backend.admin.service.AdminApplicationServiceImplTest
+名称
+shouldBuildDashboardStats
+执行时间
+15.00毫秒
+系统输出
+org.opentest4j.AssertionFailedError: expected: <1> but was: <0>
+	at org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+	at org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+	at org.junit.jupiter.api.AssertEquals.failNotEqual(AssertEquals.java:197)
+	at org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:166)
+	at org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:161)
+	at org.junit.jupiter.api.Assertions.assertEquals(Assertions.java:632)
+	at com.campushub.backend.admin.service.AdminApplicationServiceImplTest.shouldBuildDashboardStats(AdminApplicationServiceImplTest.java:193)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
+com.campushub.backend.order.service.OrderApplicationServiceImplTest
+名称
+shouldAllowValidStatusTransitions
+执行时间
+1.00毫秒
+系统输出
+org.opentest4j.AssertionFailedError: expected: <COMPLETED> but was: <IN_PROGRESS>
+	at org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+	at org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+	at org.junit.jupiter.api.AssertEquals.failNotEqual(AssertEquals.java:197)
+	at org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:182)
+	at org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:177)
+	at org.junit.jupiter.api.Assertions.assertEquals(Assertions.java:1145)
+	at com.campushub.backend.order.service.OrderApplicationServiceImplTest.shouldAllowValidStatusTransitions(OrderApplicationServiceImplTest.java:132)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
+com.campushub.backend.review.service.ReviewApplicationServiceImplTest
+名称
+shouldListUserReviews
+执行时间
+1.00毫秒
+系统输出
+com.campushub.backend.common.exception.BusinessException: only completed orders can be reviewed
+	at com.campushub.backend.review.service.ReviewApplicationServiceImpl.submit(ReviewApplicationServiceImpl.java:62)
+	at com.campushub.backend.review.service.ReviewApplicationServiceImplTest.shouldListUserReviews(ReviewApplicationServiceImplTest.java:158)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
+com.campushub.backend.review.service.ReviewApplicationServiceImplTest
+名称
+shouldRejectDuplicateReviewFromSameAuthor
+执行时间
+1.00毫秒
+系统输出
+com.campushub.backend.common.exception.BusinessException: only completed orders can be reviewed
+	at com.campushub.backend.review.service.ReviewApplicationServiceImpl.submit(ReviewApplicationServiceImpl.java:62)
+	at com.campushub.backend.review.service.ReviewApplicationServiceImplTest.shouldRejectDuplicateReviewFromSameAuthor(ReviewApplicationServiceImplTest.java:120)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
+com.campushub.backend.review.service.ReviewApplicationServiceImplTest
+名称
+shouldGenerateNotificationAfterReviewSubmitted
+执行时间
+1.00毫秒
+系统输出
+com.campushub.backend.common.exception.BusinessException: only completed orders can be reviewed
+	at com.campushub.backend.review.service.ReviewApplicationServiceImpl.submit(ReviewApplicationServiceImpl.java:62)
+	at com.campushub.backend.review.service.ReviewApplicationServiceImplTest.shouldGenerateNotificationAfterReviewSubmitted(ReviewApplicationServiceImplTest.java:172)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
+com.campushub.backend.review.service.ReviewApplicationServiceImplTest
+名称
+shouldSubmitReviewAndRecalculateCreditScore
+执行时间
+1.00毫秒
+系统输出
+com.campushub.backend.common.exception.BusinessException: only completed orders can be reviewed
+	at com.campushub.backend.review.service.ReviewApplicationServiceImpl.submit(ReviewApplicationServiceImpl.java:62)
+	at com.campushub.backend.review.service.ReviewApplicationServiceImplTest.shouldSubmitReviewAndRecalculateCreditScore(ReviewApplicationServiceImplTest.java:106)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
