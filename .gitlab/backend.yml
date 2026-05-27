@@ -1,27 +1,29 @@
 backend:verify:
   image: maven:3.9.9-eclipse-temurin-21
-  stage: build
+  stage: test
   timeout: 30m
   variables:
-    GIT_CLEAN_FLAGS: "-ffdx -e .m2/"
+    GIT_CLEAN_FLAGS: "-ffdx"
     MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository -Djava.security.egd=file:/dev/./urandom"
     MAVEN_CLI_OPTS: "-B -ntp -s ../.gitlab/maven-settings.xml -Daether.connector.connectTimeout=30000 -Daether.connector.requestTimeout=120000 -Dmaven.wagon.rto=120000 -Dmaven.wagon.http.retryHandler.count=1"
     SPRING_PROFILES_ACTIVE: "default"
+    SPRING_AUTOCONFIGURE_EXCLUDE: "org.springframework.boot.autoconfigure.mail.MailSenderAutoConfiguration"
+    ARTIFACT_COMPRESSION_LEVEL: "fastest"
   before_script:
     - cd backend
     - mvn -version
   script:
-    - printf "section_start:%s:backend_compile[collapsed=false]\r\e[0KBackend compile and dependency check\n" "$(date +%s)"
-    - mvn $MAVEN_CLI_OPTS -DskipTests test-compile
+    - printf "section_start:%s:backend_compile[collapsed=false]\r\e[0KBackend compile and test compile\n" "$(date +%s)"
+    - timeout 8m mvn $MAVEN_CLI_OPTS -DskipTests test-compile
     - printf "section_end:%s:backend_compile\r\e[0K\n" "$(date +%s)"
     - printf "section_start:%s:backend_unit_tests[collapsed=false]\r\e[0KBackend unit tests\n" "$(date +%s)"
-    - mvn $MAVEN_CLI_OPTS -Dtest='*ServiceImplTest,RequestUserExtractorTest' test
+    - timeout 8m mvn $MAVEN_CLI_OPTS "-Dtest=*ServiceImplTest,RequestUserExtractorTest" "-Dsurefire.timeout=240" "-Dsurefire.exitTimeout=30" test
     - printf "section_end:%s:backend_unit_tests\r\e[0K\n" "$(date +%s)"
     - printf "section_start:%s:backend_integration_tests[collapsed=false]\r\e[0KBackend integration tests\n" "$(date +%s)"
-    - timeout 8m mvn $MAVEN_CLI_OPTS -Dtest=FrontendIntegrationFlowTest "-Dsurefire.timeout=360" "-Dsurefire.exitTimeout=30" test
+    - timeout 8m mvn $MAVEN_CLI_OPTS "-Dtest=FrontendIntegrationFlowTest" "-Dsurefire.timeout=360" "-Dsurefire.exitTimeout=30" test
     - printf "section_end:%s:backend_integration_tests\r\e[0K\n" "$(date +%s)"
     - printf "section_start:%s:backend_package[collapsed=false]\r\e[0KBackend package\n" "$(date +%s)"
-    - mvn $MAVEN_CLI_OPTS -DskipTests package
+    - timeout 8m mvn $MAVEN_CLI_OPTS -DskipTests package
     - printf "section_end:%s:backend_package\r\e[0K\n" "$(date +%s)"
   artifacts:
     when: always

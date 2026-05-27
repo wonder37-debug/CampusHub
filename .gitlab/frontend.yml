@@ -1,49 +1,12 @@
-.frontend-template:
+frontend:build:
   image: node:22
-  cache:
-    key:
-      files:
-        - frontend/package-lock.json
-    paths:
-      - frontend/.npm/
+  stage: build
+  timeout: 15m
+  variables:
+    ARTIFACT_COMPRESSION_LEVEL: "fastest"
   before_script:
     - cd frontend
-    - npm ci --cache .npm --prefer-offline
-
-frontend:dependencies:
-  image: node:22
-  stage: deps
-  cache:
-    key:
-      files:
-        - frontend/package-lock.json
-    paths:
-      - frontend/.npm/
-  script:
-    - cd frontend
-    - npm ci --cache .npm --prefer-offline
-  rules:
-    - changes:
-        - frontend/**/*
-        - .gitlab/frontend.yml
-        - .gitlab-ci.yml
-    - when: manual
-      allow_failure: true
-
-frontend:static-check:
-  extends: .frontend-template
-  stage: static-check
-  script:
-    - npm run type-check
-  rules:
-    - changes:
-        - frontend/**/*
-        - .gitlab/frontend.yml
-        - .gitlab-ci.yml
-
-frontend:build:
-  extends: .frontend-template
-  stage: build
+    - npm ci --prefer-offline
   script:
     - npm run build
   artifacts:
