@@ -10,7 +10,7 @@ backend:verify:
     ARTIFACT_COMPRESSION_LEVEL: "fastest"
   before_script:
     - cd backend
-    - export MAVEN_REPO_LOCAL="/cache/maven/${CI_PROJECT_PATH_SLUG}/repository"
+    - export MAVEN_REPO_LOCAL="$CI_PROJECT_DIR/.m2/repository"
     - mkdir -p "$MAVEN_REPO_LOCAL"
     - export MAVEN_OPTS="-Dmaven.repo.local=$MAVEN_REPO_LOCAL -Djava.security.egd=file:/dev/./urandom"
     - echo "Maven local repository $MAVEN_REPO_LOCAL"
@@ -57,7 +57,7 @@ backend:integration-diagnose:
     ARTIFACT_COMPRESSION_LEVEL: "fastest"
   before_script:
     - cd backend
-    - export MAVEN_REPO_LOCAL="/cache/maven/${CI_PROJECT_PATH_SLUG}/repository"
+    - export MAVEN_REPO_LOCAL="$CI_PROJECT_DIR/.m2/repository"
     - mkdir -p "$MAVEN_REPO_LOCAL"
     - export MAVEN_OPTS="-Dmaven.repo.local=$MAVEN_REPO_LOCAL -Djava.security.egd=file:/dev/./urandom"
     - echo "Maven local repository $MAVEN_REPO_LOCAL"
