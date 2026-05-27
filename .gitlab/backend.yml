@@ -40,3 +40,77 @@ backend:verify:
         - .gitlab/backend.yml
         - .gitlab/maven-settings.xml
         - .gitlab-ci.yml
+
+backend:integration-diagnose:
+  image: maven:3.9.9-eclipse-temurin-21
+  stage: test
+  timeout: 20m
+  allow_failure: true
+  variables:
+    GIT_CLEAN_FLAGS: "-ffdx"
+    MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository -Djava.security.egd=file:/dev/./urandom"
+    MAVEN_CLI_OPTS: "-B -s ../.gitlab/maven-settings.xml -Daether.connector.connectTimeout=30000 -Daether.connector.requestTimeout=120000 -Dmaven.wagon.rto=120000 -Dmaven.wagon.http.retryHandler.count=1"
+    SPRING_PROFILES_ACTIVE: "default"
+    SPRING_AUTOCONFIGURE_EXCLUDE: "org.springframework.boot.autoconfigure.mail.MailSenderAutoConfiguration"
+    ARTIFACT_COMPRESSION_LEVEL: "fastest"
+  before_script:
+    - cd backend
+    - mvn -version
+  script:
+    - |
+      set -eu
+      mkdir -p target/diagnostics
+      echo "===== diagnostic environment ====="
+      date
+      printenv | sort | grep -E '^(CI_|GITLAB_|RUNNER_|MAVEN_|SPRING_|JAVA_|DB_|APP_|SMTP_)' || true
+      echo "===== disk ====="
+      df -h || true
+      echo "===== memory ====="
+      free -m || true
+      echo "===== cpu ====="
+      nproc || true
+      echo "===== start watchdog ====="
+      (
+        sleep 120
+        while true; do
+          TS="$(date +%s)"
+          printf "section_start:%s:backend_diagnostics_%s[collapsed=false]\r\e[0KBackend integration diagnostics\n" "$TS" "$TS"
+          date
+          ps -eo pid,ppid,stat,pcpu,pmem,etime,args --sort=-pcpu | head -50 || true
+          for pid in $(pgrep -f 'java|surefire' || true); do
+            echo "===== jcmd Thread.print pid=$pid ====="
+            jcmd "$pid" Thread.print -l | tee "target/diagnostics/thread-$pid-$TS.txt" || true
+          done
+          printf "section_end:%s:backend_diagnostics_%s\r\e[0K\n" "$(date +%s)" "$TS"
+          sleep 120
+        done
+      ) &
+      WATCHDOG_PID="$!"
+      set +e
+      timeout 12m mvn $MAVEN_CLI_OPTS \
+        "-Dtest=FrontendIntegrationFlowTest" \
+        "-Dsurefire.timeout=360" \
+        "-Dsurefire.exitTimeout=30" \
+        "-Dspring.autoconfigure.exclude=org.springframework.boot.autoconfigure.mail.MailSenderAutoConfiguration" \
+        "-Dlogging.level.org.springframework.test=DEBUG" \
+        "-Dlogging.level.org.springframework.boot.test=DEBUG" \
+        test
+      CODE="$?"
+      kill "$WATCHDOG_PID" || true
+      exit "$CODE"
+  artifacts:
+    when: always
+    reports:
+      junit:
+        - backend/target/surefire-reports/TEST-*.xml
+    paths:
+      - backend/target/surefire-reports/
+      - backend/target/diagnostics/
+    expire_in: 7 days
+  rules:
+    - changes:
+        - backend/**/*
+        - .gitlab/backend.yml
+        - .gitlab/maven-settings.xml
+        - .gitlab-ci.yml
+      when: manual
