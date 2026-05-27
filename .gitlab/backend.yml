@@ -4,13 +4,16 @@ backend:verify:
   timeout: 30m
   variables:
     GIT_CLEAN_FLAGS: "-ffdx"
-    MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository -Djava.security.egd=file:/dev/./urandom"
-    MAVEN_CLI_OPTS: "-B -ntp -s ../.gitlab/maven-settings.xml -Daether.connector.connectTimeout=30000 -Daether.connector.requestTimeout=120000 -Dmaven.wagon.rto=120000 -Dmaven.wagon.http.retryHandler.count=1"
+    MAVEN_CLI_OPTS: "-B -s ../.gitlab/maven-settings.xml -Dmaven.artifact.threads=8 -Daether.connector.connectTimeout=30000 -Daether.connector.requestTimeout=120000 -Dmaven.wagon.rto=120000 -Dmaven.wagon.http.retryHandler.count=1"
     SPRING_PROFILES_ACTIVE: "default"
     SPRING_AUTOCONFIGURE_EXCLUDE: "org.springframework.boot.autoconfigure.mail.MailSenderAutoConfiguration"
     ARTIFACT_COMPRESSION_LEVEL: "fastest"
   before_script:
     - cd backend
+    - export MAVEN_REPO_LOCAL="/cache/maven/${CI_PROJECT_PATH_SLUG}/repository"
+    - mkdir -p "$MAVEN_REPO_LOCAL"
+    - export MAVEN_OPTS="-Dmaven.repo.local=$MAVEN_REPO_LOCAL -Djava.security.egd=file:/dev/./urandom"
+    - echo "Maven local repository $MAVEN_REPO_LOCAL"
     - mvn -version
   script:
     - printf "section_start:%s:backend_compile[collapsed=false]\r\e[0KBackend compile and test compile\n" "$(date +%s)"
@@ -48,13 +51,16 @@ backend:integration-diagnose:
   allow_failure: true
   variables:
     GIT_CLEAN_FLAGS: "-ffdx"
-    MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository -Djava.security.egd=file:/dev/./urandom"
-    MAVEN_CLI_OPTS: "-B -s ../.gitlab/maven-settings.xml -Daether.connector.connectTimeout=30000 -Daether.connector.requestTimeout=120000 -Dmaven.wagon.rto=120000 -Dmaven.wagon.http.retryHandler.count=1"
+    MAVEN_CLI_OPTS: "-B -s ../.gitlab/maven-settings.xml -Dmaven.artifact.threads=8 -Daether.connector.connectTimeout=30000 -Daether.connector.requestTimeout=120000 -Dmaven.wagon.rto=120000 -Dmaven.wagon.http.retryHandler.count=1"
     SPRING_PROFILES_ACTIVE: "default"
     SPRING_AUTOCONFIGURE_EXCLUDE: "org.springframework.boot.autoconfigure.mail.MailSenderAutoConfiguration"
     ARTIFACT_COMPRESSION_LEVEL: "fastest"
   before_script:
     - cd backend
+    - export MAVEN_REPO_LOCAL="/cache/maven/${CI_PROJECT_PATH_SLUG}/repository"
+    - mkdir -p "$MAVEN_REPO_LOCAL"
+    - export MAVEN_OPTS="-Dmaven.repo.local=$MAVEN_REPO_LOCAL -Djava.security.egd=file:/dev/./urandom"
+    - echo "Maven local repository $MAVEN_REPO_LOCAL"
     - mvn -version
   script:
     - |
