@@ -10,13 +10,10 @@ const router = useRouter()
 
 const notifications = computed(() => store.currentUserNotifications)
 
-function goBack(): void {
-  router.back()
-}
-
 function iconFor(type: string): string {
   if (type === 'ORDER_ACCEPTED') return '🧩'
   if (type === 'REVIEW_RECEIVED') return '⭐'
+  if (type === 'REVIEW_REQUEST' || type === 'DEMAND_REJECTED') return '📣'
   return '🔔'
 }
 
@@ -29,23 +26,43 @@ async function openNotification(notification: any): Promise<void> {
 
   const relatedId = String(notification.relatedId ?? '')
   const type = String(notification.type ?? '')
-  // If the current user is an admin and this notification relates to review, send them to admin review panel
+  const targetType = String(notification.targetType ?? '').toUpperCase()
+  const actionHint = String(notification.actionHint ?? '').toUpperCase()
+  const targetId = String(notification.targetId ?? relatedId)
   const isAdmin = store.currentUser?.role === 'ADMIN'
-  const normalizedType = type.toUpperCase()
-  const content = String(notification.content ?? '')
 
-  if (isAdmin && (normalizedType.includes('REVIEW') || /审核|待审|review_request/i.test(content))) {
-    router.push(`/admin?tab=review&demandId=${relatedId}`)
+  if (actionHint === 'REVIEW_DEMAND' || (isAdmin && type === 'REVIEW_REQUEST')) {
+    router.push(`/admin?tab=review&demandId=${encodeURIComponent(targetId || relatedId)}`)
     return
   }
 
-  if (normalizedType === 'ORDER_ACCEPTED' || normalizedType === 'STATUS_CHANGED') {
-    router.push(`/demands/${relatedId}`)
+  if (actionHint === 'VIEW_ORDER_REVIEWS' && targetType === 'ORDER') {
+    router.push(`/orders/${encodeURIComponent(targetId || relatedId)}?tab=reviews`)
     return
   }
 
-  if (normalizedType === 'REVIEW_RECEIVED') {
-    router.push(`/orders/${relatedId}`)
+  if (actionHint === 'VIEW_ORDER' || targetType === 'ORDER') {
+    router.push(`/orders/${encodeURIComponent(targetId || relatedId)}`)
+    return
+  }
+
+  if (actionHint === 'VIEW_DEMAND' || targetType === 'DEMAND') {
+    router.push(`/demands/${encodeURIComponent(targetId || relatedId)}`)
+    return
+  }
+
+  if (type === 'DEMAND_REJECTED') {
+    router.push(`/demands/${encodeURIComponent(targetId || relatedId)}`)
+    return
+  }
+
+  if (type === 'ORDER_ACCEPTED' || type === 'STATUS_CHANGED') {
+    router.push(`/orders/${encodeURIComponent(relatedId)}`)
+    return
+  }
+
+  if (type === 'REVIEW_RECEIVED') {
+    router.push(`/orders/${encodeURIComponent(relatedId)}`)
     return
   }
 
@@ -62,7 +79,6 @@ onMounted(() => {
   <div class="page-grid">
     <section class="panel page-head">
       <div class="page-head">
-        <button type="button" class="button secondary" @click="goBack">返回</button>
         <div style="flex:1">
           <h1 class="page-title">消息</h1>
           <p class="page-summary">接单、状态变更和评价会在这里显示。</p>
@@ -96,13 +112,18 @@ onMounted(() => {
         </div>
 
         <div class="card-head">
-          <h3 :style="notification.isRead ? 'font-weight: 500;' : 'font-weight: 700;'">{{ notification.content }}</h3>
+          <h3 :style="notification.isRead ? 'font-weight: 500;' : 'font-weight: 700;'">
+            {{ notification.title || notification.content }}
+          </h3>
           <span class="meta">{{ formatRelativeTime(notification.createdAt) }}</span>
         </div>
 
+        <p v-if="notification.type === 'DEMAND_REJECTED'" class="subtle" style="margin-top: 8px; white-space: pre-wrap;">
+          {{ notification.content }}
+        </p>
+
         <div class="meta">
           <span v-if="!notification.isRead" class="unread-dot"></span>
-          <span v-if="notification.relatedName">关联：{{ notification.relatedName }}</span>
           <span v-else>点击可查看相关订单或需求详情</span>
         </div>
       </article>

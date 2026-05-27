@@ -24,6 +24,9 @@ export function translateApiError(payload: any): string {
     'user is already banned': '该用户已经被封禁',
     'user is already active': '该用户已经是正常状态',
     'only reviewing demands can be reviewed': '只有待审核的需求才能处理',
+    'review action must not be blank': '审核操作不能为空',
+    'reject reason must not be blank': '拒绝理由不能为空',
+    'unsupported review action': '不支持的审核操作',
     'admin role is required': '需要管理员权限',
     'publisher cannot accept own demand': '发布者不能接自己的需求',
     'demand is not available for acceptance': '该需求当前不可接单',
@@ -43,6 +46,34 @@ export function translateApiError(payload: any): string {
     'demand contains forbidden words': '需求内容包含敏感词',
     'verification code service is not available': '验证码服务不可用',
     'request too frequent': '请求过于频繁，请稍后再试'
+    ,
+    LOGIN_REQUIRED: '请先登录后再操作',
+    ADMIN_FORBIDDEN: '管理员不能执行该操作',
+    OWN_DEMAND: '不能接自己的需求',
+    DEMAND_EXPIRED: '该需求已过期，无法接单',
+    DEMAND_NOT_PENDING: '该需求当前不处于待接单状态',
+    DEMAND_ALREADY_ACCEPTED: '该需求已被其他同学接单',
+    DEMAND_ORDER_CLOSED: '该需求关联订单已关闭，无法接单'
+  }
+
+  const codeMap: Record<string, string> = {
+    AUTH_FAILED: '登录失败，请检查账号和密码',
+    VALIDATION_FAILED: '参数校验失败，请检查输入',
+    RESOURCE_NOT_FOUND: '请求的资源不存在或已被删除',
+    PERMISSION_DENIED: '没有权限执行该操作',
+    BALANCE_INSUFFICIENT: '报酬不能超过当前可用余额',
+    REVIEW_REQUIRED: '该内容需要先通过审核',
+    REVIEW_ALREADY_SUBMITTED: '该订单已经提交过评价',
+    NOT_FOUND: '请求的资源不存在或已被删除',
+    CONFLICT: '当前操作与系统状态冲突，请刷新后重试',
+    UNAUTHORIZED: '请先登录后再继续',
+    FORBIDDEN: '没有权限执行该操作',
+    BUSINESS_CONFLICT: '当前操作与系统状态冲突，请刷新后重试'
+  }
+
+  const errorCode = String(payload?.errorCode ?? payload?.codeName ?? '').trim().toUpperCase()
+  if (errorCode && codeMap[errorCode]) {
+    return codeMap[errorCode]
   }
 
   if (rawMessage in directMap) {
@@ -110,7 +141,14 @@ export function translateApiError(payload: any): string {
     return `只有${onlyMatch[1]}才能${onlyMatch[2]}`
   }
 
-  return rawMessage || '请求失败'
+  if (rawMessage) {
+    if (/[A-Za-z]/.test(rawMessage)) {
+      return '请求失败，请检查输入后重试'
+    }
+    return rawMessage
+  }
+
+  return '请求失败，请稍后重试'
 
   function translateFieldName(field: string): string {
     const fieldMap: Record<string, string> = {
@@ -138,7 +176,11 @@ export function translateApiError(payload: any): string {
       comment: '评价内容',
       targetStatus: '目标状态',
       proofImageCount: '证明图片数量',
-      action: '操作类型'
+      action: '操作类型',
+      reason: '原因',
+      searchField: '搜索字段',
+      sortBy: '排序字段',
+      sortDirection: '排序方向'
     }
 
     return fieldMap[field] ?? field
@@ -154,6 +196,9 @@ export function handleError(err: unknown, fallback = '操作失败'): string {
       if (/failed to fetch|networkerror|network error/i.test(msg)) {
         return '网络异常，请检查网络或后端服务'
       }
+      if (/[A-Za-z]/.test(msg)) {
+        return fallback
+      }
       return msg || fallback
     }
 
@@ -161,8 +206,14 @@ export function handleError(err: unknown, fallback = '操作失败'): string {
     if (typeof err === 'object') {
       // common pattern from fetch wrapper: { status, message }
       const anyErr = err as any
-      if (anyErr?.message) return String(anyErr.message)
-      if (anyErr?.error) return String(anyErr.error)
+      if (anyErr?.message) {
+        const message = String(anyErr.message)
+        return /[A-Za-z]/.test(message) ? fallback : message
+      }
+      if (anyErr?.error) {
+        const message = String(anyErr.error)
+        return /[A-Za-z]/.test(message) ? fallback : message
+      }
       if (anyErr?.status === 0) return '网络异常，请检查网络或后端服务'
     }
 

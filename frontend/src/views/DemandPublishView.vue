@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, ref, computed } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { DEMAND_CATEGORY_OPTIONS, type CampusZone } from '@/types/campushub'
@@ -17,23 +17,13 @@ const published = ref(false)
 
 const errors = reactive({
   title: '',
+  category: '',
   location: '',
   reward: '',
-  time: '',
+  startTime: '',
+  endTime: '',
   campusZone: ''
 })
-
-const isFormValid = computed(() => {
-  return (
-    !errors.title &&
-    !errors.location &&
-    !errors.reward &&
-    !errors.time &&
-    (form.campusZone as string) !== '' &&
-    Boolean(form.title.trim())
-  )
-})
-const forbiddenForAdmin = computed(() => store.currentUser?.role === 'ADMIN')
 
 const form = reactive({
   title: '',
@@ -48,14 +38,109 @@ const form = reactive({
   anonymous: false
 })
 
+const isFormValid = computed(() => {
+  return (
+    !errors.title &&
+    !errors.category &&
+    !errors.location &&
+    !errors.reward &&
+    !errors.startTime &&
+    !errors.endTime &&
+    !errors.campusZone &&
+    Boolean(form.title.trim()) &&
+    Boolean(form.category) &&
+    Boolean(form.campusZone) &&
+    Boolean(form.location.trim()) &&
+    Boolean(form.startTime) &&
+    Boolean(form.endTime) &&
+    Boolean(String(form.reward ?? '').trim())
+  )
+})
+
+const forbiddenForAdmin = computed(() => store.currentUser?.role === 'ADMIN')
+const canSubmit = computed(() => !submitting.value && !published.value && !forbiddenForAdmin.value)
+
+function getRewardText(): string {
+  return String(form.reward ?? '').trim()
+}
+
+function isEmpty(value: string): boolean {
+  return !value || !value.trim()
+}
+
+function markRequiredError(field: keyof typeof errors, messageText: string): void {
+  errors[field] = messageText
+}
+
+function runValidations(): void {
+  errors.title = ''
+  errors.category = ''
+  errors.location = ''
+  errors.reward = ''
+  errors.startTime = ''
+  errors.endTime = ''
+  errors.campusZone = ''
+
+  if (isEmpty(form.title)) {
+    markRequiredError('title', '请填写标题')
+  } else if (form.title.trim().length < 3) {
+    markRequiredError('title', '标题至少 3 个字符')
+  } else if (form.title.trim().length > 200) {
+    markRequiredError('title', '标题不能超过 200 个字符')
+  }
+
+  if (isEmpty(form.category)) {
+    markRequiredError('category', '请选择分类')
+  }
+
+  if (isEmpty(form.campusZone)) {
+    markRequiredError('campusZone', '请选择校区')
+  }
+
+  if (isEmpty(form.location)) {
+    markRequiredError('location', '请填写地点，例如：图书馆/宿舍区')
+  }
+
+  if (isEmpty(form.startTime)) {
+    markRequiredError('startTime', '请填写开始时间')
+  }
+
+  if (isEmpty(form.endTime)) {
+    markRequiredError('endTime', '请填写结束时间')
+  }
+
+  const rewardText = getRewardText()
+  if (!rewardText) {
+    markRequiredError('reward', '请填写报酬')
+  } else {
+    const amount = Number(rewardText)
+    if (Number.isNaN(amount) || amount < 0) {
+      markRequiredError('reward', '请输入有效的报酬（可为 0）')
+    }
+  }
+
+  if (form.startTime && form.endTime) {
+    try {
+      const start = new Date(form.startTime).getTime()
+      const end = new Date(form.endTime).getTime()
+      if (Number.isNaN(start) || Number.isNaN(end) || start >= end) {
+        errors.startTime = '请确保开始时间早于结束时间'
+        errors.endTime = '请确保开始时间早于结束时间'
+      }
+    } catch {
+      errors.startTime = '时间格式不正确'
+      errors.endTime = '时间格式不正确'
+    }
+  }
+}
+
 async function submitDemand(): Promise<void> {
   error.value = ''
   message.value = ''
 
-  // run validations
   runValidations()
   if (!isFormValid.value) {
-    error.value = '请修正表单中的错误后再提交。'
+    error.value = '请先填写所有必填项后再提交。'
     return
   }
 
@@ -65,41 +150,44 @@ async function submitDemand(): Promise<void> {
 
   submitting.value = true
 
-  if (!form.campusZone) {
-    errors.campusZone = '请选择校区'
-    error.value = '请选择校区后再发布需求'
-    submitting.value = false
-    return
-  }
-
   try {
     await store.createDemand(form)
-    // 显示发布成功，并展示单独成功界面后跳转到首页，避免用户重复发布
-    message.value = `发布成功，等待审核` 
+    message.value = '发布成功，等待审核'
     published.value = true
-    // 1.5s 后返回首页
     setTimeout(() => {
       router.push('/')
     }, 1500)
   } catch (submitError) {
     error.value = handleError(submitError, '发布失败')
+  } finally {
+    submitting.value = false
   }
 }
 
 async function checkRewardBalance(): Promise<void> {
   rewardError.value = ''
-  const amount = Number(form.reward || 0)
-  // allow 0 reward; only validate when amount > 0
-  if (Number.isNaN(amount) || amount <= 0) {
-    // clear any existing reward errors when amount is zero or invalid number
-    rewardError.value = ''
+  const rewardText = getRewardText()
+
+  if (!rewardText) {
+    rewardError.value = '请填写报酬'
+    errors.reward = rewardError.value
+    return
+  }
+
+  const amount = Number(rewardText)
+  if (Number.isNaN(amount) || amount < 0) {
+    rewardError.value = '请输入有效的报酬（可为 0）'
+    errors.reward = rewardError.value
+    return
+  }
+
+  if (amount === 0) {
     errors.reward = ''
     return
   }
+
   try {
-    // fetchBalance uses backend to get the most recent available balance
     let available = Number(await store.fetchBalance())
-    // if backend returned 0 but we have a currentProfile that may contain balance, refresh it
     if (available === 0 && store.currentUser) {
       try {
         await store.fetchProfile()
@@ -115,43 +203,6 @@ async function checkRewardBalance(): Promise<void> {
     }
   } catch {
     // ignore balance check errors
-  }
-}
-
-function runValidations(): void {
-  errors.title = ''
-  errors.location = ''
-  errors.reward = ''
-  errors.time = ''
-  errors.campusZone = ''
-
-  if (!form.title || form.title.trim().length < 3) {
-    errors.title = '标题至少 3 个字符'
-  }
-
-  if (!form.location || form.location.trim().length < 2) {
-    errors.location = '请填写地点，例如：图书馆/宿舍区'
-  }
-
-  const amount = Number(form.reward || 0)
-  if (Number.isNaN(amount) || amount < 0) {
-    errors.reward = '请输入有效的报酬（可为 0）'
-  }
-
-  if (form.startTime && form.endTime) {
-    try {
-      const s = new Date(form.startTime).getTime()
-      const e = new Date(form.endTime).getTime()
-      if (Number.isNaN(s) || Number.isNaN(e) || s >= e) {
-        errors.time = '请确保开始时间早于结束时间'
-      }
-    } catch {
-      errors.time = '时间格式不正确'
-    }
-  }
-
-  if (!form.campusZone) {
-    errors.campusZone = '请选择校区'
   }
 }
 </script>
@@ -182,76 +233,91 @@ function runValidations(): void {
         </div>
       </template>
       <template v-else>
-      <div class="page-head">
-        <div>
-          <h2 class="page-title">发布需求</h2>
-          <p class="page-summary">填写标题、地点和时间后即可发布，让同学更快看到你的需求。</p>
-        </div>
-      </div>
-
-      <div class="form-grid two-column">
-        <div class="field" style="grid-column: 1 / -1;">
-          <label for="demand-title">标题</label>
-          <input id="demand-title" v-model="form.title" placeholder="例如：帮取快递并送到宿舍" @input="errors.title = ''" />
-          <p v-if="errors.title" class="input-help" style="color: var(--danger)">{{ errors.title }}</p>
-        </div>
-        <div class="field" style="grid-column: 1 / -1;">
-          <label for="demand-description">描述</label>
-          <textarea id="demand-description" v-model="form.description" placeholder="补充时间、地点和需求细节"></textarea>
-        </div>
-        <div class="field">
-          <label for="demand-category">分类</label>
-          <select id="demand-category" v-model="form.category">
-            <option value="">请选择</option>
-            <option v-for="category in DEMAND_CATEGORY_OPTIONS" :key="category" :value="category">{{ formatDemandCategory(category) }}</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="demand-zone">校区</label>
-          <select id="demand-zone" v-model="form.campusZone">
-            <option v-for="zone in campusZoneOptions()" :key="zone.value" :value="zone.value">{{ zone.label }}</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="demand-location">地点</label>
-          <input id="demand-location" v-model="form.location" placeholder="北区、南区、图书馆" @input="errors.location = ''" />
-          <p v-if="errors.location" class="input-help" style="color: var(--danger)">{{ errors.location }}</p>
-        </div>
-        <div class="field">
-          <label for="demand-start">开始时间</label>
-          <div style="display:flex; gap:8px; align-items:center;">
-            <input id="demand-start" v-model="form.startTime" type="datetime-local" />
-            <button type="button" class="button small" @click="runValidations">确认时间</button>
+        <div class="page-head">
+          <div>
+            <h2 class="page-title">发布需求</h2>
+            <p class="page-summary">填写标题、地点和时间后即可发布，让同学更快看到你的需求。</p>
           </div>
         </div>
-        <div class="field">
-          <label for="demand-end">结束时间</label>
-          <div style="display:flex; gap:8px; align-items:center;">
-            <input id="demand-end" v-model="form.endTime" type="datetime-local" />
-            <button type="button" class="button small" @click="runValidations">确认时间</button>
-          </div>
-        </div>
-        <div class="field">
-          <label for="demand-reward">报酬</label>
-          <input id="demand-reward" v-model="form.reward" type="number" min="0" step="1" @blur="checkRewardBalance" @input="errors.reward = ''" />
-          <p v-if="rewardError || errors.reward" style="color: var(--danger); margin-top: 6px">{{ rewardError || errors.reward }}</p>
-        </div>
-        <div class="field">
-          <label for="demand-tags">标签</label>
-          <input id="demand-tags" v-model="form.tags" placeholder="近距离, 宿舍楼下" />
-          <p class="input-help">标签用于表示任务特点，例如：加急、近距离。多个标签用逗号分隔。</p>
-        </div>
-        <label class="chip" style="grid-column: 1 / -1; width: fit-content;">
-          <input v-model="form.anonymous" type="checkbox" style="margin: 0 8px 0 0;" />
-          匿名发布
-        </label>
-        <button type="button" class="button primary" style="grid-column: 1 / -1;" @click="submitDemand" :disabled="submitting || !isFormValid">
-          {{ submitting ? '发布中...' : '发布需求' }}
-        </button>
-      </div>
 
-      <p v-if="message" class="hero-badge">{{ message }}</p>
-      <p v-if="error" class="hero-badge" style="background: rgba(181, 71, 71, 0.14); color: var(--danger)">{{ error }}</p>
+        <div class="form-grid two-column">
+          <div class="field" style="grid-column: 1 / -1;">
+            <label for="demand-title">标题 <span class="required-mark">*</span></label>
+            <input id="demand-title" v-model="form.title" maxlength="200" placeholder="例如：帮取快递并送到宿舍" @input="errors.title = ''" />
+            <p v-if="errors.title" class="input-help" style="color: var(--danger)">{{ errors.title }}</p>
+          </div>
+
+          <div class="field" style="grid-column: 1 / -1;">
+            <label for="demand-description">描述</label>
+            <textarea id="demand-description" v-model="form.description" placeholder="补充时间、地点和需求细节"></textarea>
+          </div>
+
+          <div class="field">
+            <label for="demand-category">分类 <span class="required-mark">*</span></label>
+            <select id="demand-category" v-model="form.category" @change="errors.category = ''">
+              <option value="">请选择</option>
+              <option v-for="category in DEMAND_CATEGORY_OPTIONS" :key="category" :value="category">{{ formatDemandCategory(category) }}</option>
+            </select>
+            <p v-if="errors.category" class="input-help" style="color: var(--danger)">{{ errors.category }}</p>
+          </div>
+
+          <div class="field">
+            <label for="demand-zone">校区 <span class="required-mark">*</span></label>
+            <select id="demand-zone" v-model="form.campusZone" @change="errors.campusZone = ''">
+              <option value="">请选择</option>
+              <option v-for="zone in campusZoneOptions()" :key="zone.value" :value="zone.value">{{ zone.label }}</option>
+            </select>
+            <p v-if="errors.campusZone" class="input-help" style="color: var(--danger)">{{ errors.campusZone }}</p>
+          </div>
+
+          <div class="field">
+            <label for="demand-location">地点 <span class="required-mark">*</span></label>
+            <input id="demand-location" v-model="form.location" placeholder="北区、南区、图书馆" @input="errors.location = ''" />
+            <p v-if="errors.location" class="input-help" style="color: var(--danger)">{{ errors.location }}</p>
+          </div>
+
+          <div class="field">
+            <label for="demand-start">开始时间 <span class="required-mark">*</span></label>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <input id="demand-start" v-model="form.startTime" type="datetime-local" @input="errors.startTime = ''" />
+              <button type="button" class="button small" @click="runValidations">确认时间</button>
+            </div>
+            <p v-if="errors.startTime" class="input-help" style="color: var(--danger)">{{ errors.startTime }}</p>
+          </div>
+
+          <div class="field">
+            <label for="demand-end">结束时间 <span class="required-mark">*</span></label>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <input id="demand-end" v-model="form.endTime" type="datetime-local" @input="errors.endTime = ''" />
+              <button type="button" class="button small" @click="runValidations">确认时间</button>
+            </div>
+            <p v-if="errors.endTime" class="input-help" style="color: var(--danger)">{{ errors.endTime }}</p>
+          </div>
+
+          <div class="field">
+            <label for="demand-reward">报酬 <span class="required-mark">*</span></label>
+            <input id="demand-reward" v-model="form.reward" type="number" min="0" step="1" @blur="checkRewardBalance" @input="errors.reward = ''" />
+            <p v-if="rewardError || errors.reward" style="color: var(--danger); margin-top: 6px">{{ rewardError || errors.reward }}</p>
+          </div>
+
+          <div class="field">
+            <label for="demand-tags">标签</label>
+            <input id="demand-tags" v-model="form.tags" placeholder="近距离, 宿舍楼下" />
+            <p class="input-help">标签用于表示任务特点，例如：加急、近距离。多个标签用逗号分隔。</p>
+          </div>
+
+          <label class="chip" style="grid-column: 1 / -1; width: fit-content;">
+            <input v-model="form.anonymous" type="checkbox" style="margin: 0 8px 0 0;" />
+            匿名发布
+          </label>
+
+          <button type="button" class="button primary" style="grid-column: 1 / -1;" @click="submitDemand" :disabled="!canSubmit">
+            {{ submitting ? '发布中...' : '发布需求' }}
+          </button>
+        </div>
+
+        <p v-if="message" class="hero-badge">{{ message }}</p>
+        <p v-if="error" class="hero-badge" style="background: rgba(181, 71, 71, 0.14); color: var(--danger)">{{ error }}</p>
       </template>
     </section>
 
@@ -287,3 +353,11 @@ function runValidations(): void {
     </section>
   </div>
 </template>
+
+<style scoped>
+.required-mark {
+  color: var(--danger);
+  font-weight: 700;
+  margin-left: 4px;
+}
+</style>

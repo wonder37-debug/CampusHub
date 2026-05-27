@@ -5,7 +5,7 @@ export const USER_ROLE_OPTIONS = ['USER', 'ADMIN'] as const
 export const USER_STATUS_OPTIONS = ['ACTIVE', 'BANNED'] as const
 export const DEMAND_STATUS_OPTIONS = ['PENDING', 'REVIEWING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'EXPIRED'] as const
 export const ORDER_STATUS_OPTIONS = ['ACCEPTED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'] as const
-export const NOTIFICATION_TYPE_OPTIONS = ['ORDER_ACCEPTED', 'STATUS_CHANGED', 'REVIEW_RECEIVED', 'REVIEW_REQUEST'] as const
+export const NOTIFICATION_TYPE_OPTIONS = ['ORDER_ACCEPTED', 'STATUS_CHANGED', 'REVIEW_RECEIVED', 'REVIEW_REQUEST', 'DEMAND_REJECTED'] as const
 
 export type DemandCategory = (typeof DEMAND_CATEGORY_OPTIONS)[number]
 export type CampusZone = (typeof CAMPUS_ZONE_OPTIONS)[number]
@@ -55,6 +55,14 @@ export interface DemandRecord {
   createdAt: string
   updatedAt: string
   distanceKm: number
+  canAccept?: boolean
+  acceptDisabledReason?: string | null
+  canStartExecution?: boolean
+  canViewAcceptNote?: boolean
+  canSubmitAcceptNote?: boolean
+  publisherStudentIdMasked?: string
+  publisherIdentityVisible?: boolean
+  reviewReason?: string | null
 }
 
 export interface OrderTimelineEntry {
@@ -88,6 +96,17 @@ export interface OrderRecord {
   updatedAt: string
   completedAt: string
   timeline: OrderTimelineEntry[]
+  reviews?: ReviewRecord[]
+  currentUserReviewed?: boolean
+  pendingReviewTarget?: string | null
+  completionHint?: string | null
+}
+
+export interface RecommendationRecord {
+  rank: number
+  score: number
+  reasonTags: string[]
+  demand: DemandRecord
 }
 
 export interface ReviewRecord {
@@ -106,11 +125,16 @@ export interface NotificationRecord {
   id: string
   receiverId: string
   type: NotificationType
+  title?: string
   content: string
   isRead: boolean
   createdAt: string
   relatedId: string
   relatedName?: string
+  targetType?: string
+  targetId?: string
+  targetTitle?: string
+  actionHint?: string
 }
 
 export interface AuthFormInput {

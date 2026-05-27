@@ -15,6 +15,7 @@ import type {
   NotificationRecord,
   NotificationType,
   OrderRecord,
+  RecommendationRecord,
   OrderStatus,
   ProfilePatchInput,
   PublicUser,
@@ -116,7 +117,15 @@ function mapDemandRecord(raw: any): DemandRecord {
     tags: Array.isArray(raw.tags) ? raw.tags.map((tag: any) => String(tag)) : [],
     createdAt: String(raw.createdAt ?? now()),
     updatedAt: String(raw.updatedAt ?? raw.createdAt ?? now()),
-    distanceKm: Number(raw.distanceKm ?? 0)
+    distanceKm: Number(raw.distanceKm ?? 0),
+    canAccept: raw.canAccept == null ? undefined : Boolean(raw.canAccept),
+    acceptDisabledReason: raw.acceptDisabledReason == null ? undefined : String(raw.acceptDisabledReason),
+    canStartExecution: raw.canStartExecution == null ? undefined : Boolean(raw.canStartExecution),
+    canViewAcceptNote: raw.canViewAcceptNote == null ? undefined : Boolean(raw.canViewAcceptNote),
+    canSubmitAcceptNote: raw.canSubmitAcceptNote == null ? undefined : Boolean(raw.canSubmitAcceptNote),
+    publisherStudentIdMasked: raw.publisherStudentIdMasked == null ? undefined : String(raw.publisherStudentIdMasked),
+    publisherIdentityVisible: raw.publisherIdentityVisible == null ? undefined : Boolean(raw.publisherIdentityVisible),
+    reviewReason: raw.reviewReason == null ? undefined : String(raw.reviewReason)
   }
 }
 
@@ -150,6 +159,10 @@ function mapOrderRecord(raw: any): OrderRecord {
     createdAt: String(raw.createdAt ?? now()),
     updatedAt: String(raw.updatedAt ?? raw.createdAt ?? now()),
     completedAt: String(raw.completedAt ?? ''),
+    reviews: Array.isArray(raw.reviews) ? raw.reviews.map((review: any) => mapReviewRecord(review)) : undefined,
+    currentUserReviewed: raw.currentUserReviewed == null ? undefined : Boolean(raw.currentUserReviewed),
+    pendingReviewTarget: raw.pendingReviewTarget == null ? undefined : String(raw.pendingReviewTarget),
+    completionHint: raw.completionHint == null ? undefined : String(raw.completionHint),
     timeline: Array.isArray(raw.statusHistory)
       ? raw.statusHistory.map((entry: any) => ({
           at: String(entry.changedAt ?? entry.createdAt ?? now()),
@@ -164,11 +177,16 @@ function mapNotificationRecord(raw: any, fallbackReceiverId = ''): NotificationR
     id: String(raw.id ?? ''),
     receiverId: String(raw.receiverId ?? fallbackReceiverId),
     type: String(raw.type ?? 'STATUS_CHANGED') as NotificationType,
+    title: raw.title == null ? undefined : String(raw.title),
     content: String(raw.content ?? raw.title ?? ''),
     isRead: Boolean(raw.read ?? raw.isRead ?? false),
     createdAt: String(raw.createdAt ?? now()),
     relatedId: String(raw.relatedId ?? ''),
-    relatedName: String(raw.relatedName ?? raw.relatedTitle ?? raw.targetName ?? '')
+    relatedName: String(raw.relatedName ?? raw.relatedTitle ?? raw.targetName ?? raw.targetTitle ?? ''),
+    targetType: raw.targetType == null ? undefined : String(raw.targetType),
+    targetId: raw.targetId == null ? undefined : String(raw.targetId),
+    targetTitle: raw.targetTitle == null ? undefined : String(raw.targetTitle),
+    actionHint: raw.actionHint == null ? undefined : String(raw.actionHint)
   }
 }
 
@@ -474,6 +492,38 @@ export const useCampusHubStore = defineStore('campusHub', {
       return mapped
     },
 
+    async fetchDemandDetail(demandId: string): Promise<DemandRecord | null> {
+      if (!demandId) {
+        return null
+      }
+
+      const demand = await requestJson<any>(`/demands/${encodeURIComponent(demandId)}`, {}, this.token)
+      const mapped = mapDemandRecord(demand)
+      const existingIndex = this.demands.findIndex((item) => item.id === mapped.id)
+      if (existingIndex >= 0) {
+        this.demands.splice(existingIndex, 1, mapped)
+      } else {
+        this.demands.unshift(mapped)
+      }
+      return mapped
+    },
+
+    async fetchOrderDetail(orderId: string): Promise<OrderRecord | null> {
+      if (!orderId || !this.token) {
+        return null
+      }
+
+      const order = await requestJson<any>(`/orders/${encodeURIComponent(orderId)}`, {}, this.token)
+      const mapped = mapOrderRecord(order)
+      const existingIndex = this.orders.findIndex((item) => item.id === mapped.id)
+      if (existingIndex >= 0) {
+        this.orders.splice(existingIndex, 1, mapped)
+      } else {
+        this.orders.unshift(mapped)
+      }
+      return mapped
+    },
+
     async approveDemand(demandId: string, approved: boolean, reason?: string): Promise<DemandRecord> {
       const body: any = { action: approved ? 'approve' : 'reject' }
       if (!approved && reason) body.reason = String(reason)
@@ -696,10 +746,34 @@ export const useCampusHubStore = defineStore('campusHub', {
     /**
      * Fetch demands from backend. If status is provided, include it as a query param.
      */
-    async fetchDemands(status?: string): Promise<void> {
+    async fetchDemands(query?: string | {
+      status?: string
+      q?: string
+      category?: string
+      campusZone?: string
+      location?: string
+      startTimeFrom?: string
+      startTimeTo?: string
+      sort?: string
+      page?: number
+      size?: number
+    }): Promise<void> {
       try {
         const params = new URLSearchParams({ page: '1', size: '100' })
-        if (status) params.set('status', status)
+        if (typeof query === 'string') {
+          if (query) params.set('status', query)
+        } else if (query) {
+          if (query.status) params.set('status', query.status)
+          if (query.q?.trim()) params.set('q', query.q.trim())
+          if (query.category?.trim()) params.set('category', query.category.trim())
+          if (query.campusZone?.trim()) params.set('campusZone', query.campusZone.trim())
+          if (query.location?.trim()) params.set('location', query.location.trim())
+          if (query.startTimeFrom?.trim()) params.set('startTimeFrom', query.startTimeFrom.trim())
+          if (query.startTimeTo?.trim()) params.set('startTimeTo', query.startTimeTo.trim())
+          if (query.sort?.trim()) params.set('sort', query.sort.trim())
+          if (query.page != null) params.set('page', String(query.page))
+          if (query.size != null) params.set('size', String(query.size))
+        }
         const payload = await requestJson<any>(`/demands?${params.toString()}`, {}, this.token)
         const items = Array.isArray(payload?.items) ? payload.items : Array.isArray(payload) ? payload : payload?.data?.items ?? []
         this.demands = items.map((item: any) => mapDemandRecord(item))
@@ -741,11 +815,20 @@ export const useCampusHubStore = defineStore('campusHub', {
       }
     },
 
-    async fetchAdminUsers(query = ''): Promise<void> {
+    async fetchAdminUsers(query = '', searchField = '', sortBy = '', sortDirection = ''): Promise<void> {
       try {
         const params = new URLSearchParams({ page: '1', size: '100' })
         if (query.trim()) {
           params.set('q', query.trim())
+        }
+        if (searchField.trim()) {
+          params.set('searchField', searchField.trim())
+        }
+        if (sortBy.trim()) {
+          params.set('sortBy', sortBy.trim())
+        }
+        if (sortDirection.trim()) {
+          params.set('sortDirection', sortDirection.trim())
         }
         const payload = await requestJson<any>(`/admin/users?${params.toString()}`, {}, this.token)
         const items = Array.isArray(payload?.items) ? payload.items : Array.isArray(payload) ? payload : payload?.data?.items ?? []
@@ -795,7 +878,7 @@ export const useCampusHubStore = defineStore('campusHub', {
       }
     },
 
-    async fetchRecommendations(page = 1, size = 20): Promise<DemandRecord[]> {
+    async fetchRecommendations(page = 1, size = 20): Promise<RecommendationRecord[]> {
       if (!this.currentUserId) {
         return []
       }
@@ -803,11 +886,12 @@ export const useCampusHubStore = defineStore('campusHub', {
       try {
         const payload = await requestJson<any>(`/recommendations?page=${page}&size=${size}`, {}, this.token)
         const items = Array.isArray(payload?.items) ? payload.items : Array.isArray(payload?.data?.items) ? payload.data.items : []
-
-        // 按返回的 rank 排序，rank 值越小优先级越高
-        items.sort((a: any, b: any) => (Number(a.rank ?? a.score ?? 0) - Number(b.rank ?? b.score ?? 0)))
-
-        return items.map((item: any) => mapDemandRecord(item.demand ?? item))
+        return items.map((item: any, index: number) => ({
+          rank: Number(item.rank ?? index + 1),
+          score: Number(item.score ?? 0),
+          reasonTags: Array.isArray(item.reasonTags) ? item.reasonTags.map((tag: any) => String(tag)) : [],
+          demand: mapDemandRecord(item.demand ?? item)
+        }))
       } catch {
         return []
       }

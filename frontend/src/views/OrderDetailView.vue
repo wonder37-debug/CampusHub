@@ -23,12 +23,22 @@ const loadingOrder = ref(false)
 
 const relatedReviews = computed(() => {
   if (!order.value) return []
-  return store.reviews.filter((r) => r.orderId === order.value!.id)
+  return order.value.reviews ?? store.reviews.filter((r) => r.orderId === order.value!.id)
 })
 
 const hasSubmittedReview = computed(() => {
   if (!order.value || !store.currentUser) return false
+  if (typeof order.value.currentUserReviewed === 'boolean') {
+    return order.value.currentUserReviewed
+  }
   return relatedReviews.value.some((r) => r.reviewerId === store.currentUser?.id)
+})
+
+const completionHint = computed(() => order.value?.completionHint ?? '')
+const pendingReviewTarget = computed(() => order.value?.pendingReviewTarget ?? '')
+const pendingReviewTargetLabel = computed(() => {
+  if (!pendingReviewTarget.value) return ''
+  return store.getUserById(String(pendingReviewTarget.value))?.nickname ?? String(pendingReviewTarget.value)
 })
 
 function goBack(): void {
@@ -76,16 +86,20 @@ async function submitReview(): Promise<void> {
 // (no automatic demand enrichment) keep original simple behavior
 
 onMounted(() => {
-  if (!order.value) {
-    loadingOrder.value = true
-    void (async () => {
+  loadingOrder.value = true
+  void (async () => {
+    try {
+      await store.fetchOrderDetail(String(route.params.id))
+    } catch {
       try {
         await store.fetchOrders()
-      } finally {
-        loadingOrder.value = false
+      } catch {
+        // keep current view state; the empty-state branch will explain the failure
       }
-    })()
-  }
+    } finally {
+      loadingOrder.value = false
+    }
+  })()
 })
 </script>
 
@@ -112,6 +126,7 @@ onMounted(() => {
 
       <div class="status-row">
         <span class="chip" :class="statusToneClass(order.status)">{{ formatOrderStatus(order.status) }}</span>
+        <span v-if="completionHint" class="chip is-warning">{{ completionHint }}</span>
       </div>
 
       <div class="mini-grid">
@@ -153,6 +168,7 @@ onMounted(() => {
 
         <div class="list-card" v-if="!hasSubmittedReview && (isRequester || isProvider)">
           <strong>提交评价</strong>
+          <p v-if="pendingReviewTargetLabel" class="meta">当前待评价对象：{{ pendingReviewTargetLabel }}</p>
           <div class="field">
             <label for="review-rating">评分</label>
             <select id="review-rating" v-model="reviewRating">

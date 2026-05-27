@@ -64,7 +64,7 @@ CREATE TABLE IF NOT EXISTS`sys_user` (
 
 INSERT INTO `sys_user` (`email`, `student_id`, `password_hash`, `nickname`, `role`) 
 
-VALUES ('admin@edu.cn', 'ADMIN001', '$2a$10$X8H43oFItP2q7vWwJz29/e5j02M7q.K/Q0H8.3/m2K9G6k7Q5Q9rW', '超级管理员', 'ADMIN')
+VALUES ('admin@edu.cn', 'ADMIN001', '$2a$10$ZZ9LIwTu25X6iXkfc1SASe4YEghRHDiD1jTMuvWiqCuDEvAunM68O', '超级管理员', 'ADMIN')
 
 ON DUPLICATE KEY UPDATE id=id;
 

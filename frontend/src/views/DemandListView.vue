@@ -3,18 +3,22 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import SkeletonCard from '@/components/SkeletonCard.vue'
 import { useRouter } from 'vue-router'
 
-import { DEMAND_CATEGORY_OPTIONS, type CampusZone, type DemandRecord, type DemandSortMode } from '@/types/campushub'
+import { DEMAND_CATEGORY_OPTIONS, type CampusZone, type DemandRecord, type DemandSortMode, type RecommendationRecord } from '@/types/campushub'
 import { useCampusHubStore } from '@/stores/campusHub'
 import { campusZoneOptions, formatCampusZone, formatDemandCategory, formatDemandStatus, formatMoney, formatRelativeTime, formatScore, statusToneClass, truncateText, formatDateTime } from '@/utils/format'
+
+type DemandSortOption = 'time-desc' | 'time-asc' | 'reward-desc' | 'reward-asc' | 'recommend-desc' | 'recommend-asc'
 
 const store = useCampusHubStore()
 const router = useRouter()
 
 const filters = reactive({
+  q: '',
+  location: '',
   category: '' as '' | (typeof DEMAND_CATEGORY_OPTIONS)[number],
   campusZone: '' as '' | CampusZone,
   status: '' as string,
-  sort: 'recommend' as DemandSortMode,
+  sort: 'recommend-desc' as DemandSortOption,
   page: 1,
   size: 6
 })
@@ -22,81 +26,108 @@ const filters = reactive({
 const listRef = ref<HTMLElement | null>(null)
 const refreshing = ref(false)
 const loadingDemands = ref(false)
-const recommendedDemands = ref<DemandRecord[]>([])
+const recommendedItems = ref<RecommendationRecord[]>([])
 let observer: IntersectionObserver | null = null
 
-const visibleDemands = computed(() => {
+function getBackendSortMode(): DemandSortMode {
+  if (filters.sort.startsWith('time')) return 'time'
+  if (filters.sort.startsWith('reward')) return 'reward'
+  return 'recommend'
+}
+
+function isAscendingSort(): boolean {
+  return filters.sort.endsWith('-asc')
+}
+
+function isRecommendSort(): boolean {
+  return filters.sort.startsWith('recommend')
+}
+
+function filteredDemandItems(source: DemandRecord[]): DemandRecord[] {
   const selectedCategory = filters.category
   const selectedCampusZone = filters.campusZone
   const selectedStatus = filters.status
-  const source = filters.sort === 'recommend' && recommendedDemands.value.length ? recommendedDemands.value : [...store.demands]
-  const sorted = source
+
+  return source
     .filter((demand) => demand.status !== 'EXPIRED')
     .filter((demand) => !selectedCategory || demand.category === selectedCategory)
     .filter((demand) => !selectedCampusZone || demand.campusZone === selectedCampusZone)
+    .filter((demand) => !filters.q.trim() || `${demand.title} ${demand.description}`.toLowerCase().includes(filters.q.trim().toLowerCase()))
+    .filter((demand) => !filters.location.trim() || demand.location.toLowerCase().includes(filters.location.trim().toLowerCase()))
     .filter((demand) => {
       if (!selectedStatus) return true
       if (selectedStatus === 'ACCEPTED') {
-        // treat '已接单' as a demand that has an order in ACCEPTED state
         return store.orders.some((o) => o.demandId === demand.id && o.status === 'ACCEPTED')
       }
       return demand.status === selectedStatus
     })
-    .sort((left: DemandRecord, right: DemandRecord) => {
-      if (filters.sort === 'distance') {
-        return left.distanceKm - right.distanceKm
-      }
+}
 
-      if (filters.sort === 'reward') {
-        return right.reward - left.reward
-      }
+const visibleDemands = computed(() => {
+  const source = isRecommendSort() && recommendedItems.value.length
+    ? recommendedItems.value.map((item) => item.demand)
+    : [...store.demands]
 
-      if (filters.sort === 'recommend') {
-        const preferredCategories = store.popularCategories
-        const leftIndex = preferredCategories.indexOf(left.category)
-        const rightIndex = preferredCategories.indexOf(right.category)
-        const normalizedLeft = leftIndex === -1 ? preferredCategories.length : leftIndex
-        const normalizedRight = rightIndex === -1 ? preferredCategories.length : rightIndex
-        return normalizedLeft - normalizedRight || right.createdAt.localeCompare(left.createdAt)
-      }
+  const sorted = filteredDemandItems(source).sort((left: DemandRecord, right: DemandRecord) => {
+    if (filters.sort.startsWith('time')) {
+      return isAscendingSort() ? left.createdAt.localeCompare(right.createdAt) : right.createdAt.localeCompare(left.createdAt)
+    }
 
-      return right.createdAt.localeCompare(left.createdAt)
-    })
+    if (filters.sort.startsWith('reward')) {
+      return isAscendingSort() ? left.reward - right.reward : right.reward - left.reward
+    }
+
+    if (isRecommendSort()) {
+      if (recommendedItems.value.length) {
+        const leftRank = recommendedItems.value.find((item) => item.demand.id === left.id)?.rank ?? Number.MAX_SAFE_INTEGER
+        const rightRank = recommendedItems.value.find((item) => item.demand.id === right.id)?.rank ?? Number.MAX_SAFE_INTEGER
+        return isAscendingSort() ? leftRank - rightRank : rightRank - leftRank
+      }
+      const preferredCategories = store.popularCategories
+      const leftIndex = preferredCategories.indexOf(left.category)
+      const rightIndex = preferredCategories.indexOf(right.category)
+      const normalizedLeft = leftIndex === -1 ? preferredCategories.length : leftIndex
+      const normalizedRight = rightIndex === -1 ? preferredCategories.length : rightIndex
+      const baseCompare = normalizedLeft - normalizedRight || right.createdAt.localeCompare(left.createdAt)
+      return isAscendingSort() ? -baseCompare : baseCompare
+    }
+
+    return right.createdAt.localeCompare(left.createdAt)
+  })
 
   return sorted.slice(0, filters.page * filters.size)
 })
 
 const totalCount = computed(() => {
-  if (filters.sort === 'recommend' && recommendedDemands.value.length) {
-    return recommendedDemands.value.filter((demand) =>
-      (!filters.category || demand.category === filters.category) &&
-      (!filters.campusZone || demand.campusZone === filters.campusZone) &&
-      (!filters.status || demand.status === filters.status)
-    ).length
+  if (isRecommendSort() && recommendedItems.value.length) {
+    return filteredDemandItems(recommendedItems.value.map((item) => item.demand)).length
   }
 
-  return store.demands.filter(
-    (demand) =>
-      (!filters.category || demand.category === filters.category) &&
-      (!filters.campusZone || demand.campusZone === filters.campusZone) &&
-      (!filters.status || demand.status === filters.status)
-  ).length
+  return filteredDemandItems(store.demands).length
 })
 const hasMore = computed(() => visibleDemands.value.length < totalCount.value)
 
-function refreshList(): void {
+async function refreshList(): Promise<void> {
   refreshing.value = true
   filters.page = 1
-  window.setTimeout(async () => {
-    try {
-      await store.fetchDemands()
-        if (filters.sort === 'recommend') {
-            await syncRecommendations()
-          }
-    } finally {
-      refreshing.value = false
+  try {
+    await store.fetchDemands({
+      q: filters.q,
+      category: filters.category || undefined,
+      campusZone: filters.campusZone || undefined,
+      location: filters.location,
+      sort: getBackendSortMode(),
+      page: 1,
+      size: 100
+    })
+    if (isRecommendSort()) {
+      await syncRecommendations()
+    } else {
+      recommendedItems.value = []
     }
-  }, 0)
+  } finally {
+    refreshing.value = false
+  }
 }
 
 function loadMore(): void {
@@ -121,12 +152,12 @@ function goPublish(): void {
 
 async function syncRecommendations(): Promise<void> {
   if (!store.currentUser) {
-    recommendedDemands.value = []
+    recommendedItems.value = []
     return
   }
 
   const items = await store.fetchRecommendations(filters.page, filters.size * 4)
-  recommendedDemands.value = items
+  recommendedItems.value = items
 }
 
 onMounted(() => {
@@ -134,10 +165,7 @@ onMounted(() => {
   loadingDemands.value = true
   void (async () => {
     try {
-      await store.fetchDemands('PENDING')
-      if (filters.sort === 'recommend') {
-        await syncRecommendations()
-      }
+      await refreshList()
     } finally {
       loadingDemands.value = false
     }
@@ -158,10 +186,15 @@ onMounted(() => {
 
 watch(
   () => filters.sort,
-  (sort) => {
-    if (sort === 'recommend') {
-      void syncRecommendations()
-    }
+  () => {
+    void refreshList()
+  }
+)
+
+watch(
+  () => [filters.q, filters.location, filters.category, filters.campusZone],
+  () => {
+    void refreshList()
   }
 )
 
@@ -183,6 +216,16 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="filters">
+        <div class="field" style="grid-column: 1 / -1;">
+          <label for="demand-q">关键词</label>
+          <input id="demand-q" v-model="filters.q" type="search" placeholder="搜索标题或描述" />
+        </div>
+
+        <div class="field" style="grid-column: 1 / -1;">
+          <label for="demand-location">地点</label>
+          <input id="demand-location" v-model="filters.location" type="search" placeholder="按地点筛选，例如：仙林校区菜鸟驿站" />
+        </div>
+
         <div class="field">
           <label for="demand-category">分类</label>
           <select id="demand-category" v-model="filters.category">
@@ -217,9 +260,12 @@ onBeforeUnmount(() => {
         <div class="field">
           <label for="demand-sort">排序方式</label>
           <select id="demand-sort" v-model="filters.sort">
-            <option value="time">时间最近</option>
-            <option value="reward">报酬最高</option>
-            <option value="recommend">推荐排序</option>
+            <option value="time-desc">时间最近</option>
+            <option value="time-asc">时间最远</option>
+            <option value="reward-desc">报酬最高</option>
+            <option value="reward-asc">报酬最低</option>
+            <option value="recommend-desc">推荐排序正序</option>
+            <option value="recommend-asc">推荐排序逆序</option>
           </select>
         </div>
 
@@ -260,6 +306,21 @@ onBeforeUnmount(() => {
         <div class="card-head">
           <h3>{{ demand.title }}</h3>
           <strong>{{ formatMoney(demand.reward) }}</strong>
+        </div>
+
+        <div v-if="isRecommendSort() && recommendedItems.find((item) => item.demand.id === demand.id)" class="status-row" style="margin-top: 8px;">
+          <span class="chip is-success">推荐第 {{ recommendedItems.find((item) => item.demand.id === demand.id)?.rank }} 名</span>
+          <span class="chip">推荐分 {{ formatScore(recommendedItems.find((item) => item.demand.id === demand.id)?.score ?? 0) }}</span>
+        </div>
+
+        <div v-if="isRecommendSort() && recommendedItems.find((item) => item.demand.id === demand.id)?.reasonTags?.length" class="tag-row">
+          <span
+            v-for="tag in recommendedItems.find((item) => item.demand.id === demand.id)?.reasonTags || []"
+            :key="tag"
+            class="badge is-neutral"
+          >
+            {{ tag }}
+          </span>
         </div>
 
         <div class="meta">地点：{{ demand.location || '无' }}</div>

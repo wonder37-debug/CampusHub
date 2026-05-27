@@ -15,6 +15,10 @@ const userSearchField = ref('all')
 const creditSort = ref<'none' | 'asc' | 'desc'>('none')
 const demandQuery = ref('')
 const demandCategory = ref('')
+const rejectDialogOpen = ref(false)
+const rejectingDemandId = ref('')
+const rejectingDemandTitle = ref('')
+const rejectReason = ref('')
 
 const isAdmin = computed(() => store.currentUser?.role === 'ADMIN')
 const adminDashboard = computed(() => store.adminDashboard)
@@ -69,7 +73,12 @@ async function refreshAdminData(): Promise<void> {
 
   await Promise.all([
     store.fetchAdminDashboard(),
-    store.fetchAdminUsers(userQuery.value),
+    store.fetchAdminUsers(
+      userQuery.value,
+      userSearchField.value === 'all' ? '' : userSearchField.value,
+      creditSort.value === 'none' ? '' : 'creditScore',
+      creditSort.value === 'none' ? '' : creditSort.value
+    ),
     store.fetchAdminPendingDemands(demandQuery.value, demandCategory.value)
   ])
 }
@@ -100,19 +109,41 @@ async function approveDemand(demandId: string): Promise<void> {
   }
 }
 
-async function rejectDemand(demandId: string): Promise<void> {
+function openRejectDialog(demandId: string, demandTitle: string): void {
+  rejectingDemandId.value = demandId
+  rejectingDemandTitle.value = demandTitle
+  rejectReason.value = ''
+  rejectDialogOpen.value = true
+}
+
+function closeRejectDialog(): void {
+  rejectDialogOpen.value = false
+  rejectingDemandId.value = ''
+  rejectingDemandTitle.value = ''
+  rejectReason.value = ''
+}
+
+async function submitRejectDemand(): Promise<void> {
+  const demandId = rejectingDemandId.value
+  const reason = rejectReason.value.trim()
+
+  if (!demandId) {
+    closeRejectDialog()
+    return
+  }
+
+  if (!reason) {
+    error.value = '请填写拒绝理由后再提交'
+    return
+  }
+
   try {
-    // 要求填写拒绝理由
-    const reason = window.prompt('请输入拒绝理由（必填）：') || ''
-    if (!reason || !reason.trim()) {
-      error.value = '请填写拒绝理由后再提交'
-      return
-    }
-    await store.approveDemand(demandId, false, reason.trim())
-    message.value = '需求已拒绝。'
+    await store.approveDemand(demandId, false, reason)
+    message.value = '需求已拒绝，已向申请方发送拒绝理由。'
+    closeRejectDialog()
     await refreshAdminData()
   } catch (rejectError) {
-    error.value = handleError(rejectError, '审核失败')
+    error.value = handleError(rejectError, '需求驳回失败')
   }
 }
 
@@ -201,7 +232,7 @@ async function demoteFromAdmin(userId: string): Promise<void> {
             <p>{{ demand.description }}</p>
               <div class="card-actions">
               <button type="button" class="button primary" @click="approveDemand(demand.id)">通过</button>
-              <button type="button" class="button secondary" @click="rejectDemand(demand.id)">拒绝</button>
+              <button type="button" class="button secondary" @click="openRejectDialog(demand.id, demand.title)">拒绝</button>
             </div>
           </div>
         </div>
@@ -313,4 +344,60 @@ async function demoteFromAdmin(userId: string): Promise<void> {
     <strong>管理后台仅对管理员开放</strong>
     <p>请使用顶部的身份切换按钮切换到管理员账号后再查看。</p>
   </div>
+
+  <teleport to="body">
+    <div v-if="rejectDialogOpen" class="modal-backdrop" @click.self="closeRejectDialog">
+      <div class="modal-card panel">
+        <div class="modal-head">
+          <div>
+            <p class="eyebrow">拒绝审核</p>
+            <h3 class="section-title">填写拒绝理由</h3>
+          </div>
+          <button type="button" class="button secondary" @click="closeRejectDialog">关闭</button>
+        </div>
+
+        <p class="page-summary" style="margin-top: 0;">拒绝后，这段理由会通过后端自动发送给需求申请方。</p>
+        <div class="field">
+          <label for="reject-reason">拒绝理由</label>
+          <textarea id="reject-reason" v-model="rejectReason" rows="5" :placeholder="`请输入 ${rejectingDemandTitle || '该需求'} 的拒绝理由`"></textarea>
+          <p class="input-help">建议填写具体原因，方便申请方修改后重新提交。</p>
+        </div>
+
+        <div class="card-actions" style="justify-content: flex-end;">
+          <button type="button" class="button secondary" @click="closeRejectDialog">取消</button>
+          <button type="button" class="button primary" :disabled="!rejectReason.trim()" @click="submitRejectDemand">确认拒绝</button>
+        </div>
+      </div>
+    </div>
+  </teleport>
 </template>
+
+<style scoped>
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(31, 26, 23, 0.46);
+  backdrop-filter: blur(6px);
+}
+
+.modal-card {
+  width: min(640px, 100%);
+  padding: 22px;
+}
+
+.modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.modal-card textarea {
+  min-height: 140px;
+  resize: vertical;
+}
+</style>

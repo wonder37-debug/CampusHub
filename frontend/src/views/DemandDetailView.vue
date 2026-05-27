@@ -5,7 +5,7 @@ import { useRoute } from 'vue-router'
 
 import { useCampusHubStore } from '@/stores/campusHub'
 import SkeletonCard from '@/components/SkeletonCard.vue'
-import { formatCampusZone, formatDateTime, formatDemandCategory, formatDemandStatus, formatMoney, formatOrderStatus, formatScore, statusToneClass } from '@/utils/format'
+import { formatAcceptDisabledReason, formatCampusZone, formatDateTime, formatDemandCategory, formatDemandStatus, formatMoney, formatOrderStatus, formatScore, statusToneClass } from '@/utils/format'
 
 const route = useRoute()
 const store = useCampusHubStore()
@@ -21,6 +21,7 @@ const demand = computed(() => store.getDemandById(String(route.params.id)))
 const relatedOrder = computed(() => store.orders.find((order) => order.demandId === demand.value?.id))
 const canAccept = computed(() => {
   if (!demand.value) return false
+  if (typeof demand.value.canAccept === 'boolean') return demand.value.canAccept
   if (relatedOrder.value) return false
   if (demand.value.status !== 'PENDING') return false
   if (!store.currentUser) return false
@@ -31,6 +32,7 @@ const canAccept = computed(() => {
 
 const acceptDisabledReason = computed(() => {
   if (!demand.value) return '未找到需求'
+  if (demand.value.acceptDisabledReason) return formatAcceptDisabledReason(demand.value.acceptDisabledReason)
   if (relatedOrder.value) {
     const s = relatedOrder.value.status
     if (s === 'ACCEPTED') return '该需求已被接单，来晚了一步。'
@@ -43,6 +45,13 @@ const acceptDisabledReason = computed(() => {
   if (store.currentUser.role === 'ADMIN') return '管理员账号无法接单'
   return null
 })
+const canStartExecution = computed(() => {
+  if (!demand.value) return false
+  if (typeof demand.value.canStartExecution === 'boolean') return demand.value.canStartExecution
+  return relatedOrder.value?.status === 'ACCEPTED' && store.currentUser?.id === relatedOrder.value.serviceProviderId
+})
+const canViewAcceptNote = computed(() => demand.value?.canViewAcceptNote !== false)
+const canSubmitAcceptNote = computed(() => demand.value?.canSubmitAcceptNote !== false)
 const relatedReviews = computed(() => store.reviews.filter((review) => review.orderId === relatedOrder.value?.id))
 
 async function acceptCurrentDemand(): Promise<void> {
@@ -113,17 +122,23 @@ async function submitReview(): Promise<void> {
 }
 
 onMounted(() => {
-  // ensure demands are loaded for this detail view
-  if (!demand.value) {
-    loadingDemand.value = true
-    void (async () => {
+  loadingDemand.value = true
+  void (async () => {
+    try {
+      await store.fetchDemandDetail(String(route.params.id))
+      if (store.currentUser) {
+        await store.fetchOrders()
+      }
+    } catch {
       try {
         await store.fetchDemands()
-      } finally {
-        loadingDemand.value = false
+      } catch {
+        // keep current view state; the empty-state branch will explain the failure
       }
-    })()
-  }
+    } finally {
+      loadingDemand.value = false
+    }
+  })()
 })
 </script>
 
@@ -164,7 +179,7 @@ onMounted(() => {
         <div>
           <strong>{{ demand.anonymous ? demand.anonymousCode ?? '匿名发布' : (demand.publisher?.nickname ?? demand.publisherName) }}</strong>
           <p class="subtle">信用分：{{ demand.publisher ? formatScore(demand.publisher.creditScore) : '未知' }}</p>
-          <p class="meta">发布者学号：{{ demand.anonymous ? (demand.publisher?.studentId ? String(demand.publisher.studentId).slice(0,3) + '***' + String(demand.publisher.studentId).slice(-2) : '匿名') : (demand.publisher?.studentId ?? '未知') }}</p>
+          <p class="meta">发布者学号：{{ demand.publisherIdentityVisible === false ? (demand.publisherStudentIdMasked || '已隐藏') : (demand.anonymous ? (demand.publisher?.studentId ? String(demand.publisher.studentId).slice(0,3) + '***' + String(demand.publisher.studentId).slice(-2) : '匿名') : (demand.publisher?.studentId ?? '未知')) }}</p>
           <p class="meta">发布于 {{ formatDateTime(demand.createdAt) }}</p>
         </div>
       </div>
@@ -173,13 +188,18 @@ onMounted(() => {
         <span class="badge is-neutral">{{ demand.anonymous ? '匿名发布' : '实名发布' }}</span>
       </div>
 
+      <div v-if="demand.status === 'CANCELLED' && demand.reviewReason" class="list-card" style="margin-top: 16px;">
+        <strong>审核原因</strong>
+        <p style="margin-top: 8px; color: var(--danger);">{{ demand.reviewReason }}</p>
+      </div>
+
       <div class="tag-row">
         <span v-for="tag in demand.tags" :key="tag" class="badge is-neutral">{{ tag }}</span>
       </div>
 
       <div class="list-card">
         <strong>接单留言</strong>
-        <div v-if="canAccept" class="field">
+        <div v-if="canAccept && canViewAcceptNote && canSubmitAcceptNote" class="field">
           <label for="accept-note">留言内容</label>
           <textarea id="accept-note" v-model="note" placeholder="给发布者留一句话"></textarea>
         </div>
@@ -194,7 +214,7 @@ onMounted(() => {
           </button>
           <span v-else class="chip is-warning">{{ acceptDisabledReason || '当前需求暂时不可接单' }}</span>
 
-          <button v-if="relatedOrder?.status === 'ACCEPTED' && store.currentUser?.id === relatedOrder.serviceProviderId" type="button" class="button secondary" @click="startOrder">开始执行</button>
+          <button v-if="canStartExecution" type="button" class="button secondary" @click="startOrder">开始执行</button>
           <button
             v-if="relatedOrder?.status === 'IN_PROGRESS' && store.currentUser?.id === relatedOrder.serviceProviderId && !completionSubmitted"
             type="button"
