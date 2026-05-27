@@ -161,26 +161,6 @@ async function toggleUserStatus(userId: string, banned: boolean): Promise<void> 
     error.value = handleError(toggleError, '用户状态更新失败')
   }
 }
-
-async function promoteToAdmin(userId: string): Promise<void> {
-  try {
-    await store.changeUserRole(userId, 'ADMIN')
-    message.value = '用户已提升为管理员'
-    await refreshAdminData()
-  } catch (e) {
-    error.value = handleError(e, '操作失败')
-  }
-}
-
-async function demoteFromAdmin(userId: string): Promise<void> {
-  try {
-    await store.changeUserRole(userId, 'USER')
-    message.value = '用户已降级为普通用户'
-    await refreshAdminData()
-  } catch (e) {
-    error.value = handleError(e, '操作失败')
-  }
-}
 </script>
 
 <template>
@@ -293,24 +273,7 @@ async function demoteFromAdmin(userId: string): Promise<void> {
                   >
                     {{ user.status === 'BANNED' ? '启用' : '禁用' }}
                   </button>
-                  <button
-                    v-if="user.role !== 'ADMIN'"
-                    type="button"
-                    class="button primary"
-                    style="margin-left:8px"
-                    @click="promoteToAdmin(user.id)"
-                  >
-                    设为管理员
-                  </button>
-                  <button
-                    v-else-if="user.role === 'ADMIN' && user.id !== store.currentUser?.id"
-                    type="button"
-                    class="button secondary"
-                    style="margin-left:8px"
-                    @click="demoteFromAdmin(user.id)"
-                  >
-                    降级为普通用户
-                  </button>
+                  <span v-else class="muted" style="margin-left:8px;">管理员角色不可调整</span>
                 </td>
               </tr>
             </tbody>
