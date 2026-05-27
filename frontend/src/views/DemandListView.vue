@@ -7,7 +7,8 @@ import { DEMAND_CATEGORY_OPTIONS, type CampusZone, type DemandRecord, type Deman
 import { useCampusHubStore } from '@/stores/campusHub'
 import { campusZoneOptions, formatCampusZone, formatDemandCategory, formatDemandStatus, formatMoney, formatRelativeTime, formatScore, statusToneClass, truncateText, formatDateTime } from '@/utils/format'
 
-type DemandSortOption = 'time-desc' | 'time-asc' | 'reward-desc' | 'reward-asc' | 'recommend-desc' | 'recommend-asc'
+type DemandSortField = 'time' | 'reward' | 'recommend'
+type DemandSortDirection = 'asc' | 'desc'
 
 const store = useCampusHubStore()
 const router = useRouter()
@@ -18,7 +19,8 @@ const filters = reactive({
   category: '' as '' | (typeof DEMAND_CATEGORY_OPTIONS)[number],
   campusZone: '' as '' | CampusZone,
   status: '' as string,
-  sort: 'recommend-desc' as DemandSortOption,
+  sortField: 'recommend' as DemandSortField,
+  sortDirection: 'desc' as DemandSortDirection,
   page: 1,
   size: 6
 })
@@ -29,18 +31,34 @@ const loadingDemands = ref(false)
 const recommendedItems = ref<RecommendationRecord[]>([])
 let observer: IntersectionObserver | null = null
 
+function setSortField(field: DemandSortField): void {
+  if (filters.sortField === field) {
+    filters.sortDirection = filters.sortDirection === 'asc' ? 'desc' : 'asc'
+    return
+  }
+
+  filters.sortField = field
+  filters.sortDirection = 'asc'
+}
+
+function isSortActive(field: DemandSortField): boolean {
+  return filters.sortField === field
+}
+
+function formatSortDirectionLabel(direction: DemandSortDirection): string {
+  return direction === 'asc' ? '正序' : '逆序'
+}
+
 function getBackendSortMode(): DemandSortMode {
-  if (filters.sort.startsWith('time')) return 'time'
-  if (filters.sort.startsWith('reward')) return 'reward'
-  return 'recommend'
+  return filters.sortField
 }
 
 function isAscendingSort(): boolean {
-  return filters.sort.endsWith('-asc')
+  return filters.sortDirection === 'asc'
 }
 
 function isRecommendSort(): boolean {
-  return filters.sort.startsWith('recommend')
+  return filters.sortField === 'recommend'
 }
 
 function filteredDemandItems(source: DemandRecord[]): DemandRecord[] {
@@ -68,12 +86,19 @@ const visibleDemands = computed(() => {
     ? recommendedItems.value.map((item) => item.demand)
     : [...store.demands]
 
-  const sorted = filteredDemandItems(source).sort((left: DemandRecord, right: DemandRecord) => {
-    if (filters.sort.startsWith('time')) {
+  const filtered = filteredDemandItems(source)
+
+  if (isRecommendSort()) {
+    const ordered = isAscendingSort() ? filtered : [...filtered].reverse()
+    return ordered.slice(0, filters.page * filters.size)
+  }
+
+  const sorted = filtered.sort((left: DemandRecord, right: DemandRecord) => {
+    if (filters.sortField === 'time') {
       return isAscendingSort() ? left.createdAt.localeCompare(right.createdAt) : right.createdAt.localeCompare(left.createdAt)
     }
 
-    if (filters.sort.startsWith('reward')) {
+    if (filters.sortField === 'reward') {
       return isAscendingSort() ? left.reward - right.reward : right.reward - left.reward
     }
 
@@ -185,7 +210,7 @@ onMounted(() => {
 })
 
 watch(
-  () => filters.sort,
+  () => [filters.sortField, filters.sortDirection],
   () => {
     void refreshList()
   }
@@ -257,16 +282,37 @@ onBeforeUnmount(() => {
           </select>
         </div>
 
-        <div class="field">
-          <label for="demand-sort">排序方式</label>
-          <select id="demand-sort" v-model="filters.sort">
-            <option value="time-desc">时间最近</option>
-            <option value="time-asc">时间最远</option>
-            <option value="reward-desc">报酬最高</option>
-            <option value="reward-asc">报酬最低</option>
-            <option value="recommend-desc">推荐排序正序</option>
-            <option value="recommend-asc">推荐排序逆序</option>
-          </select>
+        <div class="field" style="grid-column: 1 / -1;">
+          <label>排序方式</label>
+          <div class="sort-toggle-group" role="group" aria-label="排序方式">
+            <button
+              type="button"
+              class="button"
+              :class="isSortActive('time') ? 'primary' : 'secondary'"
+              @click="setSortField('time')"
+            >
+              按时间排序
+              <span class="sort-toggle-state">{{ isSortActive('time') ? formatSortDirectionLabel(filters.sortDirection) : '' }}</span>
+            </button>
+            <button
+              type="button"
+              class="button"
+              :class="isSortActive('reward') ? 'primary' : 'secondary'"
+              @click="setSortField('reward')"
+            >
+              按报酬排序
+              <span class="sort-toggle-state">{{ isSortActive('reward') ? formatSortDirectionLabel(filters.sortDirection) : '' }}</span>
+            </button>
+            <button
+              type="button"
+              class="button"
+              :class="isSortActive('recommend') ? 'primary' : 'secondary'"
+              @click="setSortField('recommend')"
+            >
+              推荐排序
+              <span class="sort-toggle-state">{{ isSortActive('recommend') ? formatSortDirectionLabel(filters.sortDirection) : '' }}</span>
+            </button>
+          </div>
         </div>
 
         <button type="button" class="button secondary" @click="refreshList">刷新列表</button>
@@ -354,3 +400,22 @@ onBeforeUnmount(() => {
     <button class="fab" type="button" title="发布需求" @click="goPublish">发布需求</button>
   </div>
 </template>
+
+<style scoped>
+.sort-toggle-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.sort-toggle-group .button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sort-toggle-state {
+  font-size: 0.85em;
+  opacity: 0.8;
+}
+</style>
