@@ -4,13 +4,6 @@ frontend:build:
   timeout: 15m
   variables:
     ARTIFACT_COMPRESSION_LEVEL: "fastest"
-  cache:
-    key: "npm-v2-$CI_COMMIT_REF_SLUG"
-    fallback_keys:
-      - "npm-v2-$CI_DEFAULT_BRANCH"
-    paths:
-      - frontend/.npm/
-    policy: pull-push
   before_script:
     - cd frontend
     - npm ci --prefer-offline
