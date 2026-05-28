@@ -6,7 +6,6 @@ workflow:
     - if: '$CI_COMMIT_BRANCH'
 
 stages:
-  - deps
   - static-check
   - unit-test
   - integration-test
@@ -14,15 +13,6 @@ stages:
 
 variables:
   NPM_CONFIG_CACHE: "$CI_PROJECT_DIR/frontend/.npm"
-
-cache:
-  key: "$CI_COMMIT_REF_SLUG"
-  fallback_keys:
-    - "$CI_DEFAULT_BRANCH"
-  paths:
-    - .m2/repository/
-    - frontend/.npm/
-  policy: pull-push
 
 include:
   - local: .gitlab/backend.yml

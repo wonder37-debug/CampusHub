@@ -1,11 +1,18 @@
 .backend-template:
   image: maven:3.9.9-eclipse-temurin-21
   variables:
-    GIT_CLEAN_FLAGS: "-ffdx"
+    GIT_CLEAN_FLAGS: "-ffdx -e .m2/"
     MAVEN_CLI_OPTS: "-B -s ../.gitlab/maven-settings.xml -Dmaven.artifact.threads=8 -Daether.connector.connectTimeout=30000 -Daether.connector.requestTimeout=120000 -Dmaven.wagon.rto=120000 -Dmaven.wagon.http.retryHandler.count=1"
     SPRING_PROFILES_ACTIVE: "default"
     SPRING_AUTOCONFIGURE_EXCLUDE: "org.springframework.boot.autoconfigure.mail.MailSenderAutoConfiguration"
     ARTIFACT_COMPRESSION_LEVEL: "fastest"
+  cache:
+    key: "maven-v2-$CI_COMMIT_REF_SLUG"
+    fallback_keys:
+      - "maven-v2-$CI_DEFAULT_BRANCH"
+    paths:
+      - .m2/repository/
+    policy: pull-push
   before_script:
     - cd backend
     - export MAVEN_REPO_LOCAL="$CI_PROJECT_DIR/.m2/repository"
@@ -14,31 +21,10 @@
     - echo "Maven local repository $MAVEN_REPO_LOCAL"
     - mvn -version
 
-backend:dependencies:
-  extends: .backend-template
-  stage: deps
-  timeout: 20m
-  script:
-    - mvn $MAVEN_CLI_OPTS dependency:go-offline
-    - mvn $MAVEN_CLI_OPTS -DskipTests test-compile dependency:go-offline
-  artifacts:
-    paths:
-      - .m2/repository/
-    expire_in: 1 day
-  rules:
-    - changes:
-        - backend/**/*
-        - .gitlab/backend.yml
-        - .gitlab/maven-settings.xml
-        - .gitlab-ci.yml
-
 backend:static-check:
   extends: .backend-template
   stage: static-check
   timeout: 10m
-  needs:
-    - job: backend:dependencies
-      artifacts: true
   script:
     - mvn $MAVEN_CLI_OPTS -DskipTests compile
   rules:
@@ -52,9 +38,6 @@ backend:unit-test:
   extends: .backend-template
   stage: unit-test
   timeout: 15m
-  needs:
-    - job: backend:dependencies
-      artifacts: true
   script:
     - timeout -k 30s 12m mvn $MAVEN_CLI_OPTS "-Dtest=*ServiceImplTest,RequestUserExtractorTest" "-Dsurefire.timeout=240" "-Dsurefire.exitTimeout=30" test
   artifacts:
@@ -76,9 +59,6 @@ backend:integration-test:
   extends: .backend-template
   stage: integration-test
   timeout: 15m
-  needs:
-    - job: backend:dependencies
-      artifacts: true
   script:
     - mvn -version
     - timeout -k 30s 12m mvn $MAVEN_CLI_OPTS "-Dtest=FrontendIntegrationFlowTest" "-Dsurefire.timeout=360" "-Dsurefire.exitTimeout=30" test
@@ -101,9 +81,6 @@ backend:build:
   extends: .backend-template
   stage: build
   timeout: 15m
-  needs:
-    - job: backend:dependencies
-      artifacts: true
   script:
     - mvn $MAVEN_CLI_OPTS -DskipTests package
   artifacts:
@@ -122,9 +99,6 @@ backend:integration-diagnose:
   stage: integration-test
   timeout: 20m
   allow_failure: true
-  needs:
-    - job: backend:dependencies
-      artifacts: true
   script:
     - |
       set -eux
