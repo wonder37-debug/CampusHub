@@ -1,7 +1,5 @@
-backend:verify:
+.backend-template:
   image: maven:3.9.9-eclipse-temurin-21
-  stage: test
-  timeout: 30m
   variables:
     GIT_CLEAN_FLAGS: "-ffdx"
     MAVEN_CLI_OPTS: "-B -s ../.gitlab/maven-settings.xml -Dmaven.artifact.threads=8 -Daether.connector.connectTimeout=30000 -Daether.connector.requestTimeout=120000 -Dmaven.wagon.rto=120000 -Dmaven.wagon.http.retryHandler.count=1"
@@ -15,19 +13,50 @@ backend:verify:
     - export MAVEN_OPTS="-Dmaven.repo.local=$MAVEN_REPO_LOCAL -Djava.security.egd=file:/dev/./urandom"
     - echo "Maven local repository $MAVEN_REPO_LOCAL"
     - mvn -version
+
+backend:dependencies:
+  extends: .backend-template
+  stage: deps
+  timeout: 20m
   script:
-    - printf "section_start:%s:backend_compile[collapsed=false]\r\e[0KBackend compile and test compile\n" "$(date +%s)"
-    - timeout 8m mvn $MAVEN_CLI_OPTS -DskipTests test-compile
-    - printf "section_end:%s:backend_compile\r\e[0K\n" "$(date +%s)"
-    - printf "section_start:%s:backend_unit_tests[collapsed=false]\r\e[0KBackend unit tests\n" "$(date +%s)"
-    - timeout 8m mvn $MAVEN_CLI_OPTS "-Dtest=*ServiceImplTest,RequestUserExtractorTest" "-Dsurefire.timeout=240" "-Dsurefire.exitTimeout=30" test
-    - printf "section_end:%s:backend_unit_tests\r\e[0K\n" "$(date +%s)"
-    - printf "section_start:%s:backend_integration_tests[collapsed=false]\r\e[0KBackend integration tests\n" "$(date +%s)"
-    - timeout 8m mvn $MAVEN_CLI_OPTS "-Dtest=FrontendIntegrationFlowTest" "-Dsurefire.timeout=360" "-Dsurefire.exitTimeout=30" test
-    - printf "section_end:%s:backend_integration_tests\r\e[0K\n" "$(date +%s)"
-    - printf "section_start:%s:backend_package[collapsed=false]\r\e[0KBackend package\n" "$(date +%s)"
-    - timeout 8m mvn $MAVEN_CLI_OPTS -DskipTests package
-    - printf "section_end:%s:backend_package\r\e[0K\n" "$(date +%s)"
+    - mvn $MAVEN_CLI_OPTS dependency:go-offline
+    - mvn $MAVEN_CLI_OPTS -DskipTests test-compile dependency:go-offline
+  artifacts:
+    paths:
+      - .m2/repository/
+    expire_in: 1 day
+  rules:
+    - changes:
+        - backend/**/*
+        - .gitlab/backend.yml
+        - .gitlab/maven-settings.xml
+        - .gitlab-ci.yml
+
+backend:static-check:
+  extends: .backend-template
+  stage: static-check
+  timeout: 10m
+  needs:
+    - job: backend:dependencies
+      artifacts: true
+  script:
+    - mvn $MAVEN_CLI_OPTS -DskipTests compile
+  rules:
+    - changes:
+        - backend/**/*
+        - .gitlab/backend.yml
+        - .gitlab/maven-settings.xml
+        - .gitlab-ci.yml
+
+backend:unit-test:
+  extends: .backend-template
+  stage: unit-test
+  timeout: 15m
+  needs:
+    - job: backend:dependencies
+      artifacts: true
+  script:
+    - timeout -k 30s 12m mvn $MAVEN_CLI_OPTS "-Dtest=*ServiceImplTest,RequestUserExtractorTest" "-Dsurefire.timeout=240" "-Dsurefire.exitTimeout=30" test
   artifacts:
     when: always
     reports:
@@ -35,6 +64,50 @@ backend:verify:
         - backend/target/surefire-reports/TEST-*.xml
     paths:
       - backend/target/surefire-reports/
+    expire_in: 7 days
+  rules:
+    - changes:
+        - backend/**/*
+        - .gitlab/backend.yml
+        - .gitlab/maven-settings.xml
+        - .gitlab-ci.yml
+
+backend:integration-test:
+  extends: .backend-template
+  stage: integration-test
+  timeout: 15m
+  needs:
+    - job: backend:dependencies
+      artifacts: true
+  script:
+    - mvn -version
+    - timeout -k 30s 12m mvn $MAVEN_CLI_OPTS "-Dtest=FrontendIntegrationFlowTest" "-Dsurefire.timeout=360" "-Dsurefire.exitTimeout=30" test
+  artifacts:
+    when: always
+    reports:
+      junit:
+        - backend/target/surefire-reports/TEST-*.xml
+    paths:
+      - backend/target/surefire-reports/
+    expire_in: 7 days
+  rules:
+    - changes:
+        - backend/**/*
+        - .gitlab/backend.yml
+        - .gitlab/maven-settings.xml
+        - .gitlab-ci.yml
+
+backend:build:
+  extends: .backend-template
+  stage: build
+  timeout: 15m
+  needs:
+    - job: backend:dependencies
+      artifacts: true
+  script:
+    - mvn $MAVEN_CLI_OPTS -DskipTests package
+  artifacts:
+    paths:
       - backend/target/*.jar
     expire_in: 7 days
   rules:
@@ -45,23 +118,13 @@ backend:verify:
         - .gitlab-ci.yml
 
 backend:integration-diagnose:
-  image: maven:3.9.9-eclipse-temurin-21
-  stage: test
+  extends: .backend-template
+  stage: integration-test
   timeout: 20m
   allow_failure: true
-  variables:
-    GIT_CLEAN_FLAGS: "-ffdx"
-    MAVEN_CLI_OPTS: "-B -s ../.gitlab/maven-settings.xml -Dmaven.artifact.threads=8 -Daether.connector.connectTimeout=30000 -Daether.connector.requestTimeout=120000 -Dmaven.wagon.rto=120000 -Dmaven.wagon.http.retryHandler.count=1"
-    SPRING_PROFILES_ACTIVE: "default"
-    SPRING_AUTOCONFIGURE_EXCLUDE: "org.springframework.boot.autoconfigure.mail.MailSenderAutoConfiguration"
-    ARTIFACT_COMPRESSION_LEVEL: "fastest"
-  before_script:
-    - cd backend
-    - export MAVEN_REPO_LOCAL="$CI_PROJECT_DIR/.m2/repository"
-    - mkdir -p "$MAVEN_REPO_LOCAL"
-    - export MAVEN_OPTS="-Dmaven.repo.local=$MAVEN_REPO_LOCAL -Djava.security.egd=file:/dev/./urandom"
-    - echo "Maven local repository $MAVEN_REPO_LOCAL"
-    - mvn -version
+  needs:
+    - job: backend:dependencies
+      artifacts: true
   script:
     - |
       set -eux
