@@ -3,9 +3,11 @@ package com.campushub.backend.auth.service;
 import com.campushub.backend.auth.dto.EmailVerificationIssue;
 import com.campushub.backend.common.exception.BusinessException;
 import com.campushub.backend.common.exception.ErrorCode;
-import org.springframework.stereotype.Component;
 
-@Component
+/**
+ * 空实现，仅在没有其他 VerificationCodeService 实现时使用。
+ * 生产环境应使用 InMemoryVerificationCodeService（已通过 @Primary 注册）。
+ */
 public class NoopVerificationCodeService implements VerificationCodeService {
 
     @Override

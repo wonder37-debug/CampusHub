@@ -12,10 +12,11 @@ public class VerificationEmailConfiguration {
     @Bean
     public VerificationEmailSender verificationEmailSender(
         ObjectProvider<JavaMailSender> mailSenderProvider,
+        @Value("${spring.mail.host:}") String mailHost,
         @Value("${spring.mail.username:${app.mail.from:}}") String fromAddress
     ) {
         JavaMailSender mailSender = mailSenderProvider.getIfAvailable();
-        if (mailSender == null) {
+        if (mailSender == null || mailHost == null || mailHost.isBlank()) {
             return new LoggingVerificationEmailSender();
         }
         return new SmtpVerificationEmailSender(mailSender, fromAddress);
