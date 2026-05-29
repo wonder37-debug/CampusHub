@@ -1,5 +1,6 @@
 :root {
   --bg: #f4efe7;
+  --app-max-width: 1440px;
   --bg-soft: #fffaf3;
   --panel: rgba(255, 255, 255, 0.82);
   --panel-strong: #ffffff;
@@ -659,6 +660,54 @@ th {
   font-weight: 700;
 }
 
+/* Prominent floating action button for publishing demands */
+.fab {
+  position: fixed !important;
+  right: 24px !important; /* default small-screen fallback */
+  bottom: 28px !important;
+  z-index: 9999 !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 14px 20px;
+  min-width: 180px;
+  height: 56px;
+  border-radius: 999px;
+  color: #fff;
+  background: linear-gradient(135deg, var(--accent-strong), var(--accent));
+  box-shadow: 0 18px 40px rgba(22, 60, 53, 0.2) !important;
+  font-weight: 800;
+  font-size: 16px;
+  letter-spacing: 0.02em;
+  border: 0;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.fab:hover {
+  transform: translateY(-4px) !important;
+  box-shadow: 0 26px 60px rgba(22, 60, 53, 0.28) !important;
+}
+
+@media (max-width: 780px) {
+  .fab {
+    right: 16px;
+    bottom: 18px;
+    min-width: 140px;
+    height: 52px;
+    padding: 12px 16px;
+    font-size: 15px;
+  }
+}
+
+/* Align FAB to the right edge of centered .app-shell on wide viewports */
+@media (min-width: 1488px) {
+  .fab {
+    /* when viewport is wider than app max width + container padding, align to app-shell right edge + 24px */
+    right: calc((100vw - var(--app-max-width)) / 2 + 24px) !important;
+  }
+}
+
 .footer-note {
   margin-top: 18px;
   font-size: 12px;
@@ -793,5 +842,28 @@ th {
 
   .chart-row {
     grid-template-columns: 1fr;
+  }
+
+  /* Mobile UX improvements */
+  .demand-grid {
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+  }
+
+  .list-card,
+  .card {
+    padding: 14px;
+    border-radius: 16px;
+  }
+
+  .avatar-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .card-actions .button {
+    width: 100%;
+    justify-content: center;
   }
 }

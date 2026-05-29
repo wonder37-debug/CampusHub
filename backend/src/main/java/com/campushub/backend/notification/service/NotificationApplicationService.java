@@ -3,14 +3,23 @@ package com.campushub.backend.notification.service;
 import com.campushub.backend.common.api.PageResponse;
 import com.campushub.backend.notification.dto.NotificationQuery;
 import com.campushub.backend.notification.dto.NotificationResponse;
+import com.campushub.backend.order.domain.OrderStatus;
 
 public interface NotificationApplicationService {
 
-    void notifyOrderAccepted(Long receiverId, Long orderId, String content);
+    void notifyOrderAcceptedForPublisher(Long receiverId, Long orderId);
 
-    void notifyStatusChanged(Long receiverId, Long orderId, String content);
+    void notifyOrderAcceptedForAccepter(Long receiverId, Long orderId);
 
-    void notifyReviewReceived(Long receiverId, Long orderId, String content);
+    void notifyOrderStatusChanged(Long receiverId, Long orderId, OrderStatus status);
+
+    void notifyOrderCompletionPending(Long receiverId, Long orderId);
+
+    void notifyReviewReceived(Long receiverId, Long orderId);
+
+    void notifyDemandReviewRequested(Long receiverId, Long demandId);
+
+    void notifyDemandRejected(Long receiverId, Long demandId, String reviewReason);
 
     PageResponse<NotificationResponse> list(Long userId, NotificationQuery query);
 

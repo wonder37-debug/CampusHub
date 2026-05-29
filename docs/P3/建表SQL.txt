@@ -21,6 +21,7 @@ CREATE TABLE `sys_user` (
   `frozen_balance` decimal(10,2) NOT NULL DEFAULT '0.00' COMMENT '冻结金额',
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `email_verified_at` datetime DEFAULT NULL COMMENT '邮箱验证完成时间',
+  `updated_at` datetime DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   CONSTRAINT `chk_user_role` CHECK (`role` IN ('USER','ADMIN')),
   CONSTRAINT `chk_user_status` CHECK (`status` IN ('ACTIVE','BANNED'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -48,7 +49,7 @@ CREATE TABLE `ord_demand` (
   `end_time` datetime DEFAULT NULL,
   `reward` decimal(10,2) NOT NULL DEFAULT '0.00' COMMENT '悬赏金额',
   `tags` varchar(500) DEFAULT NULL COMMENT '存逗号分隔字符串',
-  `status` varchar(32) NOT NULL DEFAULT 'PENDING' COMMENT '状态机',
+  `status` varchar(32) NOT NULL DEFAULT 'REVIEWING' COMMENT '状态机: REVIEWING→PENDING→IN_PROGRESS→COMPLETED/CANCELLED',
   `note` varchar(500) DEFAULT NULL COMMENT '接单留言',
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT `chk_demand_category` CHECK (`category` IN ('取快递','学习辅导','二手交易','活动组队','其他')),

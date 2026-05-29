@@ -1,111 +1,123 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 
 import { useCampusHubStore } from '@/stores/campusHub'
-import { formatDateTime, formatScore, formatUserRole, formatUserStatus } from '@/utils/format'
+import { formatMoney, formatRelativeTime, formatScore, formatUserRole, formatUserStatus } from '@/utils/format'
 
 const store = useCampusHubStore()
-const message = ref('')
-const error = ref('')
+const router = useRouter()
 
-const profileForm = reactive({
-  nickname: store.currentUser?.nickname ?? '',
-  avatarUrl: store.currentUser?.avatarUrl ?? ''
+const creditLevel = computed(() => {
+  const score = store.currentUser?.creditScore ?? 0
+  if (score >= 95) return '金牌助教'
+  if (score >= 85) return '银牌助教'
+  return '成长中'
 })
 
-const userReviews = computed(() => store.currentUserReviews.filter((review) => review.targetId === store.currentUser?.id))
-const givenReviews = computed(() => store.currentUserReviews.filter((review) => review.reviewerId === store.currentUser?.id))
+const maskedPhone = computed(() => {
+  const phone = store.currentUser?.phone ?? store.currentUser?.studentId ?? ''
+  return phone ? `${String(phone).slice(0, 3)}****${String(phone).slice(-4)}` : '138****0000'
+})
 
-function updateProfile(): void {
-  error.value = ''
-  message.value = ''
 
-  try {
-    store.updateProfile(profileForm)
-    message.value = '个人资料已更新。'
-  } catch (profileError) {
-    error.value = profileError instanceof Error ? profileError.message : '更新失败'
-  }
+
+function openEditPage(): void {
+  router.push('/profile/edit')
 }
+
+function logout(): void {
+  store.logout()
+  router.push('/auth')
+}
+
+onMounted(() => {
+  void store.fetchProfile()
+  void store.fetchCurrentUserReviews()
+})
 </script>
 
 <template>
-  <div v-if="store.currentUser" class="page-grid two-column">
+  <div v-if="store.currentUser" class="page-grid">
     <section class="panel">
       <div class="avatar-row">
         <img :src="store.currentUser.avatarUrl" :alt="store.currentUser.nickname" class="avatar large" />
         <div>
-          <p class="eyebrow">我的资料</p>
+          <p class="eyebrow">个人中心</p>
           <h1 class="page-title">{{ store.currentUser.nickname }}</h1>
-          <p class="page-summary">{{ store.currentUser.studentId }} · {{ store.currentUser.email }}</p>
-          <div class="stats-row">
-            <span class="chip is-neutral">{{ formatUserRole(store.currentUser.role) }}</span>
-            <span class="chip is-neutral">{{ formatUserStatus(store.currentUser.status) }}</span>
-            <span class="chip is-success">{{ formatScore(store.currentUser.creditScore) }}</span>
+          <p class="page-summary">{{ store.currentUser.studentId }} · {{ maskedPhone }}</p>
+          <div class="stats-row" style="gap:12px;">
+            <div class="meta">当前身份：<strong>{{ formatUserRole(store.currentUser.role) }}</strong></div>
+            <div class="meta">当前状态：<strong>{{ formatUserStatus(store.currentUser.status) }}</strong></div>
           </div>
-          <p class="subtle">你可以在这里查看个人信息、修改昵称和头像，并浏览收到的评价。</p>
+          <button type="button" class="button secondary" @click="openEditPage">编辑资料</button>
         </div>
       </div>
 
       <div class="mini-grid">
-        <div class="mini-stat"><span class="subtle">我的需求</span><strong>{{ store.currentUserDemands.length }}</strong></div>
-        <div class="mini-stat"><span class="subtle">我的订单</span><strong>{{ store.currentUserOrders.length }}</strong></div>
-        <div class="mini-stat"><span class="subtle">我的评价</span><strong>{{ userReviews.length }}</strong></div>
-        <div class="mini-stat"><span class="subtle">我已评价</span><strong>{{ givenReviews.length }}</strong></div>
-      </div>
-
-      <div class="form-grid two-column">
-        <div class="field">
-          <label for="profile-nickname">昵称</label>
-          <input id="profile-nickname" v-model="profileForm.nickname" />
+        <div class="mini-stat">
+          <span class="subtle">信用分</span>
+          <strong>{{ formatScore(store.currentUser.creditScore) }}</strong>
         </div>
-        <div class="field">
-          <label for="profile-avatar">头像链接</label>
-          <input id="profile-avatar" v-model="profileForm.avatarUrl" />
+        <div class="mini-stat">
+          <span class="subtle">可用余额</span>
+          <strong>{{ formatMoney(store.currentUser.balance) }}</strong>
         </div>
-        <button type="button" class="button primary" style="grid-column: 1 / -1;" @click="updateProfile">保存资料</button>
+        <div class="mini-stat">
+          <span class="subtle">冻结金额</span>
+          <strong>{{ formatMoney(store.currentUser.frozenBalance) }}</strong>
+        </div>
+        <div class="mini-stat">
+          <span class="subtle">信用等级</span>
+          <strong>{{ creditLevel }}</strong>
+        </div>
+        <div class="mini-stat">
+          <span class="subtle">已完成订单</span>
+          <strong>{{ store.currentUserOrders.filter((order) => order.status === 'COMPLETED').length }}</strong>
+        </div>
       </div>
-
-      <p v-if="message" class="hero-badge">{{ message }}</p>
-      <p v-if="error" class="hero-badge" style="background: rgba(181, 71, 71, 0.14); color: var(--danger)">{{ error }}</p>
     </section>
 
-    <section class="section-grid">
-      <article class="panel">
-        <p class="eyebrow">收到的评价</p>
-        <h2 class="section-title">收到的评价</h2>
-        <div v-if="userReviews.length" class="review-grid">
-          <div v-for="review in userReviews" :key="review.id" class="timeline-item">
-            <div>
-              <strong>{{ review.reviewerName }} 评价你为 {{ review.rating }} 星</strong>
-              <div class="meta">{{ review.comment }}</div>
-              <div class="meta">{{ formatDateTime(review.createdAt) }}</div>
-            </div>
-          </div>
-        </div>
-        <div v-else class="empty-state">当前没有收到评价。</div>
-      </article>
+    <section class="panel">
+      <p class="eyebrow">功能入口</p>
+      <div class="section-grid">
+        <button type="button" class="button secondary" @click="router.push('/orders')">我的订单</button>
+        <button type="button" class="button secondary" @click="router.push('/notifications')">消息通知</button>
+        <button v-if="store.currentUser.role === 'ADMIN'" type="button" class="button secondary" @click="router.push('/admin')">管理后台</button>
+        <button type="button" class="button primary" @click="logout">退出登录</button>
+      </div>
 
-      <article class="panel">
-        <p class="eyebrow">我提交的评价</p>
-        <h2 class="section-title">历史评价记录</h2>
-        <div v-if="givenReviews.length" class="review-grid">
-          <div v-for="review in givenReviews" :key="review.id" class="timeline-item">
-            <div>
-              <strong>→ {{ review.targetName }}</strong>
-              <div class="meta">{{ review.comment }}</div>
-              <div class="meta">{{ formatDateTime(review.createdAt) }}</div>
-            </div>
+      <div class="hero-badge" style="margin-top: 16px;">v1.0.0</div>
+    </section>
+
+    <section class="panel">
+      <p class="eyebrow">评价列表</p>
+      <h2 class="section-title">我的评价</h2>
+
+      <div v-if="store.currentUserReviews.length" class="review-grid">
+        <div v-for="review in store.currentUserReviews" :key="review.id" class="list-card">
+          <div class="status-row">
             <span class="chip is-success">{{ review.rating }} 星</span>
+            <span class="meta">{{ formatRelativeTime(review.createdAt) }}</span>
           </div>
+          <strong>{{ review.reviewerName }} → {{ review.targetName }}</strong>
+          <p class="subtle">{{ review.comment || '暂无评价内容' }}</p>
         </div>
-        <div v-else class="empty-state">还没有提交过评价。</div>
-      </article>
+      </div>
+
+      <div v-else class="empty-state">
+        <strong>暂无评价</strong>
+      </div>
+    </section>
+
+    <section class="panel">
+      <!-- 资料编辑已移除：使用顶部的“编辑资料”按钮进入单独编辑页面 -->
     </section>
   </div>
 
   <div v-else class="empty-state">
-    <strong>当前未登录</strong>
-    <p>请先前往认证页登录或注册账号。</p>
+    <strong>请先登录</strong>
+    <p>前往认证页后再查看个人中心。</p>
+    <button type="button" class="button primary" @click="router.push('/auth')">去认证页</button>
   </div>
 </template>

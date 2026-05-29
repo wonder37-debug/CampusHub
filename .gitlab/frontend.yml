@@ -1,12 +1,20 @@
-stages:
-  - build
-
-frontend-build:
+frontend:build:
+  image: node:22
   stage: build
-  image: node:20
-  script:
+  timeout: 15m
+  variables:
+    ARTIFACT_COMPRESSION_LEVEL: "fastest"
+  before_script:
     - cd frontend
-    - npm ci
+    - npm ci --prefer-offline
+  script:
     - npm run build
+  artifacts:
+    paths:
+      - frontend/dist/
+    expire_in: 7 days
   rules:
-    - when: always
+    - changes:
+        - frontend/**/*
+        - .gitlab/frontend.yml
+        - .gitlab-ci.yml

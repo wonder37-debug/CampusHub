@@ -1,6 +1,7 @@
 package com.campushub.backend.order.service;
 
 import com.campushub.backend.auth.domain.User;
+import com.campushub.backend.auth.domain.UserRole;
 import com.campushub.backend.auth.domain.UserStatus;
 import com.campushub.backend.auth.repository.UserRepository;
 import com.campushub.backend.common.api.PageResponse;
@@ -28,6 +29,9 @@ import org.springframework.stereotype.Service;
 @Service
 public class OrderApplicationServiceImpl implements OrderApplicationService {
 
+    private static final String COMPLETION_PENDING_NOTE = "已确认完成，等待对方确认";
+    private static final String COMPLETION_FINAL_NOTE = "双方已确认完成";
+
     private final OrderRepository orderRepository;
     private final DemandRepository demandRepository;
     private final UserRepository userRepository;
@@ -48,8 +52,14 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
     @Override
     public OrderDetailResponse accept(Long operatorId, Long demandId, AcceptOrderCommand command) {
         User accepter = findActiveUser(operatorId);
-        Demand demand = findDemand(demandId);
+        if (accepter.getRole() == UserRole.ADMIN) {
+            throw new BusinessException(ErrorCode.PERMISSION_DENIED, "admin cannot accept demands");
+        }
 
+        Demand demand = findDemand(demandId);
+        if (isDemandExpired(demand, LocalDateTime.now())) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "demand has expired");
+        }
         if (demand.getPublisherId().equals(accepter.getId())) {
             throw new BusinessException(ErrorCode.PERMISSION_DENIED, "publisher cannot accept own demand");
         }
@@ -82,16 +92,9 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         demand.setStatus(DemandStatus.IN_PROGRESS);
         demand.setUpdatedAt(now);
         demandRepository.save(demand);
-        notificationApplicationService.notifyOrderAccepted(
-            demand.getPublisherId(),
-            order.getId(),
-            "您的需求已被接单"
-        );
-        notificationApplicationService.notifyOrderAccepted(
-            accepter.getId(),
-            order.getId(),
-            "您已成功接单"
-        );
+
+        notificationApplicationService.notifyOrderAcceptedForPublisher(demand.getPublisherId(), order.getId());
+        notificationApplicationService.notifyOrderAcceptedForAccepter(accepter.getId(), order.getId());
 
         return OrderDetailResponse.from(order, DemandDetailResponse.from(demand));
     }
@@ -108,6 +111,9 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         }
 
         OrderStatus targetStatus = parseStatus(command.targetStatus());
+        if (targetStatus == OrderStatus.COMPLETED) {
+            return confirmCompletion(operatorId, order, demand, command);
+        }
         validateTransition(order, operatorId, targetStatus, command.proofImageCount());
 
         OrderStatus fromStatus = order.getStatus();
@@ -118,12 +124,6 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         if (targetStatus == OrderStatus.IN_PROGRESS) {
             demand.setStatus(DemandStatus.IN_PROGRESS);
         }
-        if (targetStatus == OrderStatus.COMPLETED) {
-            order.setProofSubmitted(true);
-            order.setProofImageCount(command.proofImageCount());
-            order.setCompletedAt(now);
-            demand.setStatus(DemandStatus.COMPLETED);
-        }
         if (targetStatus == OrderStatus.CANCELLED) {
             demand.setStatus(DemandStatus.CANCELLED);
         }
@@ -132,16 +132,54 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         demand.setUpdatedAt(now);
         orderRepository.save(order);
         demandRepository.save(demand);
-        notificationApplicationService.notifyStatusChanged(
-            order.getPublisherId(),
-            order.getId(),
-            "订单状态已更新为 " + targetStatus.name()
-        );
-        notificationApplicationService.notifyStatusChanged(
-            order.getAccepterId(),
-            order.getId(),
-            "订单状态已更新为 " + targetStatus.name()
-        );
+
+        notificationApplicationService.notifyOrderStatusChanged(order.getPublisherId(), order.getId(), targetStatus);
+        notificationApplicationService.notifyOrderStatusChanged(order.getAccepterId(), order.getId(), targetStatus);
+        return OrderDetailResponse.from(order, DemandDetailResponse.from(demand));
+    }
+
+    private OrderDetailResponse confirmCompletion(Long operatorId, Order order, Demand demand, UpdateOrderStatusCommand command) {
+        if (order.getStatus() != OrderStatus.IN_PROGRESS) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "only in progress orders can be completed");
+        }
+
+        Long counterpartId = getCounterpartId(order, operatorId);
+        if (counterpartId == null) {
+            throw new BusinessException(ErrorCode.PERMISSION_DENIED, "only participants can complete order");
+        }
+
+        if (hasCompletionConfirmation(order, operatorId)) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "completion already confirmed by this user");
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        if (!hasCompletionConfirmation(order, counterpartId)) {
+            if (command != null && command.proofImageCount() != null) {
+                order.setProofSubmitted(true);
+                order.setProofImageCount(command.proofImageCount());
+            }
+            order.addHistory(OrderStatus.IN_PROGRESS, OrderStatus.IN_PROGRESS, operatorId, COMPLETION_PENDING_NOTE, now);
+            order.setUpdatedAt(now);
+            orderRepository.save(order);
+            notificationApplicationService.notifyOrderCompletionPending(counterpartId, order.getId());
+            return OrderDetailResponse.from(order, DemandDetailResponse.from(demand));
+        }
+
+        order.setStatus(OrderStatus.COMPLETED);
+        order.setCompletedAt(now);
+        order.setUpdatedAt(now);
+        if (command != null && command.proofImageCount() != null && !order.isProofSubmitted()) {
+            order.setProofSubmitted(true);
+            order.setProofImageCount(command.proofImageCount());
+        }
+        order.addHistory(OrderStatus.IN_PROGRESS, OrderStatus.COMPLETED, operatorId, COMPLETION_FINAL_NOTE, now);
+        demand.setStatus(DemandStatus.COMPLETED);
+        demand.setUpdatedAt(now);
+        orderRepository.save(order);
+        demandRepository.save(demand);
+
+        notificationApplicationService.notifyOrderStatusChanged(order.getPublisherId(), order.getId(), OrderStatus.COMPLETED);
+        notificationApplicationService.notifyOrderStatusChanged(order.getAccepterId(), order.getId(), OrderStatus.COMPLETED);
         return OrderDetailResponse.from(order, DemandDetailResponse.from(demand));
     }
 
@@ -149,7 +187,7 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
     public OrderDetailResponse getDetail(Long operatorId, Long orderId) {
         Order order = findOrder(orderId);
         User operator = findActiveUser(operatorId);
-        if (!order.isParticipant(operatorId) && operator.getRole() != com.campushub.backend.auth.domain.UserRole.ADMIN) {
+        if (!order.isParticipant(operatorId) && operator.getRole() != UserRole.ADMIN) {
             throw new BusinessException(ErrorCode.PERMISSION_DENIED, "only participants or admins can view order");
         }
         return OrderDetailResponse.from(order, DemandDetailResponse.from(findDemand(order.getDemandId())));
@@ -213,6 +251,25 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         }
     }
 
+    private boolean hasCompletionConfirmation(Order order, Long userId) {
+        return order.getStatusHistory().stream()
+            .anyMatch(entry -> entry.operatorId() != null
+                && entry.operatorId().equals(userId)
+                && entry.fromStatus() == OrderStatus.IN_PROGRESS
+                && entry.toStatus() == OrderStatus.IN_PROGRESS
+                && COMPLETION_PENDING_NOTE.equals(entry.note()));
+    }
+
+    private Long getCounterpartId(Order order, Long operatorId) {
+        if (operatorId.equals(order.getPublisherId())) {
+            return order.getAccepterId();
+        }
+        if (operatorId.equals(order.getAccepterId())) {
+            return order.getPublisherId();
+        }
+        return null;
+    }
+
     private OrderStatus parseStatus(String raw) {
         try {
             return OrderStatus.valueOf(raw.trim().toUpperCase(Locale.ROOT));
@@ -248,5 +305,9 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
 
     private String trimToNull(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private boolean isDemandExpired(Demand demand, LocalDateTime now) {
+        return demand.getEndTime() != null && demand.getEndTime().isBefore(now);
     }
 }

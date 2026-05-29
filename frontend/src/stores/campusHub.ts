@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 
 import type {
+  AdminDashboardSummary,
   AccountRecord,
   AuthFormInput,
   CategoryStat,
@@ -9,34 +10,29 @@ import type {
   DemandCategory,
   DemandFormInput,
   DemandRecord,
+  DemandStatus,
   EmailVerificationRecord,
   NotificationRecord,
+  NotificationType,
   OrderRecord,
+  RecommendationRecord,
+  OrderStatus,
   ProfilePatchInput,
   PublicUser,
   ReviewRecord
 } from '@/types/campushub'
 import {
-  CAMPUS_ZONE_OPTIONS,
   DEMAND_CATEGORY_OPTIONS,
   type DemandCategory as DemandCategoryCode
 } from '@/types/campushub'
+import { formatOrderStatus } from '@/utils/format'
 
 function buildAvatar(seed: string): string {
   return `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(seed)}`
 }
 
-function buildEmail(seed: string): string {
-  const normalized = seed.toLowerCase().replace(/[^a-z0-9]+/g, '.').replace(/^\.+|\.+$/g, '')
-  return `${normalized || 'user'}@campushub.edu.cn`
-}
-
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase()
-}
-
-function generateVerificationCode(): string {
-  return `${Math.floor(100000 + Math.random() * 900000)}`
 }
 
 function now(offsetMinutes = 0): string {
@@ -48,325 +44,205 @@ function cloneUser(account: AccountRecord): PublicUser {
   return { ...user }
 }
 
-function randomCampusZone(): CampusZone {
-  return CAMPUS_ZONE_OPTIONS[Math.floor(Math.random() * CAMPUS_ZONE_OPTIONS.length)]
+const API_BASE = import.meta.env.VITE_API_BASE || '/api/v1'
+
+function unwrapApiPayload<T>(payload: any): T {
+  if (payload && typeof payload === 'object' && 'data' in payload) {
+    return payload.data as T
+  }
+
+  return payload as T
 }
 
-function anonymousCode(): string {
-  return `匿名${Math.floor(1000 + Math.random() * 9000)}`
-}
+// translateFieldName is defined in utils/errorHandler and intentionally not duplicated here
 
-function createAccounts(): AccountRecord[] {
-  return [
-    {
-      id: 'u-admin',
-      studentId: 'admin01',
-      email: buildEmail('campus admin'),
-      password: 'admin123',
-      nickname: '校务管理员',
-      creditScore: 99,
-      role: 'ADMIN',
-      status: 'ACTIVE',
-      avatarUrl: buildAvatar('Campus Admin')
-    },
-    {
-      id: 'u-chen',
-      studentId: '20260001',
-      email: buildEmail('chen chen'),
-      password: 'campus123',
-      nickname: '陈晨',
-      creditScore: 94,
-      role: 'USER',
-      status: 'ACTIVE',
-      avatarUrl: buildAvatar('陈晨')
-    },
-    {
-      id: 'u-lin',
-      studentId: '20260002',
-      email: buildEmail('lin xia'),
-      password: 'campus123',
-      nickname: '林夏',
-      creditScore: 88,
-      role: 'USER',
-      status: 'ACTIVE',
-      avatarUrl: buildAvatar('林夏')
-    },
-    {
-      id: 'u-zhou',
-      studentId: '20260003',
-      email: buildEmail('zhou yang'),
-      password: 'campus123',
-      nickname: '周扬',
-      creditScore: 90,
-      role: 'USER',
-      status: 'ACTIVE',
-      avatarUrl: buildAvatar('周扬')
+import { translateApiError } from '@/utils/errorHandler'
+
+async function requestJson<T>(path: string, init: RequestInit = {}, token?: string): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(init.headers ?? {})
     }
-  ]
+  })
+
+  const payload = await response.json().catch(() => null)
+  if (!response.ok) {
+    const message = translateApiError(payload)
+    const err = new Error(message) as Error & { status?: number }
+    err.status = response.status
+    throw err
+  }
+
+  return unwrapApiPayload<T>(payload)
 }
 
-function createDemands(accounts: AccountRecord[]): DemandRecord[] {
-  const chen = accounts.find((account) => account.id === 'u-chen')
-  const lin = accounts.find((account) => account.id === 'u-lin')
-  const zhou = accounts.find((account) => account.id === 'u-zhou')
-
-  return [
-    {
-      id: 'd-1001',
-      title: '帮取快递并送到北区宿舍',
-      description: '周五下午三点后可以取件，快递站距离宿舍步行约八分钟，希望顺路帮忙送到楼下。',
-      category: 'EXPRESS',
-      campusZone: 'XIANLIN',
-      location: '北区快递站',
-      startTime: now(-240),
-      endTime: now(360),
-      reward: 8,
-      status: 'PENDING',
-      anonymous: false,
-      anonymousCode: null,
-      publisherId: chen?.id ?? 'u-chen',
-      publisherName: chen?.nickname ?? '陈晨',
-      publisherAvatar: chen?.avatarUrl ?? buildAvatar('陈晨'),
-      tags: ['近距离', '宿舍楼下'],
-      createdAt: now(-300),
-      updatedAt: now(-300),
-      distanceKm: 1.2
-    },
-    {
-      id: 'd-1002',
-      title: '高数作业思路互助',
-      description: '一起梳理本周作业第 3、4 题的解题思路，接受线上语音沟通。',
-      category: 'STUDY_TUTORING',
-      campusZone: 'GULOU',
-      location: '图书馆三楼',
-      startTime: now(-180),
-      endTime: now(180),
-      reward: 20,
-      status: 'IN_PROGRESS',
-      anonymous: false,
-      anonymousCode: null,
-      publisherId: lin?.id ?? 'u-lin',
-      publisherName: lin?.nickname ?? '林夏',
-      publisherAvatar: lin?.avatarUrl ?? buildAvatar('林夏'),
-      tags: ['高数', '线上'],
-      createdAt: now(-240),
-      updatedAt: now(-30),
-      distanceKm: 0.8
-    },
-    {
-      id: 'd-1003',
-      title: '二手教材转让：Python 入门',
-      description: '教材使用一学期，书页完整，适合大一新生入门，支持校园内面交。',
-      category: 'SECOND_HAND',
-      campusZone: 'SUZHOU',
-      location: '东区食堂门口',
-      startTime: now(-120),
-      endTime: now(720),
-      reward: 35,
-      status: 'PENDING',
-      anonymous: true,
-      anonymousCode: anonymousCode(),
-      publisherId: zhou?.id ?? 'u-zhou',
-      publisherName: zhou?.nickname ?? '周扬',
-      publisherAvatar: zhou?.avatarUrl ?? buildAvatar('周扬'),
-      tags: ['教材', '面交'],
-      createdAt: now(-180),
-      updatedAt: now(-180),
-      distanceKm: 2.4
-    },
-    {
-      id: 'd-1004',
-      title: '篮球赛临时组队，缺两名队员',
-      description: '校内友谊赛周末开打，希望找两个跑动能力强、能打外线的同学。',
-      category: 'TEAM_UP',
-      campusZone: 'XIANLIN',
-      location: '南区篮球场',
-      startTime: now(60),
-      endTime: now(240),
-      reward: 0,
-      status: 'COMPLETED',
-      anonymous: false,
-      anonymousCode: null,
-      publisherId: chen?.id ?? 'u-chen',
-      publisherName: chen?.nickname ?? '陈晨',
-      publisherAvatar: chen?.avatarUrl ?? buildAvatar('陈晨'),
-      tags: ['体育', '周末'],
-      createdAt: now(-90),
-      updatedAt: now(-10),
-      distanceKm: 1.8
-    },
-    {
-      id: 'd-1005',
-      title: '代买实验用品，需求待审核示例',
-      description: '这是管理员审核队列中的示例需求，用于展示 P4 管理后台的审核流程。',
-      category: 'OTHER',
-      campusZone: 'GULOU',
-      location: '化学楼',
-      startTime: now(120),
-      endTime: now(420),
-      reward: 12,
-      status: 'REVIEWING',
-      anonymous: false,
-      anonymousCode: null,
-      publisherId: zhou?.id ?? 'u-zhou',
-      publisherName: zhou?.nickname ?? '周扬',
-      publisherAvatar: zhou?.avatarUrl ?? buildAvatar('周扬'),
-      tags: ['审核中', '后台'],
-      createdAt: now(-60),
-      updatedAt: now(-60),
-      distanceKm: 3.2
-    }
-  ]
+function mapUserSummary(raw: any): PublicUser {
+  return {
+    id: String(raw.id ?? ''),
+    email: String(raw.email ?? ''),
+    studentId: String(raw.studentId ?? ''),
+    nickname: String(raw.nickname ?? '匿名校友'),
+    avatarUrl: String(raw.avatarUrl ?? buildAvatar(String(raw.nickname ?? raw.studentId ?? '用户'))),
+    creditScore: Number(raw.creditScore ?? 0),
+    balance: Number(raw.balance ?? 0),
+    frozenBalance: Number(raw.frozenBalance ?? 0),
+    role: String(raw.role ?? 'USER') as AccountRecord['role'],
+    status: String(raw.status ?? 'ACTIVE') as AccountRecord['status']
+  }
 }
 
-function createOrders(): OrderRecord[] {
-  return [
-    {
-      id: 'o-2001',
-      demandId: 'd-1002',
-      demandTitle: '高数作业思路互助',
-      requesterId: 'u-lin',
-      requesterName: '林夏',
-      requesterAvatar: buildAvatar('林夏'),
-      serviceProviderId: 'u-zhou',
-      serviceProviderName: '周扬',
-      serviceProviderAvatar: buildAvatar('周扬'),
-      status: 'IN_PROGRESS',
-      note: '今晚八点前可以开始，想先看一下题目。',
-      proofSubmitted: false,
-      proofImageCount: 0,
-      createdAt: now(-200),
-      updatedAt: now(-30),
-      completedAt: '',
-      timeline: [
-        { at: now(-200), label: '订单创建' },
-        { at: now(-150), label: '双方确认需求细节' },
-        { at: now(-30), label: '进入进行中' }
-      ]
-    },
-    {
-      id: 'o-2002',
-      demandId: 'd-1004',
-      demandTitle: '篮球赛临时组队，缺两名队员',
-      requesterId: 'u-chen',
-      requesterName: '陈晨',
-      requesterAvatar: buildAvatar('陈晨'),
-      serviceProviderId: 'u-lin',
-      serviceProviderName: '林夏',
-      serviceProviderAvatar: buildAvatar('林夏'),
-      status: 'COMPLETED',
-      note: '同学之间协调时间，周末已完成比赛。',
-      proofSubmitted: true,
-      proofImageCount: 2,
-      createdAt: now(-320),
-      updatedAt: now(-10),
-      completedAt: now(-10),
-      timeline: [
-        { at: now(-320), label: '订单创建' },
-        { at: now(-260), label: '开始执行' },
-        { at: now(-10), label: '已完成' }
-      ]
-    }
-  ]
+function mapDemandRecord(raw: any): DemandRecord {
+  const publisherDisplayName = raw.publisherDisplayName ?? raw.publisherName ?? raw.creator?.nickname ?? '匿名'
+  const publisher = raw.publisher ? mapUserSummary(raw.publisher) : null
+  return {
+    id: String(raw.id ?? raw.demandId ?? ''),
+    title: String(raw.title ?? ''),
+    description: String(raw.description ?? ''),
+    category: String(raw.category ?? 'OTHER') as DemandCategoryCode,
+    campusZone: String(raw.campusZone ?? 'GULOU') as CampusZone,
+    location: String(raw.location ?? ''),
+    startTime: String(raw.startTime ?? now()),
+    endTime: String(raw.endTime ?? now()),
+    reward: Number(raw.reward ?? 0),
+    status: String(raw.status ?? 'PENDING') as DemandStatus,
+    anonymous: Boolean(raw.anonymous ?? false),
+    anonymousCode: raw.anonymousCode ?? null,
+    publisherId: raw.publisherId == null ? '' : String(raw.publisherId),
+    publisherName: String(publisherDisplayName),
+    publisherAvatar: String(raw.publisherAvatar ?? buildAvatar(String(publisherDisplayName))),
+    publisher,
+    tags: Array.isArray(raw.tags) ? raw.tags.map((tag: any) => String(tag)) : [],
+    createdAt: String(raw.createdAt ?? now()),
+    updatedAt: String(raw.updatedAt ?? raw.createdAt ?? now()),
+    distanceKm: Number(raw.distanceKm ?? 0),
+    canAccept: raw.canAccept == null ? undefined : Boolean(raw.canAccept),
+    acceptDisabledReason: raw.acceptDisabledReason == null ? undefined : String(raw.acceptDisabledReason),
+    canStartExecution: raw.canStartExecution == null ? undefined : Boolean(raw.canStartExecution),
+    canViewAcceptNote: raw.canViewAcceptNote == null ? undefined : Boolean(raw.canViewAcceptNote),
+    canSubmitAcceptNote: raw.canSubmitAcceptNote == null ? undefined : Boolean(raw.canSubmitAcceptNote),
+    publisherStudentIdMasked: raw.publisherStudentIdMasked == null ? undefined : String(raw.publisherStudentIdMasked),
+    publisherIdentityVisible: raw.publisherIdentityVisible == null ? undefined : Boolean(raw.publisherIdentityVisible),
+    reviewReason: raw.reviewReason == null ? undefined : String(raw.reviewReason)
+  }
 }
 
-function createReviews(): ReviewRecord[] {
-  return [
-    {
-      id: 'r-3001',
-      orderId: 'o-2002',
-      reviewerId: 'u-chen',
-      reviewerName: '陈晨',
-      targetId: 'u-lin',
-      targetName: '林夏',
-      rating: 5,
-      comment: '沟通很及时，比赛也非常顺利。',
-      createdAt: now(-8)
-    }
-  ]
+function mapOrderRecord(raw: any): OrderRecord {
+  const demand = raw.demand ?? {}
+  const requester = raw.requester ?? {}
+  const provider = raw.provider ?? raw.accepter ?? {}
+
+  return {
+    id: String(raw.orderId ?? raw.id ?? ''),
+    demandId: String(demand.id ?? raw.demandId ?? ''),
+    demandTitle: String(demand.title ?? raw.demandTitle ?? ''),
+    demandLocation: String(demand.location ?? raw.location ?? ''),
+    demandStartTime: String(demand.startTime ?? raw.startTime ?? ''),
+    demandEndTime: String(demand.endTime ?? raw.endTime ?? ''),
+    demandCategory: String(demand.category ?? raw.category ?? ''),
+    demandCampusZone: String(demand.campusZone ?? raw.campusZone ?? ''),
+    demandReward: Number(demand.reward ?? raw.reward ?? 0),
+    requesterId: String(requester.id ?? raw.publisherId ?? raw.requesterId ?? demand.publisherId ?? ''),
+    requesterName: String(requester.nickname ?? raw.publisherDisplayName ?? raw.requesterName ?? demand.publisherDisplayName ?? ''),
+    requesterAvatar: String(requester.avatarUrl ?? raw.requesterAvatar ?? raw.publisherAvatar ?? buildAvatar(String(requester.nickname ?? raw.publisherDisplayName ?? ''))),
+    requesterCreditScore: Number(requester.creditScore ?? raw.requesterCreditScore ?? 0),
+    serviceProviderId: String(provider.id ?? raw.accepterId ?? raw.serviceProviderId ?? ''),
+    serviceProviderName: String(provider.nickname ?? raw.accepterName ?? raw.serviceProviderName ?? ''),
+    serviceProviderAvatar: String(provider.avatarUrl ?? raw.serviceProviderAvatar ?? buildAvatar(String(provider.nickname ?? raw.accepterName ?? ''))),
+    serviceProviderCreditScore: Number(provider.creditScore ?? raw.serviceProviderCreditScore ?? 0),
+    status: String(raw.status ?? 'ACCEPTED') as OrderStatus,
+    note: String(raw.acceptNote ?? raw.note ?? ''),
+    proofSubmitted: Boolean(raw.proofSubmitted ?? false),
+    proofImageCount: Number(raw.proofImageCount ?? 0),
+    createdAt: String(raw.createdAt ?? now()),
+    updatedAt: String(raw.updatedAt ?? raw.createdAt ?? now()),
+    completedAt: String(raw.completedAt ?? ''),
+    reviews: Array.isArray(raw.reviews) ? raw.reviews.map((review: any) => mapReviewRecord(review)) : undefined,
+    currentUserReviewed: raw.currentUserReviewed == null ? undefined : Boolean(raw.currentUserReviewed),
+    pendingReviewTarget: raw.pendingReviewTarget == null ? undefined : String(raw.pendingReviewTarget),
+    completionHint: raw.completionHint == null ? undefined : String(raw.completionHint),
+    timeline: Array.isArray(raw.statusHistory)
+      ? raw.statusHistory.map((entry: any) => ({
+          at: String(entry.changedAt ?? entry.createdAt ?? now()),
+          label: String(entry.note ?? formatOrderStatus(String(entry.toStatus ?? 'ACCEPTED') as OrderStatus))
+        }))
+      : []
+  }
 }
 
-function createNotifications(): NotificationRecord[] {
-  return [
-    {
-      id: 'n-4001',
-      receiverId: 'u-lin',
-      type: 'ORDER_ACCEPTED',
-      content: '你的需求“高数作业思路互助”已被周扬接单。',
-      isRead: false,
-      createdAt: now(-120),
-      relatedId: 'o-2001'
-    },
-    {
-      id: 'n-4002',
-      receiverId: 'u-zhou',
-      type: 'REVIEW_RECEIVED',
-      content: '陈晨刚刚给你提交了一条 5 星评价。',
-      isRead: true,
-      createdAt: now(-6),
-      relatedId: 'r-3001'
-    },
-    {
-      id: 'n-4003',
-      receiverId: 'u-admin',
-      type: 'STATUS_CHANGED',
-      content: '有一条需求正在等待管理员审核。',
-      isRead: false,
-      createdAt: now(-55),
-      relatedId: 'd-1005'
-    },
-    {
-      id: 'n-4004',
-      receiverId: 'u-chen',
-      type: 'STATUS_CHANGED',
-      content: 'CampusHub 基础数据已准备完成，可以切换不同身份查看流程。',
-      isRead: true,
-      createdAt: now(-500),
-      relatedId: 'system'
-    }
-  ]
+function mapNotificationRecord(raw: any, fallbackReceiverId = ''): NotificationRecord {
+  return {
+    id: String(raw.id ?? ''),
+    receiverId: String(raw.receiverId ?? fallbackReceiverId),
+    type: String(raw.type ?? 'STATUS_CHANGED') as NotificationType,
+    title: raw.title == null ? undefined : String(raw.title),
+    content: String(raw.content ?? raw.title ?? ''),
+    isRead: Boolean(raw.read ?? raw.isRead ?? false),
+    createdAt: String(raw.createdAt ?? now()),
+    relatedId: String(raw.relatedId ?? ''),
+    relatedName: String(raw.relatedName ?? raw.relatedTitle ?? raw.targetName ?? raw.targetTitle ?? ''),
+    targetType: raw.targetType == null ? undefined : String(raw.targetType),
+    targetId: raw.targetId == null ? undefined : String(raw.targetId),
+    targetTitle: raw.targetTitle == null ? undefined : String(raw.targetTitle),
+    actionHint: raw.actionHint == null ? undefined : String(raw.actionHint)
+  }
+}
+
+function mapReviewRecord(raw: any): ReviewRecord {
+  const author = raw.author ?? {}
+  return {
+    id: String(raw.id ?? nextId('r')),
+    orderId: String(raw.orderId ?? ''),
+    reviewerId: String(author.id ?? raw.authorId ?? ''),
+    reviewerName: String(author.nickname ?? raw.reviewerName ?? '匿名'),
+    targetId: String(raw.targetId ?? ''),
+    targetName: String(raw.targetName ?? ''),
+    rating: Number(raw.rating ?? 0),
+    comment: String(raw.comment ?? ''),
+    createdAt: String(raw.createdAt ?? now())
+  }
 }
 
 function nextId(prefix: string): string {
   return `${prefix}-${Math.random().toString(36).slice(2, 9)}`
 }
 
-function recalculateCredit(accounts: AccountRecord[], targetId: string, reviews: ReviewRecord[]): void {
-  const target = accounts.find((account) => account.id === targetId)
-  if (!target) {
-    return
-  }
-
-  const targetReviews = reviews.filter((review) => review.targetId === targetId)
-  if (!targetReviews.length) {
-    return
-  }
-
-  const average = targetReviews.reduce((sum, review) => sum + review.rating, 0) / targetReviews.length
-  target.creditScore = Math.round(average * 20)
-}
-
 export const useCampusHubStore = defineStore('campusHub', {
   state: () => ({
-    currentUserId: 'u-chen',
-    token: 'demo-token',
-    accounts: createAccounts(),
-    demands: createDemands(createAccounts()),
-    orders: createOrders(),
-    reviews: createReviews(),
-    notifications: createNotifications(),
+    // 尝试从 localStorage 恢复登录态以持久化会话
+    currentUserId: (typeof window !== 'undefined' && localStorage.getItem('campushub.userId')) || '',
+    token: (typeof window !== 'undefined' && localStorage.getItem('campushub.token')) || '',
+    currentProfile: ((): PublicUser | null => {
+      if (typeof window === 'undefined') return null
+      const raw = localStorage.getItem('campushub.profile')
+      if (!raw) return null
+      try {
+        return JSON.parse(raw) as PublicUser
+      } catch {
+        return null
+      }
+    })(),
+    accounts: [] as AccountRecord[],
+    demands: [] as DemandRecord[],
+    orders: [] as OrderRecord[],
+    reviews: [] as ReviewRecord[],
+    notifications: [] as NotificationRecord[],
+    adminUsers: [] as PublicUser[],
+    adminDashboard: null as AdminDashboardSummary | null,
+    adminPendingDemands: [] as DemandRecord[],
     verificationCodes: {} as Record<string, EmailVerificationRecord>,
     appMessage: '校园互助平台已加载基础业务数据。'
   }),
 
   getters: {
     currentUser(state): PublicUser | null {
-      const account = state.accounts.find((item) => item.id === state.currentUserId)
-      return account ? cloneUser(account) : null
+      return state.currentProfile
     },
 
     accountOptions(state): PublicUser[] {
-      return state.accounts.map((account) => cloneUser(account))
+      return state.adminUsers
     },
 
     unreadNotificationCount(state): number {
@@ -434,6 +310,40 @@ export const useCampusHubStore = defineStore('campusHub', {
   },
 
   actions: {
+    async hydrateAuthenticatedState(): Promise<void> {
+      if (!this.token) {
+        return
+      }
+
+      await this.fetchProfile()
+      await this.fetchCurrentUserReviews()
+      await this.fetchDemands()
+      await this.fetchOrders()
+      await this.fetchNotifications()
+    },
+
+    async initializeFromStorage(): Promise<void> {
+      if (typeof window === 'undefined') return
+      const token = localStorage.getItem('campushub.token') || ''
+      if (!token) return
+      this.token = token
+      const profileRaw = localStorage.getItem('campushub.profile')
+      if (profileRaw) {
+        try {
+          this.currentProfile = JSON.parse(profileRaw)
+          this.currentUserId = this.currentProfile?.id || ''
+        } catch {
+          // ignore
+        }
+      }
+
+      try {
+        await this.hydrateAuthenticatedState()
+      } catch {
+        // ignore hydrate errors on startup
+      }
+    },
+
     getDemandById(demandId: string): DemandRecord | undefined {
       return this.demands.find((demand) => demand.id === demandId)
     },
@@ -447,394 +357,511 @@ export const useCampusHubStore = defineStore('campusHub', {
       return account ? cloneUser(account) : undefined
     },
 
-    switchAccount(userId: string): void {
-      const account = this.accounts.find((item) => item.id === userId)
-      if (!account) {
-        throw new Error('未找到可切换的账号')
-      }
-
-      this.currentUserId = account.id
-      this.token = `demo-${account.studentId}`
-    },
-
     logout(): void {
       this.currentUserId = ''
       this.token = ''
-    },
-
-    login(form: AuthFormInput): PublicUser {
-      const account = this.accounts.find((item) => item.studentId === form.studentId.trim() && item.password === form.password)
-
-      if (!account) {
-        throw new Error('学号或密码不正确')
+      this.currentProfile = null
+      try {
+        localStorage.removeItem('campushub.token')
+        localStorage.removeItem('campushub.userId')
+        localStorage.removeItem('campushub.profile')
+      } catch {
+        // ignore
       }
-
-      this.currentUserId = account.id
-      this.token = `demo-${account.studentId}`
-      return cloneUser(account)
     },
 
-    sendRegistrationCode(email: string): string {
-      const normalizedEmail = normalizeEmail(email)
+    async login(form: AuthFormInput): Promise<PublicUser> {
+      const payload = await requestJson<any>('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({
+          loginId: form.studentId.trim(),
+          password: form.password
+        })
+      })
 
+      const authData = unwrapApiPayload<any>(payload)
+      const user = mapUserSummary(authData.user ?? authData)
+      this.currentUserId = user.id
+      this.currentProfile = user
+      this.token = String(authData.token ?? '')
+      try {
+        localStorage.setItem('campushub.token', this.token)
+        localStorage.setItem('campushub.userId', user.id)
+        localStorage.setItem('campushub.profile', JSON.stringify(user))
+      } catch {
+        // ignore storage errors
+      }
+      await this.hydrateAuthenticatedState()
+      return user
+    },
+
+    async sendRegistrationCode(email: string, studentId: string): Promise<string> {
+      const normalizedEmail = normalizeEmail(email)
+      const normalizedStudentId = studentId.trim()
       if (!normalizedEmail || !normalizedEmail.includes('@')) {
         throw new Error('请输入有效的邮箱地址')
       }
-
-      const code = generateVerificationCode()
-      this.verificationCodes[normalizedEmail] = {
-        code,
-        email: normalizedEmail,
-        expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
-        sender: 'noreply@campushub.edu.cn'
+      if (!normalizedStudentId) {
+        throw new Error('请先输入学号再获取邮箱验证码')
       }
 
-      return code
+      await requestJson<void>('/auth/email-code', {
+        method: 'POST',
+        body: JSON.stringify({
+          email: normalizedEmail,
+          studentId: normalizedStudentId
+        })
+      })
+      return ''
     },
 
-    register(form: AuthFormInput): PublicUser {
-      const studentId = form.studentId.trim()
-      const email = normalizeEmail(form.email ?? '')
-      const verificationCode = form.verificationCode?.trim() ?? ''
+    async register(form: AuthFormInput): Promise<PublicUser> {
+      const registeredUser = await requestJson<any>('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({
+          email: normalizeEmail(form.email ?? ''),
+          verificationCode: form.verificationCode?.trim() ?? '',
+          studentId: form.studentId.trim(),
+          password: form.password,
+          nickname: form.nickname?.trim() || undefined,
+          avatarUrl: form.avatarUrl?.trim() || undefined
+        })
+      })
 
-      if (!email) {
-        throw new Error('请输入邮箱地址')
+      const profile = mapUserSummary(registeredUser)
+
+      try {
+        return await this.login({ studentId: form.studentId, password: form.password })
+      } catch (error) {
+        this.currentUserId = ''
+        this.currentProfile = null
+        this.token = ''
+        throw error instanceof Error
+          ? error
+          : new Error(`注册成功，但账号 ${profile.studentId} 自动登录失败，请手动登录后继续`)
       }
-
-      if (!verificationCode) {
-        throw new Error('请输入邮箱验证码')
-      }
-
-      if (this.accounts.some((account) => account.studentId === studentId)) {
-        throw new Error('该学号已经被注册')
-      }
-
-      if (this.accounts.some((account) => account.email === email)) {
-        throw new Error('该邮箱已经被注册')
-      }
-
-      const verification = this.verificationCodes[email]
-      if (!verification) {
-        throw new Error('请先发送邮箱验证码')
-      }
-
-      if (verification.code !== verificationCode) {
-        throw new Error('验证码不正确')
-      }
-
-      if (new Date(verification.expiresAt).getTime() < Date.now()) {
-        throw new Error('验证码已过期，请重新发送')
-      }
-
-      const nickname = form.nickname?.trim() ?? ''
-      const avatarUrl = form.avatarUrl?.trim() ?? ''
-
-      const account: AccountRecord = {
-        id: nextId('u'),
-        studentId,
-        email,
-        password: form.password,
-        nickname: nickname || studentId,
-        creditScore: 90,
-        role: 'USER',
-        status: 'ACTIVE',
-        avatarUrl: avatarUrl || buildAvatar(nickname || studentId)
-      }
-
-      this.accounts.unshift(account)
-      this.currentUserId = account.id
-      this.token = `demo-${account.studentId}`
-      delete this.verificationCodes[email]
-      return cloneUser(account)
     },
 
-    updateProfile(form: ProfilePatchInput): PublicUser {
-      const account = this.accounts.find((item) => item.id === this.currentUserId)
-      if (!account) {
+    async updateProfile(form: ProfilePatchInput): Promise<PublicUser> {
+      if (!this.currentUserId) {
         throw new Error('请先登录后再编辑资料')
       }
 
-      account.nickname = form.nickname.trim() || account.nickname
-      account.avatarUrl = form.avatarUrl.trim() || account.avatarUrl
-      return cloneUser(account)
+      const profile = await requestJson<any>('/users/me', {
+        method: 'PUT',
+        body: JSON.stringify({
+          nickname: form.nickname.trim(),
+          avatarUrl: form.avatarUrl.trim()
+        })
+      }, this.token)
+
+      const mapped = mapUserSummary(profile)
+      this.currentProfile = mapped
+      await this.fetchProfile()
+      await this.fetchCurrentUserReviews()
+      return mapped
     },
 
-    createDemand(form: DemandFormInput): DemandRecord {
-      const currentUser = this.accounts.find((account) => account.id === this.currentUserId)
-      if (!currentUser) {
+    async createDemand(form: DemandFormInput): Promise<DemandRecord> {
+      if (!this.currentUserId) {
         throw new Error('请先登录后再发布需求')
       }
 
-      const reward = Number(form.reward || 0)
-      const demand: DemandRecord = {
-        id: nextId('d'),
-        title: form.title.trim(),
-        description: form.description.trim(),
-        category: (form.category || 'OTHER') as DemandCategoryCode,
-        campusZone: form.campusZone || randomCampusZone(),
-        location: form.location.trim() || '校园内',
-        startTime: form.startTime || now(),
-        endTime: form.endTime || now(180),
-        reward: Number.isNaN(reward) ? 0 : reward,
-        status: currentUser.role === 'ADMIN' ? 'PENDING' : 'REVIEWING',
-        anonymous: Boolean(form.anonymous),
-        anonymousCode: form.anonymous ? anonymousCode() : null,
-        publisherId: currentUser.id,
-        publisherName: currentUser.nickname,
-        publisherAvatar: currentUser.avatarUrl,
-        tags: form.tags
-          .split(/[，,]/)
-          .map((tag) => tag.trim())
-          .filter(Boolean),
-        createdAt: now(),
-        updatedAt: now(),
-        distanceKm: Number((Math.random() * 3 + 0.4).toFixed(1))
-      }
+      const demand = await requestJson<any>('/demands', {
+        method: 'POST',
+        body: JSON.stringify({
+          title: form.title.trim(),
+          description: form.description.trim(),
+          category: form.category || 'OTHER',
+          campusZone: form.campusZone,
+          location: form.location.trim() || '校园内',
+          startTime: form.startTime || undefined,
+          endTime: form.endTime || undefined,
+          reward: Number(form.reward || 0),
+          tags: form.tags
+            .split(/[，,]/)
+            .map((tag) => tag.trim())
+            .filter(Boolean),
+          anonymous: Boolean(form.anonymous)
+        })
+      }, this.token)
 
-      this.demands.unshift(demand)
-      this.notifications.unshift({
-        id: nextId('n'),
-        receiverId: currentUser.id,
-        type: 'STATUS_CHANGED',
-        content: `你刚刚发布了需求“${demand.title}”。`,
-        isRead: false,
-        createdAt: now(),
-        relatedId: demand.id
-      })
-
-      return demand
+      const mapped = mapDemandRecord(demand)
+      await this.fetchDemands()
+      await this.fetchNotifications()
+      return mapped
     },
 
-    approveDemand(demandId: string, approved: boolean): DemandRecord {
-      const demand = this.demands.find((item) => item.id === demandId)
-      if (!demand) {
-        throw new Error('未找到待审核需求')
+    async fetchDemandDetail(demandId: string): Promise<DemandRecord | null> {
+      if (!demandId) {
+        return null
       }
 
-      if (demand.status !== 'REVIEWING') {
-        throw new Error('只有审核中的需求才能审核')
-      }
-
-      demand.status = approved ? 'PENDING' : 'CANCELLED'
-      if (approved) {
-        demand.updatedAt = now()
+      const demand = await requestJson<any>(`/demands/${encodeURIComponent(demandId)}`, {}, this.token)
+      const mapped = mapDemandRecord(demand)
+      const existingIndex = this.demands.findIndex((item) => item.id === mapped.id)
+      if (existingIndex >= 0) {
+        this.demands.splice(existingIndex, 1, mapped)
       } else {
-        demand.updatedAt = now()
+        this.demands.unshift(mapped)
       }
-
-      this.notifications.unshift({
-        id: nextId('n'),
-        receiverId: demand.publisherId,
-        type: 'STATUS_CHANGED',
-        content: approved ? `你的需求“${demand.title}”已通过审核。` : `你的需求“${demand.title}”已被驳回。`,
-        isRead: false,
-        createdAt: now(),
-        relatedId: demand.id
-      })
-
-      return demand
+      return mapped
     },
 
-    acceptDemand(demandId: string, note = ''): OrderRecord {
-      const currentUser = this.accounts.find((account) => account.id === this.currentUserId)
-      const demand = this.demands.find((item) => item.id === demandId)
-
-      if (!currentUser) {
-        throw new Error('请先登录后再接单')
+    async fetchOrderDetail(orderId: string): Promise<OrderRecord | null> {
+      if (!orderId || !this.token) {
+        return null
       }
 
-      if (!demand) {
-        throw new Error('未找到需求')
+      const order = await requestJson<any>(`/orders/${encodeURIComponent(orderId)}`, {}, this.token)
+      const mapped = mapOrderRecord(order)
+      const existingIndex = this.orders.findIndex((item) => item.id === mapped.id)
+      if (existingIndex >= 0) {
+        this.orders.splice(existingIndex, 1, mapped)
+      } else {
+        this.orders.unshift(mapped)
       }
+      return mapped
+    },
 
-      if (demand.publisherId === currentUser.id) {
-        throw new Error('不能接自己的需求')
-      }
+    async approveDemand(demandId: string, approved: boolean, reason?: string): Promise<DemandRecord> {
+      const body: any = { action: approved ? 'approve' : 'reject' }
+      if (!approved && reason) body.reason = String(reason)
 
-      if (demand.status !== 'PENDING') {
-        throw new Error('该需求当前不可接单')
-      }
+      const demand = await requestJson<any>(`/admin/demands/${encodeURIComponent(demandId)}/review`, {
+        method: 'POST',
+        body: JSON.stringify(body)
+      }, this.token)
 
-      demand.status = 'IN_PROGRESS'
-      demand.updatedAt = now()
+      const mapped = mapDemandRecord(demand)
+      await this.fetchAdminDashboard()
+      await this.fetchAdminPendingDemands()
+      await this.fetchDemands()
+      await this.fetchNotifications()
+      return mapped
+    },
 
-      const order: OrderRecord = {
-        id: nextId('o'),
-        demandId: demand.id,
-        demandTitle: demand.title,
-        requesterId: demand.publisherId,
-        requesterName: demand.publisherName,
-        requesterAvatar: demand.publisherAvatar,
-        serviceProviderId: currentUser.id,
-        serviceProviderName: currentUser.nickname,
-        serviceProviderAvatar: currentUser.avatarUrl,
-        status: 'ACCEPTED',
-        note: note.trim(),
-        proofSubmitted: false,
-        proofImageCount: 0,
-        createdAt: now(),
-        updatedAt: now(),
-        completedAt: '',
-        timeline: [
-          { at: now(), label: '接单成功' },
-          { at: now(5), label: '等待执行' }
-        ]
-      }
+    async banUser(userId: string, reason = ''): Promise<PublicUser> {
+      const payload = await requestJson<any>(`/admin/users/${encodeURIComponent(userId)}/ban`, {
+        method: 'POST',
+        body: JSON.stringify(reason ? { reason: reason.trim() } : {})
+      }, this.token)
 
-      this.orders.unshift(order)
-      this.notifications.unshift(
-        {
-          id: nextId('n'),
-          receiverId: demand.publisherId,
-          type: 'ORDER_ACCEPTED',
-          content: `你的需求“${demand.title}”已被 ${currentUser.nickname} 接单。`,
-          isRead: false,
-          createdAt: now(),
-          relatedId: order.id
-        },
-        {
-          id: nextId('n'),
-          receiverId: currentUser.id,
-          type: 'ORDER_ACCEPTED',
-          content: `你已成功接下需求“${demand.title}”。`,
-          isRead: false,
-          createdAt: now(),
-          relatedId: order.id
+      const mapped = mapUserSummary(payload)
+      await this.fetchAdminUsers()
+      await this.fetchAdminDashboard()
+      return mapped
+    },
+
+    async unbanUser(userId: string): Promise<PublicUser> {
+      const payload = await requestJson<any>(`/admin/users/${encodeURIComponent(userId)}/unban`, {
+        method: 'POST'
+      }, this.token)
+
+      const mapped = mapUserSummary(payload)
+      await this.fetchAdminUsers()
+      await this.fetchAdminDashboard()
+      return mapped
+    },
+
+    async acceptDemand(demandId: string, note = ''): Promise<OrderRecord> {
+      try {
+        const order = await requestJson<any>(`/demands/${encodeURIComponent(demandId)}/accept`, {
+          method: 'POST',
+          body: JSON.stringify({ note: note.trim() })
+        }, this.token)
+
+        const mapped = mapOrderRecord(order)
+        await this.fetchDemands()
+        await this.fetchOrders()
+        await this.fetchNotifications()
+        return mapped
+      } catch (err) {
+        const e = err as Error & { status?: number }
+        if (e.status === 409) {
+          throw new Error('该需求已过期，无法接单')
         }
-      )
-
-      return order
+        throw err
+      }
     },
 
-    startOrder(orderId: string): OrderRecord {
-      const order = this.orders.find((item) => item.id === orderId)
-      if (!order) {
-        throw new Error('未找到订单')
-      }
+    async startOrder(orderId: string): Promise<OrderRecord> {
+      const order = await requestJson<any>(`/orders/${encodeURIComponent(orderId)}`, {
+        method: 'PUT',
+        body: JSON.stringify({ targetStatus: 'IN_PROGRESS' })
+      }, this.token)
 
-      if (order.status !== 'ACCEPTED') {
-        throw new Error('只有已接单的订单可以开始执行')
-      }
-
-      order.status = 'IN_PROGRESS'
-      order.updatedAt = now()
-      order.timeline.unshift({ at: now(), label: '开始执行' })
-      this.notifications.unshift({
-        id: nextId('n'),
-        receiverId: order.requesterId,
-        type: 'STATUS_CHANGED',
-        content: `你的订单“${order.demandTitle}”已进入进行中状态。`,
-        isRead: false,
-        createdAt: now(),
-        relatedId: order.id
-      })
-      return order
+      const mapped = mapOrderRecord(order)
+      await this.fetchDemands()
+      await this.fetchOrders()
+      await this.fetchNotifications()
+      return mapped
     },
 
-    completeOrder(orderId: string): OrderRecord {
-      const order = this.orders.find((item) => item.id === orderId)
-      if (!order) {
-        throw new Error('未找到订单')
-      }
+    async completeOrder(orderId: string): Promise<OrderRecord> {
+      const order = await requestJson<any>(`/orders/${encodeURIComponent(orderId)}`, {
+        method: 'PUT',
+        body: JSON.stringify({ targetStatus: 'COMPLETED', proofImageCount: 1 })
+      }, this.token)
 
-      if (order.status !== 'IN_PROGRESS' && order.status !== 'ACCEPTED') {
-        throw new Error('当前状态不能直接完成订单')
-      }
-
-      order.status = 'COMPLETED'
-      order.proofSubmitted = true
-      order.proofImageCount = Math.max(order.proofImageCount, 1)
-      order.updatedAt = now()
-      order.completedAt = now()
-      order.timeline.unshift({ at: now(), label: '确认完成' })
-      this.notifications.unshift({
-        id: nextId('n'),
-        receiverId: order.requesterId,
-        type: 'STATUS_CHANGED',
-        content: `你的订单“${order.demandTitle}”已经完成，可以进行评价。`,
-        isRead: false,
-        createdAt: now(),
-        relatedId: order.id
-      })
-      return order
+      const mapped = mapOrderRecord(order)
+      await this.fetchDemands()
+      await this.fetchOrders()
+      await this.fetchNotifications()
+      return mapped
     },
 
-    submitReview(orderId: string, rating: number, comment: string): ReviewRecord {
-      const order = this.orders.find((item) => item.id === orderId)
-      const reviewer = this.accounts.find((account) => account.id === this.currentUserId)
+    async cancelOrder(orderId: string): Promise<OrderRecord> {
+      const order = await requestJson<any>(`/orders/${encodeURIComponent(orderId)}`, {
+        method: 'PUT',
+        body: JSON.stringify({ targetStatus: 'CANCELLED' })
+      }, this.token)
 
-      if (!order) {
-        throw new Error('未找到订单')
-      }
-
-      if (!reviewer) {
-        throw new Error('请先登录后再提交评价')
-      }
-
-      if (rating < 1 || rating > 5) {
-        throw new Error('评分必须在 1 到 5 之间')
-      }
-
-      if (order.status !== 'COMPLETED') {
-        throw new Error('只有已完成的订单才能评价')
-      }
-
-      const targetId = reviewer.id === order.requesterId ? order.serviceProviderId : order.requesterId
-      const target = this.accounts.find((account) => account.id === targetId)
-      if (!target) {
-        throw new Error('未找到被评价用户')
-      }
-
-      const review: ReviewRecord = {
-        id: nextId('r'),
-        orderId,
-        reviewerId: reviewer.id,
-        reviewerName: reviewer.nickname,
-        targetId,
-        targetName: target.nickname,
-        rating,
-        comment: comment.trim(),
-        createdAt: now()
-      }
-
-      this.reviews.unshift(review)
-      recalculateCredit(this.accounts, targetId, this.reviews)
-      this.notifications.unshift({
-        id: nextId('n'),
-        receiverId: targetId,
-        type: 'REVIEW_RECEIVED',
-        content: `${reviewer.nickname} 给你提交了 ${rating} 星评价。`,
-        isRead: false,
-        createdAt: now(),
-        relatedId: review.id
-      })
-
-      return review
+      const mapped = mapOrderRecord(order)
+      await this.fetchDemands()
+      await this.fetchOrders()
+      await this.fetchNotifications()
+      return mapped
     },
 
-    markNotificationRead(notificationId: string): void {
+    async submitReview(orderId: string, rating: number, comment: string): Promise<ReviewRecord> {
+      const review = await requestJson<any>(`/orders/${encodeURIComponent(orderId)}/reviews`, {
+        method: 'POST',
+        body: JSON.stringify({ rating, comment: comment.trim() })
+      }, this.token)
+
+      const mapped: ReviewRecord = mapReviewRecord(review)
+
+      this.reviews.unshift(mapped)
+      await this.fetchOrders()
+      await this.fetchNotifications()
+      // 后端可能已经返回更新后的信用分，优先使用；否则主动刷新用户信息
+      try {
+        await this.fetchProfile()
+      } catch {
+        // ignore
+      }
+      return mapped
+    },
+
+    async fetchUserReviews(userId: string): Promise<void> {
+      if (!userId || !this.token) {
+        this.reviews = []
+        return
+      }
+
+      try {
+        const payload = await requestJson<any>(`/users/${encodeURIComponent(userId)}/reviews?page=1&size=100`, {}, this.token)
+        const items = Array.isArray(payload?.items) ? payload.items : Array.isArray(payload) ? payload : payload?.data?.items ?? []
+        const merged = new Map<string, ReviewRecord>()
+        this.reviews.forEach((review) => merged.set(review.id, review))
+        items.map((item: any) => mapReviewRecord(item)).forEach((review: ReviewRecord) => merged.set(review.id, review))
+        this.reviews = Array.from(merged.values()).sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+      } catch {
+        this.reviews = []
+      }
+    },
+
+    async fetchCurrentUserReviews(): Promise<void> {
+      if (!this.currentUserId) {
+        this.reviews = []
+        return
+      }
+
+      await this.fetchUserReviews(this.currentUserId)
+    },
+
+    async markNotificationRead(notificationId: string): Promise<void> {
+      if (!notificationId || !this.token) {
+        return
+      }
+
+      await requestJson<void>(`/notifications/${notificationId}/read`, {
+        method: 'POST'
+      }, this.token)
+
       const notification = this.notifications.find((item) => item.id === notificationId)
       if (notification) {
         notification.isRead = true
       }
     },
 
-    markAllNotificationsRead(): void {
-      this.notifications
-        .filter((notification) => notification.receiverId === this.currentUserId)
-        .forEach((notification) => {
-          notification.isRead = true
-        })
+    async markAllNotificationsRead(): Promise<void> {
+      const unreadNotifications = this.currentUserNotifications.filter((notification) => !notification.isRead)
+
+      for (const notification of unreadNotifications) {
+        try {
+          await this.markNotificationRead(notification.id)
+        } catch {
+          continue
+        }
+      }
+
+      await this.fetchNotifications()
     },
 
-    resetDemoState(): void {
-      this.accounts = createAccounts()
-      this.demands = createDemands(this.accounts)
-      this.orders = createOrders()
-      this.reviews = createReviews()
-      this.notifications = createNotifications()
-      this.currentUserId = 'u-chen'
-      this.token = 'demo-token'
+    /**
+     * Fetch demands from backend. If status is provided, include it as a query param.
+     */
+    async fetchDemands(query?: string | {
+      status?: string
+      q?: string
+      category?: string
+      campusZone?: string
+      location?: string
+      startTimeFrom?: string
+      startTimeTo?: string
+      sort?: string
+      page?: number
+      size?: number
+    }): Promise<void> {
+      try {
+        const params = new URLSearchParams({ page: '1', size: '100' })
+        if (typeof query === 'string') {
+          if (query) params.set('status', query)
+        } else if (query) {
+          if (query.status) params.set('status', query.status)
+          if (query.q?.trim()) params.set('q', query.q.trim())
+          if (query.category?.trim()) params.set('category', query.category.trim())
+          if (query.campusZone?.trim()) params.set('campusZone', query.campusZone.trim())
+          if (query.location?.trim()) params.set('location', query.location.trim())
+          if (query.startTimeFrom?.trim()) params.set('startTimeFrom', query.startTimeFrom.trim())
+          if (query.startTimeTo?.trim()) params.set('startTimeTo', query.startTimeTo.trim())
+          if (query.sort?.trim()) params.set('sort', query.sort.trim())
+          if (query.page != null) params.set('page', String(query.page))
+          if (query.size != null) params.set('size', String(query.size))
+        }
+        const payload = await requestJson<any>(`/demands?${params.toString()}`, {}, this.token)
+        const items = Array.isArray(payload?.items) ? payload.items : Array.isArray(payload) ? payload : payload?.data?.items ?? []
+        this.demands = items.map((item: any) => mapDemandRecord(item))
+      } catch {
+        this.demands = []
+      }
+    },
+
+    // (recent demand-resolution helpers reverted)
+
+    async fetchOrders(): Promise<void> {
+      try {
+        const payload = await requestJson<any>('/orders?page=1&size=100', {}, this.token)
+        const items = Array.isArray(payload?.items) ? payload.items : Array.isArray(payload) ? payload : payload?.data?.items ?? []
+        this.orders = items.map((item: any) => mapOrderRecord(item))
+      } catch {
+        this.orders = []
+      }
+    },
+
+    async fetchNotifications(): Promise<void> {
+      try {
+        const payload = await requestJson<any>('/notifications?page=1&size=100', {}, this.token)
+        const items = Array.isArray(payload?.items) ? payload.items : Array.isArray(payload) ? payload : payload?.data?.items ?? []
+        this.notifications = items.map((item: any) => mapNotificationRecord(item, this.currentUserId))
+      } catch {
+        this.notifications = []
+      }
+    },
+
+    async fetchProfile(): Promise<void> {
+      try {
+        const payload = await requestJson<any>('/users/me', {}, this.token)
+        const profile = mapUserSummary(payload)
+        this.currentProfile = profile
+        this.currentUserId = profile.id || this.currentUserId
+      } catch {
+        this.currentProfile = null
+      }
+    },
+
+    async fetchAdminUsers(query = '', searchField = '', sortBy = '', sortDirection = ''): Promise<void> {
+      try {
+        const params = new URLSearchParams({ page: '1', size: '100' })
+        if (query.trim()) {
+          params.set('q', query.trim())
+        }
+        if (searchField.trim()) {
+          params.set('searchField', searchField.trim())
+        }
+        if (sortBy.trim()) {
+          params.set('sortBy', sortBy.trim())
+        }
+        if (sortDirection.trim()) {
+          params.set('sortDirection', sortDirection.trim())
+        }
+        const payload = await requestJson<any>(`/admin/users?${params.toString()}`, {}, this.token)
+        const items = Array.isArray(payload?.items) ? payload.items : Array.isArray(payload) ? payload : payload?.data?.items ?? []
+        this.adminUsers = items.map((item: any) => mapUserSummary(item))
+      } catch {
+        this.adminUsers = []
+      }
+    },
+
+    async fetchAdminPendingDemands(query = '', category = ''): Promise<void> {
+      try {
+        const params = new URLSearchParams({ page: '1', size: '100' })
+        if (query.trim()) {
+          params.set('q', query.trim())
+        }
+        if (category.trim()) {
+          params.set('category', category.trim())
+        }
+        const payload = await requestJson<any>(`/admin/demands/pending?${params.toString()}`, {}, this.token)
+        const items = Array.isArray(payload?.items) ? payload.items : Array.isArray(payload) ? payload : payload?.data?.items ?? []
+        this.adminPendingDemands = items.map((item: any) => mapDemandRecord(item))
+      } catch {
+        this.adminPendingDemands = []
+      }
+    },
+
+    async fetchAdminDashboard(): Promise<void> {
+      try {
+        const payload = await requestJson<any>('/admin/dashboard', {}, this.token)
+        // 兼容不同后端字段命名，优先使用常见字段
+        this.adminDashboard = {
+          dailyActiveUsers: Number(payload?.dailyActiveUsers ?? payload?.dau ?? payload?.daily_active_users ?? 0),
+          totalUsers: Number(payload?.totalUsers ?? payload?.usersCount ?? 0),
+          totalDemands: Number(payload?.totalDemands ?? payload?.demandsCount ?? payload?.total_demands ?? 0),
+          pendingReviewDemands: Number(payload?.pendingReviewDemands ?? payload?.pendingReview ?? 0),
+          totalOrders: Number(payload?.totalOrders ?? payload?.ordersCount ?? 0),
+          completedOrders: Number(payload?.completedOrders ?? payload?.completed_orders ?? 0),
+          categoryDistribution: Array.isArray(payload?.categoryDistribution) || Array.isArray(payload?.category_distribution)
+            ? (payload?.categoryDistribution ?? payload?.category_distribution).map((item: any) => ({
+                category: String(item.category ?? ''),
+                total: Number(item.total ?? item.count ?? 0)
+              }))
+            : []
+        }
+      } catch {
+        this.adminDashboard = null
+      }
+    },
+
+    async fetchRecommendations(page = 1, size = 20): Promise<RecommendationRecord[]> {
+      if (!this.currentUserId) {
+        return []
+      }
+
+      try {
+        const payload = await requestJson<any>(`/recommendations?page=${page}&size=${size}`, {}, this.token)
+        const items = Array.isArray(payload?.items) ? payload.items : Array.isArray(payload?.data?.items) ? payload.data.items : []
+        return items.map((item: any, index: number) => ({
+          rank: Number(item.rank ?? index + 1),
+          score: Number(item.score ?? 0),
+          reasonTags: Array.isArray(item.reasonTags) ? item.reasonTags.map((tag: any) => String(tag)) : [],
+          demand: mapDemandRecord(item.demand ?? item)
+        }))
+      } catch {
+        return []
+      }
+    }
+
+    ,
+    async fetchBalance(): Promise<number> {
+      try {
+        const payload = await requestJson<any>('/user/balance', {}, this.token)
+        return Number(payload?.balance ?? payload?.available ?? payload ?? 0)
+      } catch {
+        return 0
+      }
     }
   }
 })

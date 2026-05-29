@@ -1,52 +1,117 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 
 import { useCampusHubStore } from '@/stores/campusHub'
+import { validateLoginForm, validateRegisterForm } from '@/utils/validators'
 import { formatUserRole, formatUserStatus } from '@/utils/format'
+import { handleError } from '@/utils/errorHandler'
 
 const store = useCampusHubStore()
+const router = useRouter()
+const route = useRoute()
+const emailDomainOptions = [
+  { label: '@nju.edu.cn', value: 'nju.edu.cn' },
+  { label: '@smail.nju.edu.cn', value: 'smail.nju.edu.cn' }
+]
+
 const activeTab = ref<'login' | 'register'>('login')
 const message = ref('')
 const error = ref('')
 const verificationCodeHint = ref('')
 const codeCountdown = ref(0)
 const codeSent = ref(false)
+const codeSending = ref(false)
 let countdownTimer: number | undefined
 
 const loginForm = reactive({
-  studentId: '20260001',
-  password: 'campus123'
+  studentId: '',
+  password: ''
 })
+const showLoginPassword = ref(false)
 
 const registerForm = reactive({
   studentId: '',
   password: '',
-  email: '',
+  emailPrefix: '',
+  emailDomain: emailDomainOptions[0].value,
   verificationCode: '',
   nickname: '',
   avatarUrl: ''
 })
+const showRegisterPassword = ref(false)
 
 const currentUser = computed(() => store.currentUser)
 
-function submitLogin(): void {
+const registrationEmail = computed(() => {
+  const prefix = registerForm.emailPrefix.trim()
+  return prefix ? `${prefix}@${registerForm.emailDomain}` : ''
+})
+
+function validateEmailPrefix(): boolean {
+  const prefix = registerForm.emailPrefix.trim()
+  if (!prefix) {
+    error.value = '请先输入邮箱前缀'
+    return false
+  }
+
+  if (!/^\d+$/.test(prefix)) {
+    error.value = '邮箱前缀只能包含数字'
+    return false
+  }
+
+  return true
+}
+
+async function submitLogin(): Promise<void> {
   error.value = ''
   message.value = ''
 
+  // basic validations
+  const loginErrors = validateLoginForm(loginForm)
+  if (Object.keys(loginErrors).length) {
+    error.value = Object.values(loginErrors)[0]
+    return
+  }
+
   try {
-    const user = store.login(loginForm)
+    const user = await store.login(loginForm)
     message.value = `欢迎回来，${user.nickname}。`
+    // 如果有 redirect 查询参数，则跳回原页面
+    const redirect = route.query.redirect as string | undefined
+    if (redirect) {
+      router.replace(redirect)
+    } else {
+      router.replace('/profile')
+    }
   } catch (loginError) {
-    error.value = loginError instanceof Error ? loginError.message : '登录失败'
+      error.value = handleError(loginError, '登录失败')
   }
 }
 
-function sendVerificationCode(): void {
+async function sendVerificationCode(): Promise<void> {
   error.value = ''
   message.value = ''
 
+  if (codeSending.value || codeCountdown.value > 0) {
+    return
+  }
+
+  if (!registerForm.emailPrefix.trim()) {
+    error.value = '请先输入邮箱'
+    return
+  }
+
+  if (!validateEmailPrefix()) {
+    return
+  }
+
+  const email = registrationEmail.value
+
   try {
-    verificationCodeHint.value = store.sendRegistrationCode(registerForm.email)
+    codeSending.value = true
+    verificationCodeHint.value = ''
+    await store.sendRegistrationCode(email, registerForm.studentId)
     codeSent.value = true
     codeCountdown.value = 60
 
@@ -70,24 +135,50 @@ function sendVerificationCode(): void {
       codeCountdown.value -= 1
     }, 1000)
 
-    message.value = `验证码已通过平台主邮箱发送到 ${registerForm.email}。验证码示例：${verificationCodeHint.value}`
+    message.value = `验证码已发送到 ${email}，请查收邮箱后完成注册。`
   } catch (sendError) {
-    error.value = sendError instanceof Error ? sendError.message : '验证码发送失败'
+      error.value = handleError(sendError, '验证码发送失败')
+  } finally {
+    codeSending.value = false
   }
 }
 
-function submitRegister(): void {
+async function submitRegister(): Promise<void> {
   error.value = ''
   message.value = ''
 
+  // basic validations
+  const regFieldErrors = validateRegisterForm({
+    studentId: registerForm.studentId,
+    password: registerForm.password,
+    emailPrefix: registerForm.emailPrefix,
+    verificationCode: registerForm.verificationCode
+  })
+  if (Object.keys(regFieldErrors).length) {
+    error.value = Object.values(regFieldErrors)[0]
+    return
+  }
+
+  const email = registrationEmail.value
+
   try {
-    const user = store.register(registerForm)
+    const user = await store.register({
+      ...registerForm,
+      email
+    })
     message.value = `注册成功，${user.nickname} 已自动登录。`
     activeTab.value = 'login'
     registerForm.verificationCode = ''
+    registerForm.avatarUrl = ''
     verificationCodeHint.value = ''
+    const redirect = route.query.redirect as string | undefined
+    if (redirect) {
+      router.replace(redirect)
+    } else {
+      router.replace('/profile')
+    }
   } catch (registerError) {
-    error.value = registerError instanceof Error ? registerError.message : '注册失败'
+      error.value = handleError(registerError, '注册失败')
   }
 }
 </script>
@@ -114,52 +205,91 @@ function submitRegister(): void {
         </button>
       </div>
 
-      <div v-if="activeTab === 'login'" class="field-grid">
+      <form v-if="activeTab === 'login'" class="field-grid" @submit.prevent="submitLogin">
         <div class="field">
           <label for="login-student-id">学号</label>
           <input id="login-student-id" v-model="loginForm.studentId" placeholder="20260001" />
         </div>
-        <div class="field">
+        <div class="field" style="position: relative;">
           <label for="login-password">密码</label>
-          <input id="login-password" v-model="loginForm.password" type="password" placeholder="campus123" />
+          <input :type="showLoginPassword ? 'text' : 'password'" id="login-password" v-model="loginForm.password" placeholder="campus123" />
+          <button type="button" class="button secondary" style="position: absolute; right: 8px; top: 30px;" @click="showLoginPassword = !showLoginPassword">{{ showLoginPassword ? '隐藏' : '显示' }}</button>
         </div>
-        <button type="button" class="button primary" @click="submitLogin">登录到平台</button>
-      </div>
+        <button type="submit" class="button primary">登录到平台</button>
+      </form>
 
-      <div v-else class="form-grid two-column">
+      <form v-else class="form-grid two-column" @submit.prevent="submitRegister">
         <div class="field">
           <label for="register-student-id">学号</label>
           <input id="register-student-id" v-model="registerForm.studentId" placeholder="例如 20260012" />
         </div>
-        <div class="field">
+        <div class="field" style="position: relative;">
           <label for="register-password">密码</label>
-          <input id="register-password" v-model="registerForm.password" type="password" placeholder="至少 8 位" />
+          <input :type="showRegisterPassword ? 'text' : 'password'" id="register-password" v-model="registerForm.password" placeholder="至少 8 位" />
+          <button type="button" class="button secondary" style="position: absolute; right: 8px; top: 30px;" @click="showRegisterPassword = !showRegisterPassword">{{ showRegisterPassword ? '隐藏' : '显示' }}</button>
         </div>
         <div class="field" style="grid-column: 1 / -1;">
-          <label for="register-email">邮箱</label>
-          <input id="register-email" v-model="registerForm.email" type="email" placeholder="请输入接收验证码的邮箱" />
-          <span class="input-help">填写邮箱后就能收到验证码，输入后即可完成注册。</span>
+          <label for="register-email-prefix">邮箱</label>
+          <div class="inline-actions" style="align-items: stretch;">
+            <input
+              id="register-email-prefix"
+              v-model="registerForm.emailPrefix"
+              inputmode="numeric"
+              pattern="[0-9]*"
+              placeholder="241880515"
+              style="flex: 1 1 220px;"
+            />
+            <span class="chip is-neutral" style="padding-inline: 14px;">@</span>
+            <select id="register-email-domain" v-model="registerForm.emailDomain" style="flex: 0 0 180px;">
+              <option v-for="option in emailDomainOptions" :key="option.value" :value="option.value">
+                {{ option.label }}
+              </option>
+            </select>
+          </div>
+          <span class="input-help">请输入邮箱前缀，并在右侧选择学校邮箱域名。</span>
         </div>
         <div class="field" style="grid-column: 1 / -1;">
           <label for="register-code">邮箱验证码</label>
           <div class="inline-actions" style="align-items: stretch;">
-            <input id="register-code" v-model="registerForm.verificationCode" placeholder="输入 6 位验证码" style="flex: 1 1 220px;" />
-            <button type="button" class="button secondary" :disabled="codeCountdown > 0" @click="sendVerificationCode">
-              {{ codeCountdown > 0 ? `${codeCountdown}s 后重发` : '发送验证码' }}
+            <input
+              id="register-code"
+              v-model="registerForm.verificationCode"
+              placeholder="输入 6 位验证码"
+              style="flex: 1 1 220px;"
+            />
+            <button
+              type="button"
+              class="button secondary"
+              :disabled="codeSending || codeCountdown > 0"
+              @click="sendVerificationCode"
+            >
+              {{ codeSending ? '发送中...' : codeCountdown > 0 ? `${codeCountdown}s 后重发` : '发送验证码' }}
             </button>
           </div>
-          <span v-if="verificationCodeHint" class="input-help">验证码已发送，请填写示例码完成注册：{{ verificationCodeHint }}</span>
+          <span v-if="verificationCodeHint" class="input-help">请使用收到的验证码完成注册：{{ verificationCodeHint }}</span>
         </div>
         <div class="field">
           <label for="register-nickname">昵称</label>
           <input id="register-nickname" v-model="registerForm.nickname" placeholder="你的校园昵称" />
         </div>
-        <div class="field">
+        <div class="field" style="grid-column: 1 / -1;">
           <label for="register-avatar">头像链接</label>
-          <input id="register-avatar" v-model="registerForm.avatarUrl" placeholder="可选" />
+          <input
+            id="register-avatar"
+            v-model="registerForm.avatarUrl"
+            placeholder="https://..."
+          />
+          <span class="input-help">请输入可访问的头像图片链接，注册后会直接保存该地址。</span>
+          <div v-if="registerForm.avatarUrl.trim()" class="avatar-row" style="margin-top: 12px;">
+            <img :src="registerForm.avatarUrl" alt="头像预览" class="avatar" />
+            <div>
+              <strong>头像预览</strong>
+              <p class="subtle">将使用当前填写的图片链接。</p>
+            </div>
+          </div>
         </div>
-        <button type="button" class="button primary" style="grid-column: 1 / -1;" @click="submitRegister">注册并进入平台</button>
-      </div>
+        <button type="submit" class="button primary" style="grid-column: 1 / -1;">注册并进入平台</button>
+      </form>
 
       <p v-if="message" class="hero-badge">{{ message }}</p>
       <p v-if="error" class="hero-badge" style="background: rgba(181, 71, 71, 0.14); color: var(--danger)">{{ error }}</p>
@@ -177,7 +307,7 @@ function submitRegister(): void {
         <img :src="currentUser.avatarUrl" :alt="currentUser.nickname" class="avatar large" />
         <div>
           <h3>{{ currentUser.nickname }}</h3>
-          <p class="subtle">{{ currentUser.studentId }} · {{ currentUser.email }}</p>
+          <p class="subtle">{{ currentUser.studentId }} / {{ currentUser.email }}</p>
           <div class="stats-row">
             <span class="chip is-neutral">{{ formatUserRole(currentUser.role) }}</span>
             <span class="chip is-success">{{ formatUserStatus(currentUser.status) }}</span>
@@ -189,11 +319,11 @@ function submitRegister(): void {
       <div class="section-grid">
         <div class="list-card">
           <strong>使用说明</strong>
-          <p>注册完成后就能直接登录，继续使用发布、接单和消息功能。</p>
+          <p>注册完成后就可以直接登录，继续使用发布、接单和消息功能。</p>
         </div>
         <div class="list-card">
           <strong>账号提示</strong>
-          <p>登录后会自动带出当前账号信息，方便继续使用平台。</p>
+          <p>登录后会自动展示当前账号信息，方便继续使用平台。</p>
         </div>
       </div>
     </section>

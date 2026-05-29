@@ -1,17 +1,20 @@
 package com.campushub.backend.auth.repository;
 
 import com.campushub.backend.auth.domain.User;
+import com.campushub.backend.auth.domain.UserRole;
+import com.campushub.backend.auth.domain.UserStatus;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
-import org.springframework.context.annotation.Primary;
+import java.util.stream.Collectors;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Repository;
 
 @Repository
-@Primary
+@Profile("!local")
 public class InMemoryUserRepository implements UserRepository {
 
     private final AtomicLong sequence = new AtomicLong(1);
@@ -46,6 +49,26 @@ public class InMemoryUserRepository implements UserRepository {
     @Override
     public List<User> findAll() {
         return new ArrayList<>(users.values());
+    }
+
+    @Override
+    public List<User> findByStatus(UserStatus status) {
+        if (status == null) {
+            return new ArrayList<>();
+        }
+        return users.values().stream()
+            .filter(user -> user.getStatus() == status)
+            .collect(Collectors.toList());
+    }
+
+    @Override
+    public List<User> findByRole(UserRole role) {
+        if (role == null) {
+            return new ArrayList<>();
+        }
+        return users.values().stream()
+            .filter(user -> user.getRole() == role)
+            .collect(Collectors.toList());
     }
 
     @Override

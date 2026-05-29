@@ -23,6 +23,8 @@ import org.springframework.stereotype.Service;
 public class ReviewApplicationServiceImpl implements ReviewApplicationService {
 
     private static final int DEFAULT_CREDIT_SCORE = 100;
+    private static final double HISTORY_WEIGHT = 0.9;
+    private static final double NEW_REVIEW_WEIGHT = 0.1;
 
     private final ReviewRepository reviewRepository;
     private final OrderRepository orderRepository;
@@ -77,7 +79,7 @@ public class ReviewApplicationServiceImpl implements ReviewApplicationService {
         );
         review = reviewRepository.save(review);
         recalculateCreditScore(targetId);
-        notificationApplicationService.notifyReviewReceived(targetId, orderId, "您收到了一条新的订单评价");
+        notificationApplicationService.notifyReviewReceived(targetId, orderId);
         return ReviewResponse.from(review);
     }
 
@@ -106,17 +108,29 @@ public class ReviewApplicationServiceImpl implements ReviewApplicationService {
     public int recalculateCreditScore(Long userId) {
         User user = userRepository.findById(userId)
             .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "user not found"));
-        List<Review> reviews = reviewRepository.findByTargetId(userId);
-        int newScore;
-        if (reviews.isEmpty()) {
-            newScore = DEFAULT_CREDIT_SCORE;
-        } else {
-            double average = reviews.stream().mapToInt(Review::getRating).average().orElse(5.0);
-            newScore = Math.max(0, Math.min(100, (int) Math.round(average * 20)));
+
+        List<Review> reviews = reviewRepository.findByTargetId(userId).stream()
+            .sorted(Comparator.comparing(Review::getCreatedAt, Comparator.nullsLast(LocalDateTime::compareTo)))
+            .toList();
+
+        int newScore = DEFAULT_CREDIT_SCORE;
+        for (Review review : reviews) {
+            int normalizedRating = normalizeRating(review.getRating());
+            newScore = clampCreditScore((int) Math.round(newScore * HISTORY_WEIGHT + normalizedRating * NEW_REVIEW_WEIGHT));
         }
+
         user.setCreditScore(newScore);
+        user.setUpdatedAt(LocalDateTime.now());
         userRepository.save(user);
         return newScore;
+    }
+
+    private int normalizeRating(int rating) {
+        return rating * 20;
+    }
+
+    private int clampCreditScore(int score) {
+        return Math.max(0, Math.min(100, score));
     }
 
     private String trimToNull(String value) {

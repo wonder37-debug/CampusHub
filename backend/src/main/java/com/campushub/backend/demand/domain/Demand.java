@@ -12,6 +12,7 @@ public class Demand {
     private String publisherDisplayName;
     private String title;
     private String description;
+    private String note;
     private DemandCategory category;
     private CampusZone campusZone;
     private String location;
@@ -20,8 +21,12 @@ public class Demand {
     private BigDecimal reward;
     private List<String> tags;
     private DemandStatus status;
+    private boolean isApproved;
     private boolean anonymous;
     private String anonymousCode;
+    private Long reviewedBy;
+    private LocalDateTime reviewedAt;
+    private String reviewReason;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -35,6 +40,7 @@ public class Demand {
         String publisherDisplayName,
         String title,
         String description,
+        String note,
         DemandCategory category,
         CampusZone campusZone,
         String location,
@@ -43,8 +49,12 @@ public class Demand {
         BigDecimal reward,
         List<String> tags,
         DemandStatus status,
+        boolean isApproved,
         boolean anonymous,
         String anonymousCode,
+        Long reviewedBy,
+        LocalDateTime reviewedAt,
+        String reviewReason,
         LocalDateTime createdAt,
         LocalDateTime updatedAt
     ) {
@@ -53,6 +63,7 @@ public class Demand {
         this.publisherDisplayName = publisherDisplayName;
         this.title = title;
         this.description = description;
+        this.note = note;
         this.category = category;
         this.campusZone = campusZone;
         this.location = location;
@@ -61,8 +72,12 @@ public class Demand {
         this.reward = reward;
         this.tags = tags == null ? new ArrayList<>() : new ArrayList<>(tags);
         this.status = status;
+        this.isApproved = isApproved;
         this.anonymous = anonymous;
         this.anonymousCode = anonymousCode;
+        this.reviewedBy = reviewedBy;
+        this.reviewedAt = reviewedAt;
+        this.reviewReason = reviewReason;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
     }
@@ -111,6 +126,14 @@ public class Demand {
 
     public void setDescription(String description) {
         this.description = description;
+    }
+
+    public String getNote() {
+        return note;
+    }
+
+    public void setNote(String note) {
+        this.note = note;
     }
 
     public DemandCategory getCategory() {
@@ -177,6 +200,14 @@ public class Demand {
         this.status = status;
     }
 
+    public boolean getIsApproved() {
+        return isApproved;
+    }
+
+    public void setIsApproved(boolean isApproved) {
+        this.isApproved = isApproved;
+    }
+
     public boolean isAnonymous() {
         return anonymous;
     }
@@ -191,6 +222,30 @@ public class Demand {
 
     public void setAnonymousCode(String anonymousCode) {
         this.anonymousCode = anonymousCode;
+    }
+
+    public Long getReviewedBy() {
+        return reviewedBy;
+    }
+
+    public void setReviewedBy(Long reviewedBy) {
+        this.reviewedBy = reviewedBy;
+    }
+
+    public LocalDateTime getReviewedAt() {
+        return reviewedAt;
+    }
+
+    public void setReviewedAt(LocalDateTime reviewedAt) {
+        this.reviewedAt = reviewedAt;
+    }
+
+    public String getReviewReason() {
+        return reviewReason;
+    }
+
+    public void setReviewReason(String reviewReason) {
+        this.reviewReason = reviewReason;
     }
 
     public LocalDateTime getCreatedAt() {

@@ -14,6 +14,7 @@ import com.campushub.backend.common.api.PageResponse;
 import com.campushub.backend.common.exception.BusinessException;
 import com.campushub.backend.common.exception.ErrorCode;
 import com.campushub.backend.common.model.PageQuery;
+import com.campushub.backend.demand.domain.CampusZone;
 import com.campushub.backend.demand.domain.Demand;
 import com.campushub.backend.demand.domain.DemandCategory;
 import com.campushub.backend.demand.domain.DemandSort;
@@ -58,6 +59,8 @@ class DemandApplicationServiceImplTest {
             UserRole.USER,
             UserStatus.ACTIVE,
             100,
+            new BigDecimal("100.00"),
+            BigDecimal.ZERO,
             LocalDateTime.now(),
             LocalDateTime.now()
         );
@@ -65,12 +68,13 @@ class DemandApplicationServiceImplTest {
     }
 
     @Test
-    void shouldPublishDemandWithDefaultPendingStatus() {
+    void shouldPublishDemandWithDefaultReviewingStatus() {
         DemandDetailResponse response = demandApplicationService.publish(
             publisherId,
             new PublishDemandCommand(
                 "帮忙取快递",
                 "今天下午帮我去菜鸟拿快递",
+                "轻拿轻放",
                 "EXPRESS",
                 "XIANLIN",
                 "仙林菜鸟驿站",
@@ -82,7 +86,8 @@ class DemandApplicationServiceImplTest {
             )
         );
 
-        assertEquals("PENDING", response.status());
+        assertEquals("REVIEWING", response.status());
+        assertEquals("轻拿轻放", response.note());
         assertTrue(response.anonymous());
         assertTrue(response.publisherDisplayName().startsWith("匿名校友"));
     }
@@ -96,6 +101,7 @@ class DemandApplicationServiceImplTest {
                 new PublishDemandCommand(
                     "求代课",
                     "帮我代课一节",
+                    null,
                     "STUDY_TUTORING",
                     "GULOU",
                     "鼓楼教学楼",
@@ -113,11 +119,12 @@ class DemandApplicationServiceImplTest {
 
     @Test
     void shouldFilterDemandListByCategoryAndCampusZone() {
-        demandApplicationService.publish(
+        DemandDetailResponse first = demandApplicationService.publish(
             publisherId,
             new PublishDemandCommand(
                 "学习辅导",
                 "线代答疑",
+                null,
                 "STUDY_TUTORING",
                 "XIANLIN",
                 "教学楼",
@@ -128,11 +135,12 @@ class DemandApplicationServiceImplTest {
                 false
             )
         );
-        demandApplicationService.publish(
+        DemandDetailResponse second = demandApplicationService.publish(
             publisherId,
             new PublishDemandCommand(
                 "二手书出售",
                 "出售教材",
+                null,
                 "SECOND_HAND",
                 "GULOU",
                 "宿舍区",
@@ -143,6 +151,8 @@ class DemandApplicationServiceImplTest {
                 false
             )
         );
+        makePending(first.id());
+        makePending(second.id());
 
         PageResponse<DemandSummaryResponse> response = demandApplicationService.list(
             new DemandQuery(
@@ -168,6 +178,7 @@ class DemandApplicationServiceImplTest {
             new PublishDemandCommand(
                 "匿名求助",
                 "匿名发布一条需求",
+                null,
                 "OTHER",
                 "SUZHOU",
                 "苏州校区",
@@ -186,12 +197,52 @@ class DemandApplicationServiceImplTest {
     }
 
     @Test
+    void shouldSupportErrandCategoryAndLegacyAlias() {
+        DemandDetailResponse errandDemand = demandApplicationService.publish(
+            publisherId,
+            new PublishDemandCommand(
+                "代办校园卡",
+                "帮忙代办一项业务",
+                null,
+                "ERRAND",
+                "XIANLIN",
+                "行政楼",
+                null,
+                null,
+                BigDecimal.ZERO,
+                List.of(),
+                false
+            )
+        );
+        DemandDetailResponse legacyAliasDemand = demandApplicationService.publish(
+            publisherId,
+            new PublishDemandCommand(
+                "顺路代办",
+                "走流程代办",
+                null,
+                "RUN_ERRAND",
+                "GULOU",
+                "行政楼",
+                null,
+                null,
+                BigDecimal.ZERO,
+                List.of(),
+                false
+            )
+        );
+
+        assertEquals("ERRAND", errandDemand.category());
+        assertEquals("ERRAND", legacyAliasDemand.category());
+    }
+
+    @Test
     void shouldRejectUpdateByNonPublisher() {
         DemandDetailResponse published = demandApplicationService.publish(
             publisherId,
             new PublishDemandCommand(
                 "帮忙组队",
                 "找队友",
+                null,
                 "TEAM_UP",
                 "XIANLIN",
                 "操场",
@@ -208,7 +259,7 @@ class DemandApplicationServiceImplTest {
             () -> demandApplicationService.update(
                 999L,
                 published.id(),
-                new UpdateDemandCommand("改标题", null, null, null, null, null, null, null, null, null)
+                new UpdateDemandCommand("改标题", null, null, null, null, null, null, null, null, null, null)
             )
         );
 
@@ -222,6 +273,7 @@ class DemandApplicationServiceImplTest {
             new PublishDemandCommand(
                 "旧标题",
                 "旧描述",
+                "旧备注",
                 "OTHER",
                 "GULOU",
                 "原地点",
@@ -239,6 +291,7 @@ class DemandApplicationServiceImplTest {
             new UpdateDemandCommand(
                 "新标题",
                 "新描述",
+                "新备注",
                 "SECOND_HAND",
                 "XIANLIN",
                 "新地点",
@@ -251,6 +304,7 @@ class DemandApplicationServiceImplTest {
         );
 
         assertEquals("新标题", updated.title());
+        assertEquals("新备注", updated.note());
         assertEquals("SECOND_HAND", updated.category());
         assertEquals("XIANLIN", updated.campusZone());
         assertTrue(updated.anonymous());
@@ -264,15 +318,20 @@ class DemandApplicationServiceImplTest {
             "郑嘉鸿",
             "已完成任务",
             "不可编辑",
+            null,
             DemandCategory.OTHER,
-            com.campushub.backend.demand.domain.CampusZone.XIANLIN,
+            CampusZone.XIANLIN,
             "仙林",
             null,
             null,
             BigDecimal.ZERO,
             List.of(),
             DemandStatus.COMPLETED,
+            true,
             false,
+            null,
+            null,
+            null,
             null,
             LocalDateTime.now(),
             LocalDateTime.now()
@@ -284,10 +343,17 @@ class DemandApplicationServiceImplTest {
             () -> demandApplicationService.update(
                 publisherId,
                 saved.getId(),
-                new UpdateDemandCommand("改不了", null, null, null, null, null, null, null, null, null)
+                new UpdateDemandCommand("改不了", null, null, null, null, null, null, null, null, null, null)
             )
         );
 
         assertEquals(ErrorCode.PERMISSION_DENIED, exception.getErrorCode());
+    }
+
+    private void makePending(Long demandId) {
+        demandRepository.findById(demandId).ifPresent(demand -> {
+            demand.setStatus(DemandStatus.PENDING);
+            demandRepository.save(demand);
+        });
     }
 }

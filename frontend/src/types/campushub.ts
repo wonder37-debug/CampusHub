@@ -1,11 +1,11 @@
-export const DEMAND_CATEGORY_OPTIONS = ['EXPRESS', 'STUDY_TUTORING', 'SECOND_HAND', 'TEAM_UP', 'OTHER'] as const
+export const DEMAND_CATEGORY_OPTIONS = ['EXPRESS', 'STUDY_TUTORING', 'SECOND_HAND', 'TEAM_UP', 'DELEGATE', 'OTHER'] as const
 export const CAMPUS_ZONE_OPTIONS = ['GULOU', 'XIANLIN', 'SUZHOU'] as const
 export const DEMAND_SORT_MODES = ['time', 'distance', 'reward', 'recommend'] as const
 export const USER_ROLE_OPTIONS = ['USER', 'ADMIN'] as const
 export const USER_STATUS_OPTIONS = ['ACTIVE', 'BANNED'] as const
-export const DEMAND_STATUS_OPTIONS = ['PENDING', 'REVIEWING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'] as const
+export const DEMAND_STATUS_OPTIONS = ['PENDING', 'REVIEWING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'EXPIRED'] as const
 export const ORDER_STATUS_OPTIONS = ['ACCEPTED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'] as const
-export const NOTIFICATION_TYPE_OPTIONS = ['ORDER_ACCEPTED', 'STATUS_CHANGED', 'REVIEW_RECEIVED'] as const
+export const NOTIFICATION_TYPE_OPTIONS = ['ORDER_ACCEPTED', 'STATUS_CHANGED', 'REVIEW_RECEIVED', 'REVIEW_REQUEST', 'DEMAND_REJECTED'] as const
 
 export type DemandCategory = (typeof DEMAND_CATEGORY_OPTIONS)[number]
 export type CampusZone = (typeof CAMPUS_ZONE_OPTIONS)[number]
@@ -21,7 +21,10 @@ export interface PublicUser {
   studentId: string
   email: string
   nickname: string
+  phone?: string
   creditScore: number
+  balance: number
+  frozenBalance: number
   role: UserRole
   status: UserStatus
   avatarUrl: string
@@ -47,10 +50,19 @@ export interface DemandRecord {
   publisherId: string
   publisherName: string
   publisherAvatar: string
+  publisher?: PublicUser | null
   tags: string[]
   createdAt: string
   updatedAt: string
   distanceKm: number
+  canAccept?: boolean
+  acceptDisabledReason?: string | null
+  canStartExecution?: boolean
+  canViewAcceptNote?: boolean
+  canSubmitAcceptNote?: boolean
+  publisherStudentIdMasked?: string
+  publisherIdentityVisible?: boolean
+  reviewReason?: string | null
 }
 
 export interface OrderTimelineEntry {
@@ -62,12 +74,20 @@ export interface OrderRecord {
   id: string
   demandId: string
   demandTitle: string
+  demandLocation?: string
+  demandStartTime?: string
+  demandEndTime?: string
+  demandCategory?: string
+  demandCampusZone?: string
+  demandReward?: number
   requesterId: string
   requesterName: string
   requesterAvatar: string
+  requesterCreditScore: number
   serviceProviderId: string
   serviceProviderName: string
   serviceProviderAvatar: string
+  serviceProviderCreditScore: number
   status: OrderStatus
   note: string
   proofSubmitted: boolean
@@ -76,6 +96,17 @@ export interface OrderRecord {
   updatedAt: string
   completedAt: string
   timeline: OrderTimelineEntry[]
+  reviews?: ReviewRecord[]
+  currentUserReviewed?: boolean
+  pendingReviewTarget?: string | null
+  completionHint?: string | null
+}
+
+export interface RecommendationRecord {
+  rank: number
+  score: number
+  reasonTags: string[]
+  demand: DemandRecord
 }
 
 export interface ReviewRecord {
@@ -94,10 +125,16 @@ export interface NotificationRecord {
   id: string
   receiverId: string
   type: NotificationType
+  title?: string
   content: string
   isRead: boolean
   createdAt: string
   relatedId: string
+  relatedName?: string
+  targetType?: string
+  targetId?: string
+  targetTitle?: string
+  actionHint?: string
 }
 
 export interface AuthFormInput {
@@ -112,6 +149,7 @@ export interface AuthFormInput {
 export interface EmailVerificationRecord {
   code: string
   email: string
+  studentId: string
   expiresAt: string
   sender: string
 }
@@ -140,6 +178,21 @@ export interface DashboardSummary {
   unreadNotifications: number
   pendingApprovals: number
   averageCredit: number
+}
+
+export interface AdminCategoryStat {
+  category: string
+  total: number
+}
+
+export interface AdminDashboardSummary {
+  dailyActiveUsers: number
+  totalUsers: number
+  totalDemands: number
+  pendingReviewDemands: number
+  totalOrders: number
+  completedOrders: number
+  categoryDistribution: AdminCategoryStat[]
 }
 
 export interface CategoryStat {

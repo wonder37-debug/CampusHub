@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted } from 'vue'
+import { handleError } from '@/utils/errorHandler'
 import { useRoute } from 'vue-router'
 
 import { useCampusHubStore } from '@/stores/campusHub'
-import { formatCampusZone, formatDateTime, formatDemandCategory, formatDemandStatus, formatMoney, formatOrderStatus, formatScore, statusToneClass } from '@/utils/format'
+import SkeletonCard from '@/components/SkeletonCard.vue'
+import { formatAcceptDisabledReason, formatCampusZone, formatDateTime, formatDemandCategory, formatDemandStatus, formatMoney, formatOrderStatus, formatScore, statusToneClass } from '@/utils/format'
 
 const route = useRoute()
 const store = useCampusHubStore()
@@ -12,12 +14,47 @@ const reviewRating = ref('5')
 const reviewComment = ref('')
 const message = ref('')
 const error = ref('')
+const completionSubmitted = ref(false)
+const loadingDemand = ref(false)
 
 const demand = computed(() => store.getDemandById(String(route.params.id)))
 const relatedOrder = computed(() => store.orders.find((order) => order.demandId === demand.value?.id))
+const canAccept = computed(() => {
+  if (!demand.value) return false
+  if (typeof demand.value.canAccept === 'boolean') return demand.value.canAccept
+  if (relatedOrder.value) return false
+  if (demand.value.status !== 'PENDING') return false
+  if (!store.currentUser) return false
+  if (store.currentUser.role === 'ADMIN') return false
+  if (store.currentUser.id === demand.value.publisherId) return false
+  return true
+})
+
+const acceptDisabledReason = computed(() => {
+  if (!demand.value) return '未找到需求'
+  if (demand.value.acceptDisabledReason) return formatAcceptDisabledReason(demand.value.acceptDisabledReason)
+  if (relatedOrder.value) {
+    const s = relatedOrder.value.status
+    if (s === 'ACCEPTED') return '该需求已被接单，来晚了一步。'
+    if (s === 'COMPLETED' || s === 'CANCELLED') return '该需求已结束。'
+  }
+  if (demand.value.status === 'REVIEWING') return '该需求仍在审核中，暂时无法接单。'
+  if (demand.value.status === 'EXPIRED') return '该需求已过期，无法接单。'
+  if (!store.currentUser) return '请先登录后再接单。'
+  if (store.currentUser.id === demand.value.publisherId) return '这是您自己发布的需求，不能自行接单'
+  if (store.currentUser.role === 'ADMIN') return '管理员账号无法接单'
+  return null
+})
+const canStartExecution = computed(() => {
+  if (!demand.value) return false
+  if (typeof demand.value.canStartExecution === 'boolean') return demand.value.canStartExecution
+  return relatedOrder.value?.status === 'ACCEPTED' && store.currentUser?.id === relatedOrder.value.serviceProviderId
+})
+const canViewAcceptNote = computed(() => demand.value?.canViewAcceptNote !== false)
+const canSubmitAcceptNote = computed(() => demand.value?.canSubmitAcceptNote !== false)
 const relatedReviews = computed(() => store.reviews.filter((review) => review.orderId === relatedOrder.value?.id))
 
-function acceptCurrentDemand(): void {
+async function acceptCurrentDemand(): Promise<void> {
   if (!demand.value) {
     return
   }
@@ -25,41 +62,49 @@ function acceptCurrentDemand(): void {
   error.value = ''
   message.value = ''
 
+  if (store.currentUser?.role === 'ADMIN') {
+    error.value = '管理员账号无法接单'
+    return
+  }
+
   try {
-    const order = store.acceptDemand(demand.value.id, note.value)
+    const order = await store.acceptDemand(demand.value.id, note.value)
     message.value = `已接单，生成订单 ${order.id}`
   } catch (acceptError) {
-    error.value = acceptError instanceof Error ? acceptError.message : '接单失败'
+    error.value = handleError(acceptError, '接单失败')
   }
 }
 
-function startOrder(): void {
+async function startOrder(): Promise<void> {
   if (!relatedOrder.value) {
     return
   }
 
   try {
-    store.startOrder(relatedOrder.value.id)
+    await store.startOrder(relatedOrder.value.id)
     message.value = '订单已进入进行中状态。'
   } catch (startError) {
-    error.value = startError instanceof Error ? startError.message : '操作失败'
+    error.value = handleError(startError, '操作失败')
   }
 }
 
-function completeOrder(): void {
+async function completeOrder(): Promise<void> {
   if (!relatedOrder.value) {
     return
   }
 
   try {
-    store.completeOrder(relatedOrder.value.id)
-    message.value = '订单已完成，可以提交评价。'
+    const updatedOrder = await store.completeOrder(relatedOrder.value.id)
+    completionSubmitted.value = updatedOrder.status !== 'COMPLETED'
+    message.value = updatedOrder.status === 'COMPLETED'
+      ? '双方都已确认完成，订单已完成。'
+      : '已提交完成确认，等待对方确认。'
   } catch (completeError) {
-    error.value = completeError instanceof Error ? completeError.message : '操作失败'
+    error.value = handleError(completeError, '操作失败')
   }
 }
 
-function submitReview(): void {
+async function submitReview(): Promise<void> {
   if (!relatedOrder.value) {
     return
   }
@@ -68,20 +113,51 @@ function submitReview(): void {
   message.value = ''
 
   try {
-    store.submitReview(relatedOrder.value.id, Number(reviewRating.value), reviewComment.value)
+    await store.submitReview(relatedOrder.value.id, Number(reviewRating.value), reviewComment.value)
     message.value = '评价已提交。'
     reviewComment.value = ''
   } catch (reviewError) {
-    error.value = reviewError instanceof Error ? reviewError.message : '评价失败'
+    error.value = handleError(reviewError, '评价失败')
   }
 }
+
+onMounted(() => {
+  loadingDemand.value = true
+  void (async () => {
+    try {
+      await store.fetchDemandDetail(String(route.params.id))
+      if (store.currentUser) {
+        await store.fetchOrders()
+      }
+    } catch {
+      try {
+        await store.fetchDemands()
+      } catch {
+        // keep current view state; the empty-state branch will explain the failure
+      }
+    } finally {
+      loadingDemand.value = false
+    }
+  })()
+})
 </script>
 
 <template>
-  <div v-if="demand" class="page-grid two-column">
+  <div v-if="loadingDemand" class="page-grid two-column">
+    <section class="panel">
+      <SkeletonCard />
+    </section>
+    <section class="panel">
+      <SkeletonCard />
+    </section>
+  </div>
+
+  <div v-else-if="demand" class="page-grid two-column">
     <section class="panel">
       <div class="status-row">
-        <span class="chip" :class="statusToneClass(demand.status)">{{ formatDemandStatus(demand.status) }}</span>
+        <span class="chip" :class="relatedOrder ? statusToneClass(relatedOrder.status) : statusToneClass(demand.status)">
+          {{ relatedOrder ? formatOrderStatus(relatedOrder.status) : formatDemandStatus(demand.status) }}
+        </span>
         <span class="chip">{{ formatDemandCategory(demand.category) }}</span>
         <span class="chip">{{ formatCampusZone(demand.campusZone) }}</span>
         <span v-if="demand.anonymous" class="chip is-warning">匿名</span>
@@ -92,22 +168,29 @@ function submitReview(): void {
           <p class="eyebrow">需求详情</p>
           <h1 class="page-title">{{ demand.title }}</h1>
           <p class="page-summary">{{ demand.description }}</p>
+          <p class="page-meta">时间：{{ formatDateTime(demand.startTime || '') }} - {{ formatDateTime(demand.endTime || '') }}</p>
+          <p class="page-meta">地点：{{ demand.location || '未填写' }}</p>
         </div>
         <strong class="page-title">{{ formatMoney(demand.reward) }}</strong>
       </div>
 
       <div class="avatar-row">
-        <img :src="demand.publisherAvatar" :alt="demand.publisherName" class="avatar large" />
+        <img :src="demand.publisher?.avatarUrl ?? demand.publisherAvatar" :alt="demand.publisher?.nickname ?? demand.publisherName" class="avatar large" />
         <div>
-          <strong>{{ demand.anonymous ? demand.anonymousCode ?? '匿名发布' : demand.publisherName }}</strong>
-          <p class="subtle">发布者编号 {{ demand.publisherId || '匿名' }} · {{ formatScore(store.getUserById(demand.publisherId || '')?.creditScore ?? 0) }}</p>
-          <p class="meta">{{ demand.location }} · {{ formatDateTime(demand.createdAt) }}</p>
+          <strong>{{ demand.anonymous ? demand.anonymousCode ?? '匿名发布' : (demand.publisher?.nickname ?? demand.publisherName) }}</strong>
+          <p class="subtle">信用分：{{ demand.publisher ? formatScore(demand.publisher.creditScore) : '未知' }}</p>
+          <p class="meta">发布者学号：{{ demand.publisherIdentityVisible === false ? (demand.publisherStudentIdMasked || '已隐藏') : (demand.anonymous ? (demand.publisher?.studentId ? String(demand.publisher.studentId).slice(0,3) + '***' + String(demand.publisher.studentId).slice(-2) : '匿名') : (demand.publisher?.studentId ?? '未知')) }}</p>
+          <p class="meta">发布于 {{ formatDateTime(demand.createdAt) }}</p>
         </div>
       </div>
 
       <div class="tag-row">
-        <span class="badge is-neutral">{{ formatCampusZone(demand.campusZone) }}</span>
         <span class="badge is-neutral">{{ demand.anonymous ? '匿名发布' : '实名发布' }}</span>
+      </div>
+
+      <div v-if="demand.status === 'CANCELLED' && demand.reviewReason" class="list-card" style="margin-top: 16px;">
+        <strong>审核原因</strong>
+        <p style="margin-top: 8px; color: var(--danger);">{{ demand.reviewReason }}</p>
       </div>
 
       <div class="tag-row">
@@ -116,23 +199,39 @@ function submitReview(): void {
 
       <div class="list-card">
         <strong>接单留言</strong>
-        <div class="field">
+        <div v-if="canAccept && canViewAcceptNote && canSubmitAcceptNote" class="field">
           <label for="accept-note">留言内容</label>
           <textarea id="accept-note" v-model="note" placeholder="给发布者留一句话"></textarea>
         </div>
         <div class="card-actions">
           <button
-            v-if="demand.status === 'PENDING' && store.currentUser?.id !== demand.publisherId"
+            v-if="canAccept"
             type="button"
             class="button primary"
             @click="acceptCurrentDemand"
           >
             立即接单
           </button>
-          <span v-else class="chip is-warning">当前需求暂时不可接单</span>
+          <span v-else class="chip is-warning">{{ acceptDisabledReason || '当前需求暂时不可接单' }}</span>
 
-          <button v-if="relatedOrder?.status === 'ACCEPTED'" type="button" class="button secondary" @click="startOrder">开始执行</button>
-          <button v-if="relatedOrder?.status === 'IN_PROGRESS'" type="button" class="button secondary" @click="completeOrder">完成确认</button>
+          <button v-if="canStartExecution" type="button" class="button secondary" @click="startOrder">开始执行</button>
+          <button
+            v-if="relatedOrder?.status === 'IN_PROGRESS' && store.currentUser?.id === relatedOrder.serviceProviderId && !completionSubmitted"
+            type="button"
+            class="button secondary"
+            @click="completeOrder"
+          >
+            提交完成确认
+          </button>
+          <button
+            v-else-if="relatedOrder?.status === 'IN_PROGRESS' && store.currentUser?.id === relatedOrder.requesterId && !completionSubmitted"
+            type="button"
+            class="button secondary"
+            @click="completeOrder"
+          >
+            确认完成
+          </button>
+          <span v-else-if="relatedOrder?.status === 'IN_PROGRESS'" class="chip is-warning">等待对方确认完成</span>
         </div>
       </div>
 
@@ -154,9 +253,10 @@ function submitReview(): void {
             <img :src="relatedOrder.serviceProviderAvatar" :alt="relatedOrder.serviceProviderName" class="avatar" />
             <div>
               <strong>{{ relatedOrder.serviceProviderName }}</strong>
-              <div class="meta">接单方</div>
+              <div class="meta">接单方 · 信用分 {{ formatScore(relatedOrder.serviceProviderCreditScore) }}</div>
             </div>
           </div>
+          <div class="meta" style="margin-top: 8px;">需求方 · 信用分 {{ formatScore(relatedOrder.requesterCreditScore) }}</div>
           <p>{{ relatedOrder.note || '暂无留言' }}</p>
         </div>
 
