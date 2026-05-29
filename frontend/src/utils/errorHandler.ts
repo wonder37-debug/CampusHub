@@ -72,12 +72,14 @@ export function translateApiError(payload: any): string {
   }
 
   const errorCode = String(payload?.errorCode ?? payload?.codeName ?? '').trim().toUpperCase()
-  if (errorCode && codeMap[errorCode]) {
-    return codeMap[errorCode]
-  }
 
+  // 优先匹配具体消息翻译，再回退到通用错误码
   if (rawMessage in directMap) {
     return directMap[rawMessage]
+  }
+
+  if (errorCode && codeMap[errorCode]) {
+    return codeMap[errorCode]
   }
 
   if (code === 5000) {
