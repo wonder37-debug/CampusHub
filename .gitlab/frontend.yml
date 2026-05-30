@@ -1,13 +1,41 @@
-frontend:build:
+.frontend-template:
   image: node:22
-  stage: build
-  timeout: 15m
   variables:
     ARTIFACT_COMPRESSION_LEVEL: "fastest"
   before_script:
     - cd frontend
-    - npm ci --prefer-offline
+
+frontend:install-deps:
+  extends: .frontend-template
+  stage: deps
+  timeout: 10m
   script:
+    - npm ci --prefer-offline
+  rules:
+    - changes:
+        - frontend/**/*
+        - .gitlab/frontend.yml
+        - .gitlab-ci.yml
+
+frontend:static-check:
+  extends: .frontend-template
+  stage: static-check
+  timeout: 10m
+  script:
+    - npm ci --prefer-offline
+    - npm run type-check
+  rules:
+    - changes:
+        - frontend/**/*
+        - .gitlab/frontend.yml
+        - .gitlab-ci.yml
+
+frontend:build:
+  extends: .frontend-template
+  stage: build
+  timeout: 15m
+  script:
+    - npm ci --prefer-offline
     - npm run build
   artifacts:
     paths:

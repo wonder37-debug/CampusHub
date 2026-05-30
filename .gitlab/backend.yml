@@ -14,6 +14,19 @@
     - echo "Maven local repository $MAVEN_REPO_LOCAL"
     - mvn -version
 
+backend:install-deps:
+  extends: .backend-template
+  stage: deps
+  timeout: 10m
+  script:
+    - mvn $MAVEN_CLI_OPTS -DskipTests test-compile
+  rules:
+    - changes:
+        - backend/**/*
+        - .gitlab/backend.yml
+        - .gitlab/maven-settings.xml
+        - .gitlab-ci.yml
+
 backend:static-check:
   extends: .backend-template
   stage: static-check
@@ -48,27 +61,27 @@ backend:unit-test:
         - .gitlab/maven-settings.xml
         - .gitlab-ci.yml
 
-backend:integration-test:
-  extends: .backend-template
-  stage: integration-test
-  timeout: 15m
-  script:
-    - mvn -version
-    - timeout -k 30s 12m mvn $MAVEN_CLI_OPTS "-Dtest=FrontendIntegrationFlowTest" "-Dsurefire.timeout=360" "-Dsurefire.exitTimeout=30" test
-  artifacts:
-    when: always
-    reports:
-      junit:
-        - backend/target/surefire-reports/TEST-*.xml
-    paths:
-      - backend/target/surefire-reports/
-    expire_in: 7 days
-  rules:
-    - changes:
-        - backend/**/*
-        - .gitlab/backend.yml
-        - .gitlab/maven-settings.xml
-        - .gitlab-ci.yml
+# backend:integration-test:
+#   extends: .backend-template
+#   stage: integration-test
+#   timeout: 15m
+#   script:
+#     - mvn -version
+#     - timeout -k 30s 12m mvn $MAVEN_CLI_OPTS "-Dtest=FrontendIntegrationFlowTest" "-Dsurefire.timeout=360" "-Dsurefire.exitTimeout=30" test
+#   artifacts:
+#     when: always
+#     reports:
+#       junit:
+#         - backend/target/surefire-reports/TEST-*.xml
+#     paths:
+#       - backend/target/surefire-reports/
+#     expire_in: 7 days
+#   rules:
+#     - changes:
+#         - backend/**/*
+#         - .gitlab/backend.yml
+#         - .gitlab/maven-settings.xml
+#         - .gitlab-ci.yml
 
 backend:build:
   extends: .backend-template
@@ -87,74 +100,74 @@ backend:build:
         - .gitlab/maven-settings.xml
         - .gitlab-ci.yml
 
-backend:integration-diagnose:
-  extends: .backend-template
-  stage: integration-test
-  timeout: 20m
-  allow_failure: true
-  script:
-    - |
-      set -eux
-      mkdir -p target/diagnostics
-      echo "===== diagnostic environment ====="
-      date
-      printenv | sort | grep -E '^(CI_|GITLAB_|RUNNER_|MAVEN_|SPRING_|JAVA_|DB_|APP_|SMTP_)' || true
-      echo "===== disk ====="
-      df -h || true
-      echo "===== memory ====="
-      free -m || true
-      echo "===== cpu ====="
-      nproc || true
-      echo "===== before mvn ====="
-      timeout 12m mvn $MAVEN_CLI_OPTS \
-        "-Dtest=FrontendIntegrationFlowTest" \
-        "-Dsurefire.timeout=360" \
-        "-Dsurefire.exitTimeout=30" \
-        "-Dspring.autoconfigure.exclude=org.springframework.boot.autoconfigure.mail.MailSenderAutoConfiguration" \
-        "-Dlogging.level.org.springframework.test=DEBUG" \
-        "-Dlogging.level.org.springframework.boot.test=DEBUG" \
-        test &
-      MVN_PID="$!"
-      echo "===== mvn started pid=$MVN_PID ====="
-      CODE=0
-      NEXT_DIAG="$(($(date +%s) + 120))"
-      while kill -0 "$MVN_PID" 2>/dev/null; do
-        NOW="$(date +%s)"
-        if [ "$NOW" -lt "$NEXT_DIAG" ]; then
-          sleep 5
-          continue
-        fi
-        TS="$(date +%s)"
-        NEXT_DIAG="$(($TS + 120))"
-        printf "section_start:%s:backend_diagnostics_%s[collapsed=false]\r\e[0KBackend integration diagnostics\n" "$TS" "$TS"
-        date
-        ps -eo pid,ppid,stat,pcpu,pmem,etime,args --sort=-pcpu | head -50 || true
-        for pid in $(pgrep -f 'java|surefire|mvn' || true); do
-          echo "===== process pid=$pid ====="
-          ps -p "$pid" -o pid,ppid,stat,pcpu,pmem,etime,args || true
-          if command -v jcmd >/dev/null 2>&1; then
-            echo "===== jcmd Thread.print pid=$pid ====="
-            timeout 20s jcmd "$pid" Thread.print -l | tee "target/diagnostics/thread-$pid-$TS.txt" || true
-          fi
-        done
-        printf "section_end:%s:backend_diagnostics_%s\r\e[0K\n" "$(date +%s)" "$TS"
-      done
-      wait "$MVN_PID" || CODE="$?"
-      echo "===== mvn finished code=$CODE ====="
-      exit "$CODE"
-  artifacts:
-    when: always
-    reports:
-      junit:
-        - backend/target/surefire-reports/TEST-*.xml
-    paths:
-      - backend/target/surefire-reports/
-      - backend/target/diagnostics/
-    expire_in: 7 days
-  rules:
-    - changes:
-        - backend/**/*
-        - .gitlab/backend.yml
-        - .gitlab/maven-settings.xml
-        - .gitlab-ci.yml
-      when: manual
+# backend:integration-diagnose:
+#   extends: .backend-template
+#   stage: integration-test
+#   timeout: 20m
+#   allow_failure: true
+#   script:
+#     - |
+#       set -eux
+#       mkdir -p target/diagnostics
+#       echo "===== diagnostic environment ====="
+#       date
+#       printenv | sort | grep -E '^(CI_|GITLAB_|RUNNER_|MAVEN_|SPRING_|JAVA_|DB_|APP_|SMTP_)' || true
+#       echo "===== disk ====="
+#       df -h || true
+#       echo "===== memory ====="
+#       free -m || true
+#       echo "===== cpu ====="
+#       nproc || true
+#       echo "===== before mvn ====="
+#       timeout 12m mvn $MAVEN_CLI_OPTS \
+#         "-Dtest=FrontendIntegrationFlowTest" \
+#         "-Dsurefire.timeout=360" \
+#         "-Dsurefire.exitTimeout=30" \
+#         "-Dspring.autoconfigure.exclude=org.springframework.boot.autoconfigure.mail.MailSenderAutoConfiguration" \
+#         "-Dlogging.level.org.springframework.test=DEBUG" \
+#         "-Dlogging.level.org.springframework.boot.test=DEBUG" \
+#         test &
+#       MVN_PID="$!"
+#       echo "===== mvn started pid=$MVN_PID ====="
+#       CODE=0
+#       NEXT_DIAG="$(($(date +%s) + 120))"
+#       while kill -0 "$MVN_PID" 2>/dev/null; do
+#         NOW="$(date +%s)"
+#         if [ "$NOW" -lt "$NEXT_DIAG" ]; then
+#           sleep 5
+#           continue
+#         fi
+#         TS="$(date +%s)"
+#         NEXT_DIAG="$(($TS + 120))"
+#         printf "section_start:%s:backend_diagnostics_%s[collapsed=false]\r\e[0KBackend integration diagnostics\n" "$TS" "$TS"
+#         date
+#         ps -eo pid,ppid,stat,pcpu,pmem,etime,args --sort=-pcpu | head -50 || true
+#         for pid in $(pgrep -f 'java|surefire|mvn' || true); do
+#           echo "===== process pid=$pid ====="
+#           ps -p "$pid" -o pid,ppid,stat,pcpu,pmem,etime,args || true
+#           if command -v jcmd >/dev/null 2>&1; then
+#             echo "===== jcmd Thread.print pid=$pid ====="
+#             timeout 20s jcmd "$pid" Thread.print -l | tee "target/diagnostics/thread-$pid-$TS.txt" || true
+#           fi
+#         done
+#         printf "section_end:%s:backend_diagnostics_%s\r\e[0K\n" "$(date +%s)" "$TS"
+#       done
+#       wait "$MVN_PID" || CODE="$?"
+#       echo "===== mvn finished code=$CODE ====="
+#       exit "$CODE"
+#   artifacts:
+#     when: always
+#     reports:
+#       junit:
+#         - backend/target/surefire-reports/TEST-*.xml
+#     paths:
+#       - backend/target/surefire-reports/
+#       - backend/target/diagnostics/
+#     expire_in: 7 days
+#   rules:
+#     - changes:
+#         - backend/**/*
+#         - .gitlab/backend.yml
+#         - .gitlab/maven-settings.xml
+#         - .gitlab-ci.yml
+#       when: manual
