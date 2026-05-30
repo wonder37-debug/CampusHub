@@ -129,6 +129,13 @@ backend:integration-test:
             for pid in $(pgrep -f 'java|surefire|mvn' || true); do
               echo "===== process pid=$pid ====="
               ps -p "$pid" -o pid,ppid,stat,pcpu,pmem,etime,args || true
+              PROCESS_ARGS="$(ps -p "$pid" -o args= || true)"
+              case "$PROCESS_ARGS" in
+                *surefirebooter*|*'/target/surefire/'*)
+                  echo "===== skip jcmd for surefire fork pid=$pid to avoid corrupting the fork channel ====="
+                  continue
+                  ;;
+              esac
               if command -v jcmd >/dev/null 2>&1; then
                 timeout 10s jcmd "$pid" Thread.print -l > "target/diagnostics/thread-$pid-$TS.txt" || true
               fi
@@ -230,6 +237,13 @@ backend:integration-test:
 #         for pid in $(pgrep -f 'java|surefire|mvn' || true); do
 #           echo "===== process pid=$pid ====="
 #           ps -p "$pid" -o pid,ppid,stat,pcpu,pmem,etime,args || true
+#           PROCESS_ARGS="$(ps -p "$pid" -o args= || true)"
+#           case "$PROCESS_ARGS" in
+#             *surefirebooter*|*'/target/surefire/'*)
+#               echo "===== skip jcmd for surefire fork pid=$pid to avoid corrupting the fork channel ====="
+#               continue
+#               ;;
+#           esac
 #           if command -v jcmd >/dev/null 2>&1; then
 #             echo "===== jcmd Thread.print pid=$pid ====="
 #             timeout 20s jcmd "$pid" Thread.print -l | tee "target/diagnostics/thread-$pid-$TS.txt" || true
