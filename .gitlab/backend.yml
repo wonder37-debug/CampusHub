@@ -3,7 +3,7 @@
 
   variables:
     GIT_CLEAN_FLAGS: "-ffdx"
-    MAVEN_CLI_OPTS: "-B -s ../.gitlab/maven-settings.xml -Dmaven.artifact.threads=8 -Daether.connector.connectTimeout=30000 -Daether.connector.requestTimeout=120000 -Dmaven.wagon.rto=120000 -Dmaven.wagon.http.retryHandler.count=1"
+    MAVEN_CLI_OPTS: "-B -s ../.gitlab/maven-settings.xml -Dmaven.artifact.threads=1 -Daether.connector.connectTimeout=30000 -Daether.connector.requestTimeout=120000 -Dmaven.wagon.rto=120000 -Dmaven.wagon.http.retryHandler.count=1"
     SPRING_PROFILES_ACTIVE: "default"
     SPRING_AUTOCONFIGURE_EXCLUDE: "org.springframework.boot.autoconfigure.mail.MailSenderAutoConfiguration"
     ARTIFACT_COMPRESSION_LEVEL: "fastest"
@@ -11,7 +11,7 @@
     - cd backend
     - export MAVEN_REPO_LOCAL="$CI_PROJECT_DIR/.m2/repository"
     - mkdir -p "$MAVEN_REPO_LOCAL"
-    - export MAVEN_OPTS="-Dmaven.repo.local=$MAVEN_REPO_LOCAL -Djava.security.egd=file:/dev/./urandom"
+    - export MAVEN_OPTS="-Xmx512m -XX:+ExitOnOutOfMemoryError -Dmaven.repo.local=$MAVEN_REPO_LOCAL -Djava.security.egd=file:/dev/./urandom"
     - echo "Maven local repository $MAVEN_REPO_LOCAL"
     - mvn -version
 
@@ -65,10 +65,10 @@
 backend:integration-test:
   extends: .backend-template
   stage: integration-test
-  timeout: 15m
+  timeout: 25m
   script:
     - mvn -version
-    - timeout -k 30s 12m mvn $MAVEN_CLI_OPTS "-Dtest=FrontendIntegrationFlowTest" "-Dsurefire.timeout=360" "-Dsurefire.exitTimeout=30" test
+    - timeout -k 30s 20m mvn $MAVEN_CLI_OPTS "-Dtest=FrontendIntegrationFlowTest" "-Dsurefire.timeout=360" "-Dsurefire.exitTimeout=30" test
   artifacts:
     when: always
     reports:
