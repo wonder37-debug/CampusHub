@@ -1,7 +1,10 @@
 .frontend-template:
-  image: node:22
+  image: node:20-bookworm
   variables:
     ARTIFACT_COMPRESSION_LEVEL: "fastest"
+    NPM_CONFIG_AUDIT: "false"
+    NPM_CONFIG_FUND: "false"
+    NPM_CONFIG_PROGRESS: "false"
   before_script:
     - cd frontend
 
@@ -10,7 +13,7 @@ frontend:install-deps:
   stage: deps
   timeout: 10m
   script:
-    - npm ci --prefer-offline
+    - npm ci --prefer-online --no-audit --no-fund
   rules:
     - changes:
         - frontend/**/*
@@ -22,7 +25,7 @@ frontend:static-check:
   stage: static-check
   timeout: 10m
   script:
-    - npm ci --prefer-offline
+    - npm ci --prefer-online --no-audit --no-fund
     - npm run type-check
   rules:
     - changes:
@@ -35,7 +38,7 @@ frontend:build:
   stage: build
   timeout: 15m
   script:
-    - npm ci --prefer-offline
+    - npm ci --prefer-online --no-audit --no-fund
     - npm run build
   artifacts:
     paths:
