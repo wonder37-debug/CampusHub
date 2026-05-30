@@ -93,9 +93,9 @@ backend:integration-test:
           echo "$f=$(cat "$f")"
         fi
       done
-      echo "===== compile and resolve test dependencies ====="
+      echo "===== compile and resolve test dependencies and surefire plugin ====="
       COMPILE_CODE=0
-      timeout -k 30s 12m mvn $MAVEN_CLI_OPTS -DskipTests test-compile || COMPILE_CODE="$?"
+      timeout -k 30s 12m mvn $MAVEN_CLI_OPTS -DskipTests test-compile surefire:help -Ddetail=false || COMPILE_CODE="$?"
       if [ "$COMPILE_CODE" != "0" ]; then
         if [ "$COMPILE_CODE" = "137" ]; then
           echo "===== Maven dependency/compile step was killed by SIGKILL ====="
@@ -143,7 +143,8 @@ backend:integration-test:
         "-Dtest=FrontendIntegrationFlowTest" \
         "-Dsurefire.timeout=360" \
         "-Dsurefire.exitTimeout=30" \
-        surefire:test || CODE="$?"
+        "-Dsurefire.useFile=false" \
+        test || CODE="$?"
       kill "$WATCHDOG_PID" 2>/dev/null || true
       wait "$WATCHDOG_PID" 2>/dev/null || true
       if [ "$CODE" = "137" ]; then
