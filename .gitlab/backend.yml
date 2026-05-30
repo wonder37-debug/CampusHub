@@ -6,12 +6,15 @@
     MAVEN_CLI_OPTS: "-B -s ../.gitlab/maven-settings.xml -Dmaven.artifact.threads=1 -Daether.connector.connectTimeout=30000 -Daether.connector.requestTimeout=120000 -Dmaven.wagon.rto=120000 -Dmaven.wagon.http.retryHandler.count=1"
     SPRING_PROFILES_ACTIVE: "default"
     SPRING_AUTOCONFIGURE_EXCLUDE: "org.springframework.boot.autoconfigure.mail.MailSenderAutoConfiguration"
+    SPRING_MAIN_LAZY_INITIALIZATION: "true"
+    APP_DEMO_DATA_ENABLED: "false"
     ARTIFACT_COMPRESSION_LEVEL: "fastest"
   before_script:
     - cd backend
     - export MAVEN_REPO_LOCAL="$CI_PROJECT_DIR/.m2/repository"
     - mkdir -p "$MAVEN_REPO_LOCAL"
-    - export MAVEN_OPTS="-Xmx512m -XX:+ExitOnOutOfMemoryError -Dmaven.repo.local=$MAVEN_REPO_LOCAL -Djava.security.egd=file:/dev/./urandom"
+    - export JAVA_TOOL_OPTIONS="-XX:ActiveProcessorCount=1 -XX:+UseSerialGC -Djava.security.egd=file:/dev/./urandom"
+    - export MAVEN_OPTS="-Xmx384m -XX:+ExitOnOutOfMemoryError -Dmaven.repo.local=$MAVEN_REPO_LOCAL -Djava.security.egd=file:/dev/./urandom"
     - echo "Maven local repository $MAVEN_REPO_LOCAL"
     - mvn -version
 
@@ -67,8 +70,42 @@ backend:integration-test:
   stage: integration-test
   timeout: 25m
   script:
-    - mvn -version
-    - timeout -k 30s 20m mvn $MAVEN_CLI_OPTS "-Dtest=FrontendIntegrationFlowTest" "-Dsurefire.timeout=360" "-Dsurefire.exitTimeout=30" test
+    - |
+      set -eu
+      mkdir -p target/diagnostics
+      echo "===== integration environment ====="
+      date
+      mvn -version
+      nproc || true
+      free -m || true
+      df -h . /tmp || true
+      echo "===== starting integration test ====="
+      timeout -k 30s 20m mvn $MAVEN_CLI_OPTS \
+        "-Dtest=FrontendIntegrationFlowTest" \
+        "-Dsurefire.timeout=360" \
+        "-Dsurefire.exitTimeout=30" \
+        test &
+      MVN_PID="$!"
+      CODE=0
+      while kill -0 "$MVN_PID" 2>/dev/null; do
+        sleep 60
+        TS="$(date +%s)"
+        echo "===== integration heartbeat $TS ====="
+        date
+        free -m || true
+        df -h . /tmp || true
+        ps -eo pid,ppid,stat,pcpu,pmem,etime,args --sort=-pcpu | head -30 || true
+        for pid in $(pgrep -f 'java|surefire|mvn' || true); do
+          echo "===== process pid=$pid ====="
+          ps -p "$pid" -o pid,ppid,stat,pcpu,pmem,etime,args || true
+          if command -v jcmd >/dev/null 2>&1; then
+            timeout 20s jcmd "$pid" Thread.print -l > "target/diagnostics/thread-$pid-$TS.txt" || true
+          fi
+        done
+      done
+      wait "$MVN_PID" || CODE="$?"
+      echo "===== integration test finished code=$CODE ====="
+      exit "$CODE"
   artifacts:
     when: always
     reports:
@@ -76,6 +113,7 @@ backend:integration-test:
         - backend/target/surefire-reports/TEST-*.xml
     paths:
       - backend/target/surefire-reports/
+      - backend/target/diagnostics/
     expire_in: 7 days
   rules:
     - changes:

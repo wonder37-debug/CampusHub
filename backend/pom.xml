@@ -89,6 +89,7 @@
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-surefire-plugin</artifactId>
 				<configuration>
+					<argLine>-Xmx384m -XX:ActiveProcessorCount=1 -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError -Djava.security.egd=file:/dev/./urandom</argLine>
 					<forkCount>1</forkCount>
 					<reuseForks>false</reuseForks>
 					<forkedProcessExitTimeoutInSeconds>30</forkedProcessExitTimeoutInSeconds>
