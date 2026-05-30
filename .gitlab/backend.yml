@@ -1,5 +1,6 @@
 .backend-template:
   image: maven:3.9.9-eclipse-temurin-21
+
   variables:
     GIT_CLEAN_FLAGS: "-ffdx"
     MAVEN_CLI_OPTS: "-B -s ../.gitlab/maven-settings.xml -Dmaven.artifact.threads=8 -Daether.connector.connectTimeout=30000 -Daether.connector.requestTimeout=120000 -Dmaven.wagon.rto=120000 -Dmaven.wagon.http.retryHandler.count=1"
