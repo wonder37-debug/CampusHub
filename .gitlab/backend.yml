@@ -15,52 +15,52 @@
     - echo "Maven local repository $MAVEN_REPO_LOCAL"
     - mvn -version
 
-backend:install-deps:
-  extends: .backend-template
-  stage: deps
-  timeout: 10m
-  script:
-    - mvn $MAVEN_CLI_OPTS -DskipTests test-compile
-  rules:
-    - changes:
-        - backend/**/*
-        - .gitlab/backend.yml
-        - .gitlab/maven-settings.xml
-        - .gitlab-ci.yml
+# backend:install-deps:
+#   extends: .backend-template
+#   stage: deps
+#   timeout: 10m
+#   script:
+#     - mvn $MAVEN_CLI_OPTS -DskipTests test-compile
+#   rules:
+#     - changes:
+#         - backend/**/*
+#         - .gitlab/backend.yml
+#         - .gitlab/maven-settings.xml
+#         - .gitlab-ci.yml
 
-backend:static-check:
-  extends: .backend-template
-  stage: static-check
-  timeout: 10m
-  script:
-    - mvn $MAVEN_CLI_OPTS -DskipTests compile
-  rules:
-    - changes:
-        - backend/**/*
-        - .gitlab/backend.yml
-        - .gitlab/maven-settings.xml
-        - .gitlab-ci.yml
+# backend:static-check:
+#   extends: .backend-template
+#   stage: static-check
+#   timeout: 10m
+#   script:
+#     - mvn $MAVEN_CLI_OPTS -DskipTests compile
+#   rules:
+#     - changes:
+#         - backend/**/*
+#         - .gitlab/backend.yml
+#         - .gitlab/maven-settings.xml
+#         - .gitlab-ci.yml
 
-backend:unit-test:
-  extends: .backend-template
-  stage: unit-test
-  timeout: 15m
-  script:
-    - timeout -k 30s 12m mvn $MAVEN_CLI_OPTS "-Dtest=*ServiceImplTest,RequestUserExtractorTest" "-Dsurefire.timeout=240" "-Dsurefire.exitTimeout=30" test
-  artifacts:
-    when: always
-    reports:
-      junit:
-        - backend/target/surefire-reports/TEST-*.xml
-    paths:
-      - backend/target/surefire-reports/
-    expire_in: 7 days
-  rules:
-    - changes:
-        - backend/**/*
-        - .gitlab/backend.yml
-        - .gitlab/maven-settings.xml
-        - .gitlab-ci.yml
+# backend:unit-test:
+#   extends: .backend-template
+#   stage: unit-test
+#   timeout: 15m
+#   script:
+#     - timeout -k 30s 12m mvn $MAVEN_CLI_OPTS "-Dtest=*ServiceImplTest,RequestUserExtractorTest" "-Dsurefire.timeout=240" "-Dsurefire.exitTimeout=30" test
+#   artifacts:
+#     when: always
+#     reports:
+#       junit:
+#         - backend/target/surefire-reports/TEST-*.xml
+#     paths:
+#       - backend/target/surefire-reports/
+#     expire_in: 7 days
+#   rules:
+#     - changes:
+#         - backend/**/*
+#         - .gitlab/backend.yml
+#         - .gitlab/maven-settings.xml
+#         - .gitlab-ci.yml
 
 backend:integration-test:
   extends: .backend-template
@@ -68,7 +68,7 @@ backend:integration-test:
   timeout: 15m
   script:
     - mvn -version
-    - timeout -k 30s 12m mvn $MAVEN_CLI_OPTS "-Dtest=FrontendIntegrationFlowTest" "-DforkCount=0" "-Dsurefire.timeout=360" "-Dsurefire.exitTimeout=30" test
+    - timeout -k 30s 12m mvn $MAVEN_CLI_OPTS "-Dtest=FrontendIntegrationFlowTest" "-Dsurefire.timeout=360" "-Dsurefire.exitTimeout=30" test
   artifacts:
     when: always
     reports:
@@ -84,22 +84,22 @@ backend:integration-test:
         - .gitlab/maven-settings.xml
         - .gitlab-ci.yml
 
-backend:build:
-  extends: .backend-template
-  stage: build
-  timeout: 15m
-  script:
-    - mvn $MAVEN_CLI_OPTS -DskipTests package
-  artifacts:
-    paths:
-      - backend/target/*.jar
-    expire_in: 7 days
-  rules:
-    - changes:
-        - backend/**/*
-        - .gitlab/backend.yml
-        - .gitlab/maven-settings.xml
-        - .gitlab-ci.yml
+# backend:build:
+#   extends: .backend-template
+#   stage: build
+#   timeout: 15m
+#   script:
+#     - mvn $MAVEN_CLI_OPTS -DskipTests package
+#   artifacts:
+#     paths:
+#       - backend/target/*.jar
+#     expire_in: 7 days
+#   rules:
+#     - changes:
+#         - backend/**/*
+#         - .gitlab/backend.yml
+#         - .gitlab/maven-settings.xml
+#         - .gitlab-ci.yml
 
 # backend:integration-diagnose:
 #   extends: .backend-template

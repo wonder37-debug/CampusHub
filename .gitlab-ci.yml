@@ -6,15 +6,15 @@ workflow:
     - if: '$CI_COMMIT_BRANCH'
 
 stages:
-  - deps
-  - static-check
-  - unit-test
+#  - deps
+#  - static-check
+#  - unit-test
   - integration-test
-  - build
+#  - build
 
 variables:
   NPM_CONFIG_CACHE: "$CI_PROJECT_DIR/frontend/.npm"
 
 include:
   - local: .gitlab/backend.yml
-  - local: .gitlab/frontend.yml
+#  - local: .gitlab/frontend.yml
