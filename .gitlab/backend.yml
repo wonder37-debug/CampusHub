@@ -62,27 +62,27 @@ backend:unit-test:
         - .gitlab/maven-settings.xml
         - .gitlab-ci.yml
 
-# backend:integration-test:
-#   extends: .backend-template
-#   stage: integration-test
-#   timeout: 15m
-#   script:
-#     - mvn -version
-#     - timeout -k 30s 12m mvn $MAVEN_CLI_OPTS "-Dtest=FrontendIntegrationFlowTest" "-Dsurefire.timeout=360" "-Dsurefire.exitTimeout=30" test
-#   artifacts:
-#     when: always
-#     reports:
-#       junit:
-#         - backend/target/surefire-reports/TEST-*.xml
-#     paths:
-#       - backend/target/surefire-reports/
-#     expire_in: 7 days
-#   rules:
-#     - changes:
-#         - backend/**/*
-#         - .gitlab/backend.yml
-#         - .gitlab/maven-settings.xml
-#         - .gitlab-ci.yml
+backend:integration-test:
+  extends: .backend-template
+  stage: integration-test
+  timeout: 15m
+  script:
+    - mvn -version
+    - timeout -k 30s 12m mvn $MAVEN_CLI_OPTS "-Dtest=FrontendIntegrationFlowTest" "-DforkCount=0" "-Dsurefire.timeout=360" "-Dsurefire.exitTimeout=30" test
+  artifacts:
+    when: always
+    reports:
+      junit:
+        - backend/target/surefire-reports/TEST-*.xml
+    paths:
+      - backend/target/surefire-reports/
+    expire_in: 7 days
+  rules:
+    - changes:
+        - backend/**/*
+        - .gitlab/backend.yml
+        - .gitlab/maven-settings.xml
+        - .gitlab-ci.yml
 
 backend:build:
   extends: .backend-template
