@@ -111,8 +111,7 @@ backend:integration-test:
       echo "===== starting integration test ====="
       WATCHDOG_LOG="target/diagnostics/watchdog.log"
       (
-        while true; do
-          sleep 15
+        diagnose_once() {
           TS="$(date +%s)"
           {
             echo "===== integration watchdog $TS ====="
@@ -126,21 +125,12 @@ backend:integration-test:
               fi
             done
             ps -eo pid,ppid,stat,pcpu,pmem,etime,args --sort=-pcpu | head -30 || true
-            for pid in $(pgrep -f 'java|surefire|mvn' || true); do
-              echo "===== process pid=$pid ====="
-              ps -p "$pid" -o pid,ppid,stat,pcpu,pmem,etime,args || true
-              PROCESS_ARGS="$(ps -p "$pid" -o args= || true)"
-              case "$PROCESS_ARGS" in
-                *surefirebooter*|*'/target/surefire/'*)
-                  echo "===== skip jcmd for surefire fork pid=$pid to avoid corrupting the fork channel ====="
-                  continue
-                  ;;
-              esac
-              if command -v jcmd >/dev/null 2>&1; then
-                timeout 10s jcmd "$pid" Thread.print -l > "target/diagnostics/thread-$pid-$TS.txt" || true
-              fi
-            done
           } 2>&1 | tee -a "$WATCHDOG_LOG" >&2
+        }
+        diagnose_once
+        while true; do
+          sleep 15
+          diagnose_once
         done
       ) &
       WATCHDOG_PID="$!"
@@ -149,6 +139,7 @@ backend:integration-test:
       timeout -k 30s 10m mvn $MAVEN_CLI_OPTS \
         "-Dtest=FrontendIntegrationFlowTest" \
         "-Dsurefire.timeout=360" \
+        "-Dsurefire.forkedProcessTimeoutInSeconds=180" \
         "-Dsurefire.exitTimeout=30" \
         "-Dsurefire.useFile=false" \
         test || CODE="$?"
