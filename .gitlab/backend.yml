@@ -125,7 +125,7 @@ backend:integration-test:
               fi
             done
             ps -eo pid,ppid,stat,pcpu,pmem,etime,args --sort=-pcpu | head -30 || true
-          } 2>&1 | tee -a "$WATCHDOG_LOG" >&2
+          } >> "$WATCHDOG_LOG" 2>&1
         }
         diagnose_once
         while true; do
@@ -144,7 +144,6 @@ backend:integration-test:
         "-Dsurefire.useFile=false" \
         test || CODE="$?"
       kill "$WATCHDOG_PID" 2>/dev/null || true
-      wait "$WATCHDOG_PID" 2>/dev/null || true
       if [ "$CODE" = "137" ]; then
         echo "===== Maven was killed by SIGKILL, usually container memory or runner-level kill ====="
       fi
