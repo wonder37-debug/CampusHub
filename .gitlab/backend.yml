@@ -109,36 +109,43 @@ backend:integration-test:
         exit "$COMPILE_CODE"
       fi
       echo "===== starting integration test ====="
+      WATCHDOG_LOG="target/diagnostics/watchdog.log"
+      (
+        while true; do
+          sleep 15
+          TS="$(date +%s)"
+          {
+            echo "===== integration watchdog $TS ====="
+            date
+            free -m || true
+            df -h . /tmp || true
+            echo "===== cgroup watchdog ====="
+            for f in /sys/fs/cgroup/memory.current /sys/fs/cgroup/memory.events /sys/fs/cgroup/memory/memory.usage_in_bytes /sys/fs/cgroup/memory/memory.failcnt; do
+              if [ -f "$f" ]; then
+                echo "$f=$(cat "$f")"
+              fi
+            done
+            ps -eo pid,ppid,stat,pcpu,pmem,etime,args --sort=-pcpu | head -30 || true
+            for pid in $(pgrep -f 'java|surefire|mvn' || true); do
+              echo "===== process pid=$pid ====="
+              ps -p "$pid" -o pid,ppid,stat,pcpu,pmem,etime,args || true
+              if command -v jcmd >/dev/null 2>&1; then
+                timeout 10s jcmd "$pid" Thread.print -l > "target/diagnostics/thread-$pid-$TS.txt" || true
+              fi
+            done
+          } 2>&1 | tee -a "$WATCHDOG_LOG" >&2
+        done
+      ) &
+      WATCHDOG_PID="$!"
+      echo "===== watchdog started pid=$WATCHDOG_PID ====="
+      CODE=0
       timeout -k 30s 10m mvn $MAVEN_CLI_OPTS \
         "-Dtest=FrontendIntegrationFlowTest" \
         "-Dsurefire.timeout=360" \
         "-Dsurefire.exitTimeout=30" \
-        surefire:test &
-      MVN_PID="$!"
-      CODE=0
-      while kill -0 "$MVN_PID" 2>/dev/null; do
-        sleep 60
-        TS="$(date +%s)"
-        echo "===== integration heartbeat $TS ====="
-        date
-        free -m || true
-        df -h . /tmp || true
-        echo "===== cgroup heartbeat ====="
-        for f in /sys/fs/cgroup/memory.current /sys/fs/cgroup/memory.events /sys/fs/cgroup/memory/memory.usage_in_bytes /sys/fs/cgroup/memory/memory.failcnt; do
-          if [ -f "$f" ]; then
-            echo "$f=$(cat "$f")"
-          fi
-        done
-        ps -eo pid,ppid,stat,pcpu,pmem,etime,args --sort=-pcpu | head -30 || true
-        for pid in $(pgrep -f 'java|surefire|mvn' || true); do
-          echo "===== process pid=$pid ====="
-          ps -p "$pid" -o pid,ppid,stat,pcpu,pmem,etime,args || true
-          if command -v jcmd >/dev/null 2>&1; then
-            timeout 20s jcmd "$pid" Thread.print -l > "target/diagnostics/thread-$pid-$TS.txt" || true
-          fi
-        done
-      done
-      wait "$MVN_PID" || CODE="$?"
+        surefire:test || CODE="$?"
+      kill "$WATCHDOG_PID" 2>/dev/null || true
+      wait "$WATCHDOG_PID" 2>/dev/null || true
       if [ "$CODE" = "137" ]; then
         echo "===== Maven was killed by SIGKILL, usually container memory or runner-level kill ====="
       fi
