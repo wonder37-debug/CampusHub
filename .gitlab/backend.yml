@@ -93,10 +93,10 @@ backend:integration-test:
           echo "$f=$(cat "$f")"
         fi
       done
-      echo "===== compile and resolve test dependencies and surefire plugin ====="
+      echo "===== compile and resolve test dependencies ====="
       COMPILE_CODE=0
       COMPILE_LOG="target/diagnostics/compile.log"
-      timeout -k 30s 12m mvn $MAVEN_CLI_OPTS -DskipTests test-compile surefire:help -Ddetail=false > "$COMPILE_LOG" 2>&1 || COMPILE_CODE="$?"
+      timeout -k 30s 12m mvn $MAVEN_CLI_OPTS -DskipTests test-compile > "$COMPILE_LOG" 2>&1 || COMPILE_CODE="$?"
       if [ "$COMPILE_CODE" != "0" ]; then
         echo "===== compile log tail ====="
         tail -200 "$COMPILE_LOG" || true
@@ -111,7 +111,7 @@ backend:integration-test:
         done
         exit "$COMPILE_CODE"
       fi
-      echo "===== compile and dependency resolution completed ====="
+      echo "===== compile and test dependency resolution completed ====="
       echo "===== starting integration test ====="
       WATCHDOG_LOG="target/diagnostics/watchdog.log"
       (
