@@ -3,7 +3,7 @@
 
   variables:
     GIT_CLEAN_FLAGS: "-ffdx"
-    MAVEN_CLI_OPTS: "-B -s ../.gitlab/maven-settings.xml -Dmaven.artifact.threads=1 -Daether.connector.connectTimeout=30000 -Daether.connector.requestTimeout=120000 -Dmaven.wagon.rto=120000 -Dmaven.wagon.http.retryHandler.count=1"
+    MAVEN_CLI_OPTS: "-B -ntp -s ../.gitlab/maven-settings.xml -Dmaven.artifact.threads=1 -Daether.connector.connectTimeout=30000 -Daether.connector.requestTimeout=120000 -Dmaven.wagon.rto=120000 -Dmaven.wagon.http.retryHandler.count=1"
     SPRING_PROFILES_ACTIVE: "default"
     SPRING_AUTOCONFIGURE_EXCLUDE: "org.springframework.boot.autoconfigure.mail.MailSenderAutoConfiguration"
     SPRING_MAIN_LAZY_INITIALIZATION: "true"
@@ -95,8 +95,11 @@ backend:integration-test:
       done
       echo "===== compile and resolve test dependencies and surefire plugin ====="
       COMPILE_CODE=0
-      timeout -k 30s 12m mvn $MAVEN_CLI_OPTS -DskipTests test-compile surefire:help -Ddetail=false || COMPILE_CODE="$?"
+      COMPILE_LOG="target/diagnostics/compile.log"
+      timeout -k 30s 12m mvn $MAVEN_CLI_OPTS -DskipTests test-compile surefire:help -Ddetail=false > "$COMPILE_LOG" 2>&1 || COMPILE_CODE="$?"
       if [ "$COMPILE_CODE" != "0" ]; then
+        echo "===== compile log tail ====="
+        tail -200 "$COMPILE_LOG" || true
         if [ "$COMPILE_CODE" = "137" ]; then
           echo "===== Maven dependency/compile step was killed by SIGKILL ====="
         fi
@@ -108,6 +111,7 @@ backend:integration-test:
         done
         exit "$COMPILE_CODE"
       fi
+      echo "===== compile and dependency resolution completed ====="
       echo "===== starting integration test ====="
       WATCHDOG_LOG="target/diagnostics/watchdog.log"
       (
@@ -136,14 +140,17 @@ backend:integration-test:
       WATCHDOG_PID="$!"
       echo "===== watchdog started pid=$WATCHDOG_PID ====="
       CODE=0
+      TEST_LOG="target/diagnostics/integration-test.log"
       timeout -k 30s 10m mvn $MAVEN_CLI_OPTS \
         "-Dtest=FrontendIntegrationFlowTest" \
         "-Dsurefire.timeout=360" \
         "-Dsurefire.forkedProcessTimeoutInSeconds=180" \
         "-Dsurefire.exitTimeout=30" \
         "-Dsurefire.useFile=false" \
-        test || CODE="$?"
+        test > "$TEST_LOG" 2>&1 || CODE="$?"
       kill "$WATCHDOG_PID" 2>/dev/null || true
+      echo "===== integration test log tail ====="
+      tail -200 "$TEST_LOG" || true
       if [ "$CODE" = "137" ]; then
         echo "===== Maven was killed by SIGKILL, usually container memory or runner-level kill ====="
       fi
