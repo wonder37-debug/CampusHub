@@ -114,31 +114,23 @@ backend:integration-test:
       echo "===== compile and test dependency resolution completed ====="
       echo "===== starting integration test ====="
       WATCHDOG_LOG="target/diagnostics/watchdog.log"
-      (
-        diagnose_once() {
-          TS="$(date +%s)"
-          {
-            echo "===== integration watchdog $TS ====="
-            date
-            free -m || true
-            df -h . /tmp || true
-            echo "===== cgroup watchdog ====="
-            for f in /sys/fs/cgroup/memory.current /sys/fs/cgroup/memory.events /sys/fs/cgroup/memory/memory.usage_in_bytes /sys/fs/cgroup/memory/memory.failcnt; do
-              if [ -f "$f" ]; then
-                echo "$f=$(cat "$f")"
-              fi
-            done
-            ps -eo pid,ppid,stat,pcpu,pmem,etime,args --sort=-pcpu | head -30 || true
-          } >> "$WATCHDOG_LOG" 2>&1
-        }
-        diagnose_once
-        while true; do
-          sleep 15
-          diagnose_once
-        done
-      ) &
-      WATCHDOG_PID="$!"
-      echo "===== watchdog started pid=$WATCHDOG_PID ====="
+      diagnose_once() {
+        TS="$(date +%s)"
+        {
+          echo "===== integration diagnostics $TS ====="
+          date
+          free -m || true
+          df -h . /tmp || true
+          echo "===== cgroup diagnostics ====="
+          for f in /sys/fs/cgroup/memory.current /sys/fs/cgroup/memory.events /sys/fs/cgroup/memory/memory.usage_in_bytes /sys/fs/cgroup/memory/memory.failcnt; do
+            if [ -f "$f" ]; then
+              echo "$f=$(cat "$f")"
+            fi
+          done
+          ps -eo pid,ppid,stat,pcpu,pmem,etime,args --sort=-pcpu | head -30 || true
+        } >> "$WATCHDOG_LOG" 2>&1
+      }
+      diagnose_once
       CODE=0
       TEST_LOG="target/diagnostics/integration-test.log"
       timeout -k 30s 10m mvn $MAVEN_CLI_OPTS \
@@ -148,7 +140,7 @@ backend:integration-test:
         "-Dsurefire.exitTimeout=30" \
         "-Dsurefire.useFile=false" \
         test > "$TEST_LOG" 2>&1 || CODE="$?"
-      kill "$WATCHDOG_PID" 2>/dev/null || true
+      diagnose_once
       echo "===== integration test log tail ====="
       tail -200 "$TEST_LOG" || true
       if [ "$CODE" = "137" ]; then
