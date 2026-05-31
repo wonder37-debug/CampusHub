@@ -9,6 +9,10 @@
     SPRING_MAIN_LAZY_INITIALIZATION: "true"
     APP_DEMO_DATA_ENABLED: "false"
     ARTIFACT_COMPRESSION_LEVEL: "fastest"
+  cache:
+    key: "backend-maven-${CI_COMMIT_REF_SLUG}"
+    paths:
+      - .m2/repository/
   before_script:
     - cd backend
     - export MAVEN_REPO_LOCAL="$CI_PROJECT_DIR/.m2/repository"
@@ -21,7 +25,7 @@
 backend:install-deps:
   extends: .backend-template
   stage: deps
-  timeout: 10m
+  timeout: 20m
   script:
     - mvn $MAVEN_CLI_OPTS -DskipTests test-compile
   rules:
