@@ -113,7 +113,7 @@ backend:integration-test:
       fi
       echo "===== compile and test dependency resolution completed ====="
       echo "===== starting integration test ====="
-      WATCHDOG_LOG="target/diagnostics/watchdog.log"
+      DIAGNOSTICS_LOG="target/diagnostics/diagnostics.log"
       diagnose_once() {
         TS="$(date +%s)"
         {
@@ -128,7 +128,7 @@ backend:integration-test:
             fi
           done
           ps -eo pid,ppid,stat,pcpu,pmem,etime,args --sort=-pcpu | head -30 || true
-        } >> "$WATCHDOG_LOG" 2>&1
+        } >> "$DIAGNOSTICS_LOG" 2>&1
       }
       diagnose_once
       CODE=0
@@ -141,12 +141,12 @@ backend:integration-test:
         "-Dsurefire.useFile=false" \
         test > "$TEST_LOG" 2>&1 || CODE="$?"
       diagnose_once
-      echo "===== integration test log tail ====="
-      tail -200 "$TEST_LOG" || true
-      if [ "$CODE" = "137" ]; then
-        echo "===== Maven was killed by SIGKILL, usually container memory or runner-level kill ====="
-      fi
-      echo "===== integration test finished code=$CODE ====="
+      {
+        echo "===== integration test finished code=$CODE ====="
+        if [ "$CODE" = "137" ]; then
+          echo "Maven was killed by SIGKILL, usually container memory or runner-level kill"
+        fi
+      } >> "$DIAGNOSTICS_LOG" 2>&1
       exit "$CODE"
   artifacts:
     when: always
