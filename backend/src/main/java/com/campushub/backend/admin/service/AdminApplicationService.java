@@ -17,6 +17,11 @@ public interface AdminApplicationService {
 
     UserProfileResponse unbanUser(Long operatorId, Long userId);
 
+    /**
+     * 修改用户角色（晋升/降级管理员）。仅超级管理员可操作。
+     */
+    UserProfileResponse updateUserRole(Long operatorId, Long userId, String role);
+
     PageResponse<DemandSummaryResponse> listPendingDemands(Long operatorId, AdminDemandQuery query);
 
     DemandDetailResponse reviewDemand(Long operatorId, Long demandId, AdminDemandReviewCommand command);

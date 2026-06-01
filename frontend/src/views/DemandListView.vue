@@ -291,7 +291,7 @@ onBeforeUnmount(() => {
               :class="isSortActive('time') ? 'primary' : 'secondary'"
               @click="setSortField('time')"
             >
-              按时间排序
+              时间最近
               <span class="sort-toggle-state">{{ isSortActive('time') ? formatSortDirectionLabel(filters.sortDirection) : '' }}</span>
             </button>
             <button
@@ -300,7 +300,7 @@ onBeforeUnmount(() => {
               :class="isSortActive('reward') ? 'primary' : 'secondary'"
               @click="setSortField('reward')"
             >
-              按报酬排序
+              报酬最高
               <span class="sort-toggle-state">{{ isSortActive('reward') ? formatSortDirectionLabel(filters.sortDirection) : '' }}</span>
             </button>
             <button

@@ -53,6 +53,13 @@ const canStartExecution = computed(() => {
 const canViewAcceptNote = computed(() => demand.value?.canViewAcceptNote !== false)
 const canSubmitAcceptNote = computed(() => demand.value?.canSubmitAcceptNote !== false)
 const relatedReviews = computed(() => store.reviews.filter((review) => review.orderId === relatedOrder.value?.id))
+const hasSubmittedReview = computed(() => {
+  if (!relatedOrder.value || !store.currentUser) return false
+  if (typeof relatedOrder.value.currentUserReviewed === 'boolean') {
+    return relatedOrder.value.currentUserReviewed
+  }
+  return relatedReviews.value.some((r) => r.reviewerId === store.currentUser?.id)
+})
 
 async function acceptCurrentDemand(): Promise<void> {
   if (!demand.value) {
@@ -199,10 +206,11 @@ onMounted(() => {
 
       <div class="list-card">
         <strong>接单留言</strong>
-        <div v-if="canAccept && canViewAcceptNote && canSubmitAcceptNote" class="field">
+        <div v-if="canAccept || (canSubmitAcceptNote && canViewAcceptNote)" class="field">
           <label for="accept-note">留言内容</label>
           <textarea id="accept-note" v-model="note" placeholder="给发布者留一句话"></textarea>
         </div>
+        <p v-else-if="!canAccept && relatedOrder" class="meta">接单留言仅对参与者可见。</p>
         <div class="card-actions">
           <button
             v-if="canAccept"
@@ -271,22 +279,28 @@ onMounted(() => {
         </div>
 
         <div v-if="relatedOrder.status === 'COMPLETED'" class="list-card">
-          <strong>提交评价</strong>
-          <div class="field">
-            <label for="review-rating">评分</label>
-            <select id="review-rating" v-model="reviewRating">
-              <option value="5">5 分</option>
-              <option value="4">4 分</option>
-              <option value="3">3 分</option>
-              <option value="2">2 分</option>
-              <option value="1">1 分</option>
-            </select>
-          </div>
-          <div class="field">
-            <label for="review-comment">评价</label>
-            <textarea id="review-comment" v-model="reviewComment" placeholder="分享你的体验"></textarea>
-          </div>
-          <button type="button" class="button primary" @click="submitReview">提交评价</button>
+          <template v-if="hasSubmittedReview">
+            <strong>评价</strong>
+            <p class="hero-badge" style="margin-top:8px;">您已提交评价，不可重复评价。</p>
+          </template>
+          <template v-else-if="store.currentUser && (store.currentUser.id === relatedOrder.requesterId || store.currentUser.id === relatedOrder.serviceProviderId)">
+            <strong>提交评价</strong>
+            <div class="field">
+              <label for="review-rating">评分</label>
+              <select id="review-rating" v-model="reviewRating">
+                <option value="5">5 星</option>
+                <option value="4">4 星</option>
+                <option value="3">3 星</option>
+                <option value="2">2 星</option>
+                <option value="1">1 星</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="review-comment">评价</label>
+              <textarea id="review-comment" v-model="reviewComment" placeholder="分享你的体验"></textarea>
+            </div>
+            <button type="button" class="button primary" @click="submitReview">提交评价</button>
+          </template>
         </div>
 
         <div v-if="relatedReviews.length" class="list-card">

@@ -90,6 +90,7 @@ onMounted(() => {
     <section class="notification-grid">
       <div v-if="!store.currentUser" class="empty-state">
         <strong>请先登录查看消息</strong>
+        <p><a href="/auth" @click.prevent="router.push('/auth')" style="text-decoration: underline; cursor: pointer; color: var(--primary);">点击这里登录</a></p>
       </div>
 
       <div v-else-if="!notifications.length" class="empty-state">

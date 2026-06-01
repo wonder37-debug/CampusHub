@@ -172,11 +172,11 @@ onMounted(() => {
           <div class="field">
             <label for="review-rating">评分</label>
             <select id="review-rating" v-model="reviewRating">
-              <option value="5">5 分</option>
-              <option value="4">4 分</option>
-              <option value="3">3 分</option>
-              <option value="2">2 分</option>
-              <option value="1">1 分</option>
+              <option value="5">5 星</option>
+              <option value="4">4 星</option>
+              <option value="3">3 星</option>
+              <option value="2">2 星</option>
+              <option value="1">1 星</option>
             </select>
           </div>
           <div class="field">
@@ -185,11 +185,15 @@ onMounted(() => {
           </div>
           <button type="button" class="button primary" @click="submitReview">提交评价</button>
         </div>
+        <div class="list-card" v-else-if="hasSubmittedReview">
+          <strong>评价</strong>
+          <p class="hero-badge" style="margin-top:8px;">您已提交评价，不可重复评价。</p>
+        </div>
       </div>
     </section>
 
     <section class="panel">
-      <p class="eyebrow">操作</p>
+      <p class="eyebrow">订单操作</p>
       <div class="card-actions">
         <button v-if="order.status === 'ACCEPTED' && isProvider" type="button" class="button secondary" @click="startOrder">开始执行</button>
         <button

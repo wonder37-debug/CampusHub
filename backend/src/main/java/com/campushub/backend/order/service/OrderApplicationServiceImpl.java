@@ -60,6 +60,9 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         if (isDemandExpired(demand, LocalDateTime.now())) {
             throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "demand has expired");
         }
+        if (demand.getStatus() == DemandStatus.EXPIRED) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "demand has expired");
+        }
         if (demand.getPublisherId().equals(accepter.getId())) {
             throw new BusinessException(ErrorCode.PERMISSION_DENIED, "publisher cannot accept own demand");
         }
