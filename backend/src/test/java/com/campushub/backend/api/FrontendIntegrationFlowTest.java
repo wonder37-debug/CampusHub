@@ -7,7 +7,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.campushub.backend.BackendApplication;
+import com.campushub.backend.auth.domain.User;
+import com.campushub.backend.auth.domain.UserRole;
+import com.campushub.backend.auth.domain.UserStatus;
 import com.campushub.backend.auth.dto.EmailVerificationIssue;
+import com.campushub.backend.auth.repository.UserRepository;
 import com.campushub.backend.auth.service.AuthApplicationService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -16,17 +20,21 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultActions;
 
 @SpringBootTest(classes = BackendApplication.class, properties = {
+    "app.demo-data.enabled=false",
     "app.auth.allowed-email-domains=nju.edu.cn,smail.nju.edu.cn",
     "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.mail.MailSenderAutoConfiguration",
     "spring.datasource.url=jdbc:h2:mem:campushub_integration;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1",
@@ -38,8 +46,11 @@ import org.springframework.test.web.servlet.ResultActions;
     "spring.datasource.hikari.connection-timeout=3000"
 })
 @AutoConfigureMockMvc
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @Timeout(value = 3, unit = TimeUnit.MINUTES)
 class FrontendIntegrationFlowTest {
+
+    private static final BCryptPasswordEncoder TEST_PASSWORD_ENCODER = new BCryptPasswordEncoder(4);
 
     @Autowired
     private MockMvc mockMvc;
@@ -49,6 +60,32 @@ class FrontendIntegrationFlowTest {
 
     @Autowired
     private AuthApplicationService authApplicationService;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @BeforeEach
+    void seedAdminUser() {
+        if (userRepository.findByStudentId("admin").isPresent()) {
+            return;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        userRepository.save(new User(
+            null,
+            "admin@campushub.local",
+            "admin",
+            TEST_PASSWORD_ENCODER.encode("Admin1234"),
+            "test-admin",
+            null,
+            UserRole.ADMIN,
+            UserStatus.ACTIVE,
+            100,
+            BigDecimal.ZERO,
+            BigDecimal.ZERO,
+            now,
+            now
+        ));
+    }
 
     @Test
     void shouldCompleteHappyPathAcrossFrontendApis() throws Exception {

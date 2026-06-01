@@ -1,13 +1,44 @@
-frontend:build:
-  image: node:22
-  stage: build
-  timeout: 15m
+.frontend-template:
+  image: node:20-bookworm
   variables:
     ARTIFACT_COMPRESSION_LEVEL: "fastest"
+    NPM_CONFIG_AUDIT: "false"
+    NPM_CONFIG_FUND: "false"
+    NPM_CONFIG_PROGRESS: "false"
   before_script:
     - cd frontend
-    - npm ci --prefer-offline
+
+frontend:install-deps:
+  extends: .frontend-template
+  stage: deps
+  timeout: 10m
   script:
+    - npm ci --prefer-online --no-audit --no-fund
+  rules:
+    - changes:
+        - frontend/**/*
+        - .gitlab/frontend.yml
+        - .gitlab-ci.yml
+
+frontend:static-check:
+  extends: .frontend-template
+  stage: static-check
+  timeout: 10m
+  script:
+    - npm ci --prefer-online --no-audit --no-fund
+    - npm run type-check
+  rules:
+    - changes:
+        - frontend/**/*
+        - .gitlab/frontend.yml
+        - .gitlab-ci.yml
+
+frontend:build:
+  extends: .frontend-template
+  stage: build
+  timeout: 15m
+  script:
+    - npm ci --prefer-online --no-audit --no-fund
     - npm run build
   artifacts:
     paths:
