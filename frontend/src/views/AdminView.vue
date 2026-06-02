@@ -1,20 +1,24 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 import { useCampusHubStore } from '@/stores/campusHub'
 import { handleError } from '@/utils/errorHandler'
 import { DEMAND_CATEGORY_OPTIONS, type DemandCategory } from '@/types/campushub'
-import { formatDemandCategory, formatDemandStatus, formatScore, formatUserRole, formatUserStatus, statusToneClass } from '@/utils/format'
+import { campusZoneOptions, formatCampusZone, formatDemandCategory, formatDemandStatus, formatScore, formatUserRole, formatUserStatus, statusToneClass } from '@/utils/format'
 
 const store = useCampusHubStore()
+const router = useRouter()
 const message = ref('')
 const error = ref('')
 const userQuery = ref('')
 const userSearchField = ref('all')
 const creditSort = ref<'none' | 'asc' | 'desc'>('none')
+const userRoleFilter = ref('')
+const userStatusFilter = ref('')
 const demandQuery = ref('')
 const demandCategory = ref('')
+const demandCampusZone = ref('')
 const rejectDialogOpen = ref(false)
 const rejectingDemandId = ref('')
 const rejectingDemandTitle = ref('')
@@ -38,6 +42,13 @@ const filteredAccounts = computed(() => {
       if (userSearchField.value === 'nickname') return (u.nickname || '').toLowerCase().includes(q)
       return (u.studentId || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q) || (u.nickname || '').toLowerCase().includes(q)
     })
+  }
+
+  if (userRoleFilter.value) {
+    list = list.filter((u) => u.role === userRoleFilter.value)
+  }
+  if (userStatusFilter.value) {
+    list = list.filter((u) => u.status === userStatusFilter.value)
   }
 
   if (creditSort.value === 'desc') {
@@ -79,7 +90,7 @@ async function refreshAdminData(): Promise<void> {
       creditSort.value === 'none' ? '' : 'creditScore',
       creditSort.value === 'none' ? '' : creditSort.value
     ),
-    store.fetchAdminPendingDemands(demandQuery.value, demandCategory.value)
+    store.fetchAdminPendingDemands(demandQuery.value, demandCategory.value, demandCampusZone.value)
   ])
 }
 
@@ -161,6 +172,10 @@ async function toggleUserStatus(userId: string, banned: boolean): Promise<void> 
     error.value = handleError(toggleError, '用户状态更新失败')
   }
 }
+
+function openDemandDetail(demandId: string): void {
+  router.push(`/demands/${demandId}`)
+}
 </script>
 
 <template>
@@ -182,7 +197,7 @@ async function toggleUserStatus(userId: string, banned: boolean): Promise<void> 
       </div>
     </section>
 
-    <section class="two-column page-grid">
+    <section class="page-grid">
       <article id="pending-section" class="panel">
         <div class="panel-head">
           <div>
@@ -190,20 +205,25 @@ async function toggleUserStatus(userId: string, banned: boolean): Promise<void> 
             <h2 class="section-title">待审核需求</h2>
           </div>
           <div class="inline-actions">
-            <input v-model="demandQuery" class="input" type="search" placeholder="搜索标题/地点" @keyup.enter="refreshAdminData" />
+            <input v-model="demandQuery" class="input" type="search" placeholder="搜索标题" @keyup.enter="refreshAdminData" />
             <select v-model="demandCategory" class="input" @change="refreshAdminData">
               <option value="">全部分类</option>
               <option v-for="option in adminCategoryOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
             </select>
-            <button type="button" class="button secondary" @click="refreshAdminData">刷新</button>
+            <select v-model="demandCampusZone" class="input" @change="refreshAdminData">
+              <option value="">全部校区</option>
+              <option v-for="zone in campusZoneOptions()" :key="zone.value" :value="zone.value">{{ zone.label }}</option>
+            </select>
+            <button type="button" class="button secondary" @click="refreshAdminData" title="搜索">🔍</button>
           </div>
         </div>
 
         <div v-if="pendingDemands.length" class="section-grid">
-          <div v-for="demand in pendingDemands" :key="demand.id" :id="`pending-${demand.id}`" class="list-card" :style="demand.id === focusedDemandId ? 'box-shadow: 0 0 0 3px rgba(66,133,244,0.12)' : ''">
+          <div v-for="demand in pendingDemands" :key="demand.id" :id="`pending-${demand.id}`" class="list-card" :style="[demand.id === focusedDemandId ? 'box-shadow: 0 0 0 3px rgba(66,133,244,0.12)' : '', 'cursor: pointer;']" @click.self="openDemandDetail(demand.id)">
             <div class="status-row">
               <span class="chip" :class="statusToneClass(demand.status)">{{ formatDemandStatus(demand.status) }}</span>
               <span class="chip">{{ formatDemandCategory(demand.category) }}</span>
+              <span class="chip">{{ formatCampusZone(demand.campusZone) }}</span>
             </div>
             <div class="card-head">
               <h3>{{ demand.title }}</h3>
@@ -213,6 +233,7 @@ async function toggleUserStatus(userId: string, banned: boolean): Promise<void> 
               <div class="card-actions">
               <button type="button" class="button primary" @click="approveDemand(demand.id)">通过</button>
               <button type="button" class="button secondary" @click="openRejectDialog(demand.id, demand.title)">拒绝</button>
+              <button type="button" class="button secondary" @click="openDemandDetail(demand.id)">查看详情</button>
             </div>
           </div>
         </div>
@@ -233,6 +254,16 @@ async function toggleUserStatus(userId: string, banned: boolean): Promise<void> 
               <option value="nickname">昵称</option>
             </select>
             <input v-model="userQuery" class="input" type="search" :placeholder="userSearchField==='all'? '搜索学号/邮箱/昵称' : (userSearchField==='studentId'? '搜索学号' : userSearchField==='email'? '搜索邮箱' : '搜索昵称')" @keyup.enter="refreshAdminData" />
+            <select v-model="userRoleFilter" class="input" style="width:100px;" @change="refreshAdminData">
+              <option value="">全部角色</option>
+              <option value="USER">学生</option>
+              <option value="ADMIN">管理员</option>
+            </select>
+            <select v-model="userStatusFilter" class="input" style="width:100px;" @change="refreshAdminData">
+              <option value="">全部状态</option>
+              <option value="ACTIVE">正常</option>
+              <option value="BANNED">已封禁</option>
+            </select>
             <button type="button" class="button secondary" @click="refreshAdminData">查询</button>
             <button type="button" class="button" style="margin-left:8px" @click="creditSort = creditSort === 'desc' ? 'asc' : 'desc'">信用分 {{ creditSort === 'desc' ? '↓' : creditSort === 'asc' ? '↑' : '' }}</button>
           </div>

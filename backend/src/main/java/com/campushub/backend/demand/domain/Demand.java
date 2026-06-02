@@ -85,7 +85,8 @@ public class Demand {
     public boolean isEditableBy(Long operatorId) {
         return publisherId != null && publisherId.equals(operatorId)
             && status != DemandStatus.COMPLETED
-            && status != DemandStatus.CANCELLED;
+            && status != DemandStatus.CANCELLED
+            && status != DemandStatus.EXPIRED;
     }
 
     public Long getId() {

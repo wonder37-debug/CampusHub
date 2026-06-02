@@ -15,7 +15,6 @@ const router = useRouter()
 
 const filters = reactive({
   q: '',
-  location: '',
   category: '' as '' | (typeof DEMAND_CATEGORY_OPTIONS)[number],
   campusZone: '' as '' | CampusZone,
   status: '' as string,
@@ -70,8 +69,7 @@ function filteredDemandItems(source: DemandRecord[]): DemandRecord[] {
     .filter((demand) => demand.status !== 'EXPIRED')
     .filter((demand) => !selectedCategory || demand.category === selectedCategory)
     .filter((demand) => !selectedCampusZone || demand.campusZone === selectedCampusZone)
-    .filter((demand) => !filters.q.trim() || `${demand.title} ${demand.description}`.toLowerCase().includes(filters.q.trim().toLowerCase()))
-    .filter((demand) => !filters.location.trim() || demand.location.toLowerCase().includes(filters.location.trim().toLowerCase()))
+    .filter((demand) => !filters.q.trim() || `${demand.title} ${demand.description} ${demand.location}`.toLowerCase().includes(filters.q.trim().toLowerCase()))
     .filter((demand) => {
       if (!selectedStatus) return true
       if (selectedStatus === 'ACCEPTED') {
@@ -140,7 +138,6 @@ async function refreshList(): Promise<void> {
       q: filters.q,
       category: filters.category || undefined,
       campusZone: filters.campusZone || undefined,
-      location: filters.location,
       sort: getBackendSortMode(),
       page: 1,
       size: 100
@@ -217,7 +214,7 @@ watch(
 )
 
 watch(
-  () => [filters.q, filters.location, filters.category, filters.campusZone],
+  () => [filters.q, filters.category, filters.campusZone],
   () => {
     void refreshList()
   }
@@ -241,17 +238,12 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="filters">
-        <div class="field" style="grid-column: 1 / -1;">
+        <div class="field" style="flex: 1 1 260px;">
           <label for="demand-q">关键词</label>
-          <input id="demand-q" v-model="filters.q" type="search" placeholder="搜索标题或描述" />
+          <input id="demand-q" v-model="filters.q" type="search" placeholder="搜索标题、描述或地点" />
         </div>
 
-        <div class="field" style="grid-column: 1 / -1;">
-          <label for="demand-location">地点</label>
-          <input id="demand-location" v-model="filters.location" type="search" placeholder="按地点筛选，例如：仙林校区菜鸟驿站" />
-        </div>
-
-        <div class="field">
+        <div class="field" style="flex: 0 1 160px;">
           <label for="demand-category">分类</label>
           <select id="demand-category" v-model="filters.category">
             <option value="">全部分类</option>
@@ -261,18 +253,18 @@ onBeforeUnmount(() => {
           </select>
         </div>
 
-          <div class="field">
-            <label for="demand-status">状态</label>
-            <select id="demand-status" v-model="filters.status">
-              <option value="">全部状态</option>
-              <option value="PENDING">开放中</option>
-              <option value="ACCEPTED">已接单</option>
-              <option value="IN_PROGRESS">进行中</option>
-              <option value="COMPLETED">已完成</option>
-            </select>
-          </div>
+        <div class="field" style="flex: 0 1 140px;">
+          <label for="demand-status">状态</label>
+          <select id="demand-status" v-model="filters.status">
+            <option value="">全部状态</option>
+            <option value="PENDING">开放中</option>
+            <option value="ACCEPTED">已接单</option>
+            <option value="IN_PROGRESS">进行中</option>
+            <option value="COMPLETED">已完成</option>
+          </select>
+        </div>
 
-        <div class="field">
+        <div class="field" style="flex: 0 1 140px;">
           <label for="demand-campus">校区</label>
           <select id="demand-campus" v-model="filters.campusZone">
             <option value="">全部校区</option>
@@ -282,7 +274,7 @@ onBeforeUnmount(() => {
           </select>
         </div>
 
-        <div class="field" style="grid-column: 1 / -1;">
+        <div class="field" style="flex: 1 1 100%;">
           <label>排序方式</label>
           <div class="sort-toggle-group" role="group" aria-label="排序方式">
             <button
@@ -291,7 +283,7 @@ onBeforeUnmount(() => {
               :class="isSortActive('time') ? 'primary' : 'secondary'"
               @click="setSortField('time')"
             >
-              按时间排序
+              时间最近
               <span class="sort-toggle-state">{{ isSortActive('time') ? formatSortDirectionLabel(filters.sortDirection) : '' }}</span>
             </button>
             <button
@@ -300,7 +292,7 @@ onBeforeUnmount(() => {
               :class="isSortActive('reward') ? 'primary' : 'secondary'"
               @click="setSortField('reward')"
             >
-              按报酬排序
+              报酬最高
               <span class="sort-toggle-state">{{ isSortActive('reward') ? formatSortDirectionLabel(filters.sortDirection) : '' }}</span>
             </button>
             <button

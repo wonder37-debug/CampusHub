@@ -78,11 +78,25 @@ public class AdminController {
         return ApiResponse.success(UserSummaryView.from(adminApplicationService.unbanUser(currentUser.userId(), userId)));
     }
 
+    @PostMapping("/users/{userId}/role")
+    public ApiResponse<UserSummaryView> updateUserRole(
+        HttpServletRequest request,
+        @PathVariable Long userId,
+        @RequestBody Map<String, String> body
+    ) {
+        CurrentUser currentUser = requestUserExtractor.requireCurrentUser(request);
+        String role = body == null ? null : body.get("role");
+        return ApiResponse.success(UserSummaryView.from(
+            adminApplicationService.updateUserRole(currentUser.userId(), userId, role)
+        ));
+    }
+
     @GetMapping("/demands/pending")
     public ApiResponse<PageResponse<DemandSummaryResponse>> listPendingDemands(
         HttpServletRequest request,
         @RequestParam(required = false) String q,
         @RequestParam(required = false) String category,
+        @RequestParam(required = false) String campusZone,
         @RequestParam(defaultValue = "1") int page,
         @RequestParam(defaultValue = "20") int size
     ) {
@@ -90,7 +104,7 @@ public class AdminController {
         return ApiResponse.success(
             adminApplicationService.listPendingDemands(
                 currentUser.userId(),
-                new AdminDemandQuery(q, category, new PageQuery(page, size))
+                new AdminDemandQuery(q, category, campusZone, new PageQuery(page, size))
             )
         );
     }

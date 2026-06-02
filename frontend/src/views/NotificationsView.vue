@@ -77,7 +77,7 @@ onMounted(() => {
 
 <template>
   <div class="page-grid">
-    <section class="panel page-head">
+    <section class="panel">
       <div class="page-head">
         <div style="flex:1">
           <h1 class="page-title">消息</h1>
@@ -90,6 +90,7 @@ onMounted(() => {
     <section class="notification-grid">
       <div v-if="!store.currentUser" class="empty-state">
         <strong>请先登录查看消息</strong>
+        <p><a href="/auth" @click.prevent="router.push('/auth')" style="text-decoration: underline; cursor: pointer; color: var(--primary);">点击这里登录</a></p>
       </div>
 
       <div v-else-if="!notifications.length" class="empty-state">
@@ -120,6 +121,9 @@ onMounted(() => {
 
         <p v-if="notification.type === 'DEMAND_REJECTED'" class="subtle" style="margin-top: 8px; white-space: pre-wrap;">
           {{ notification.content }}
+        </p>
+        <p v-else-if="notification.targetTitle || notification.relatedName" class="subtle" style="margin-top: 6px;">
+          {{ notification.targetTitle || notification.relatedName }}
         </p>
 
         <div class="meta">

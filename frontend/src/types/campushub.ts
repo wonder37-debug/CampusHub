@@ -1,6 +1,6 @@
-export const DEMAND_CATEGORY_OPTIONS = ['EXPRESS', 'STUDY_TUTORING', 'SECOND_HAND', 'TEAM_UP', 'DELEGATE', 'OTHER'] as const
+export const DEMAND_CATEGORY_OPTIONS = ['EXPRESS', 'ERRAND', 'STUDY_TUTORING', 'SECOND_HAND', 'TEAM_UP', 'OTHER'] as const
 export const CAMPUS_ZONE_OPTIONS = ['GULOU', 'XIANLIN', 'SUZHOU'] as const
-export const DEMAND_SORT_MODES = ['time', 'distance', 'reward', 'recommend'] as const
+export const DEMAND_SORT_MODES = ['time', 'reward', 'recommend'] as const
 export const USER_ROLE_OPTIONS = ['USER', 'ADMIN'] as const
 export const USER_STATUS_OPTIONS = ['ACTIVE', 'BANNED'] as const
 export const DEMAND_STATUS_OPTIONS = ['PENDING', 'REVIEWING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'EXPIRED'] as const

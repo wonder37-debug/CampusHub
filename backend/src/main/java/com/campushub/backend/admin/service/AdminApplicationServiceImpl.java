@@ -119,6 +119,30 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
     }
 
     @Override
+    public UserProfileResponse updateUserRole(Long operatorId, Long userId, String role) {
+        requireAdmin(operatorId);
+        if (role == null || role.isBlank()) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "role must not be blank");
+        }
+        UserRole targetRole;
+        try {
+            targetRole = UserRole.valueOf(role.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "unsupported role: " + role);
+        }
+        if (operatorId.equals(userId)) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "admin cannot change own role");
+        }
+        User user = findUser(userId);
+        if (user.getRole() == targetRole) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "user is already in role " + role);
+        }
+        user.setRole(targetRole);
+        user.setUpdatedAt(LocalDateTime.now());
+        return UserProfileResponse.from(userRepository.save(user));
+    }
+
+    @Override
     public PageResponse<DemandSummaryResponse> listPendingDemands(Long operatorId, AdminDemandQuery query) {
         requireAdmin(operatorId);
         if (query == null) {
@@ -128,6 +152,7 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
         List<Demand> filtered = demandRepository.findByStatus(DemandStatus.REVIEWING).stream()
             .filter(demand -> matchesDemandKeyword(demand, query.q()))
             .filter(demand -> matchesDemandCategory(demand, query.category()))
+            .filter(demand -> matchesDemandCampusZone(demand, query.campusZone()))
             .sorted(Comparator.comparing(Demand::getCreatedAt, Comparator.nullsLast(LocalDateTime::compareTo)).reversed())
             .toList();
 
@@ -261,6 +286,10 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
 
     private boolean matchesDemandCategory(Demand demand, String category) {
         return category == null || category.isBlank() || demand.getCategory().name().equalsIgnoreCase(category);
+    }
+
+    private boolean matchesDemandCampusZone(Demand demand, String campusZone) {
+        return campusZone == null || campusZone.isBlank() || demand.getCampusZone().name().equalsIgnoreCase(campusZone);
     }
 
     private boolean containsIgnoreCase(String value, String normalizedKeyword) {

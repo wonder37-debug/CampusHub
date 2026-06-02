@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 
 import { useCampusHubStore } from '@/stores/campusHub'
 import { validateNickname, validateAvatarUrl } from '@/utils/validators'
+import { handleError } from '@/utils/errorHandler'
 
 const store = useCampusHubStore()
 const router = useRouter()
@@ -45,11 +46,13 @@ async function save(): Promise<void> {
   error.value = ''
   try {
     await store.updateProfile(profileForm)
-    message.value = '已保存个人资料'
+    message.value = '资料已更新'
     // 0.8s 后返回个人页
     setTimeout(() => {
       router.push('/profile')
     }, 800)
+  } catch (saveError) {
+    error.value = handleError(saveError, '保存失败，请检查输入后重试')
   } finally {
     saving.value = false
   }

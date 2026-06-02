@@ -15,13 +15,6 @@ const creditLevel = computed(() => {
   return '成长中'
 })
 
-const maskedPhone = computed(() => {
-  const phone = store.currentUser?.phone ?? store.currentUser?.studentId ?? ''
-  return phone ? `${String(phone).slice(0, 3)}****${String(phone).slice(-4)}` : '138****0000'
-})
-
-
-
 function openEditPage(): void {
   router.push('/profile/edit')
 }
@@ -45,7 +38,7 @@ onMounted(() => {
         <div>
           <p class="eyebrow">个人中心</p>
           <h1 class="page-title">{{ store.currentUser.nickname }}</h1>
-          <p class="page-summary">{{ store.currentUser.studentId }} · {{ maskedPhone }}</p>
+          <p class="page-summary">学号：{{ store.currentUser.studentId }}</p>
           <div class="stats-row" style="gap:12px;">
             <div class="meta">当前身份：<strong>{{ formatUserRole(store.currentUser.role) }}</strong></div>
             <div class="meta">当前状态：<strong>{{ formatUserStatus(store.currentUser.status) }}</strong></div>
@@ -108,10 +101,6 @@ onMounted(() => {
       <div v-else class="empty-state">
         <strong>暂无评价</strong>
       </div>
-    </section>
-
-    <section class="panel">
-      <!-- 资料编辑已移除：使用顶部的“编辑资料”按钮进入单独编辑页面 -->
     </section>
   </div>
 

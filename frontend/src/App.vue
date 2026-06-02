@@ -71,10 +71,7 @@ function onStatusClick(): void {
     <header class="topbar">
       <div class="brand-block">
         <div class="brand-mark">CH</div>
-        <div>
-          <p class="eyebrow">CampusHub</p>
-          <h1 class="brand-title">CampusHub 平台</h1>
-        </div>
+        <h1 class="brand-title">CampusHub</h1>
       </div>
 
       <nav class="nav-pills" aria-label="主导航">

@@ -119,6 +119,7 @@ onMounted(() => {
 
     <div v-if="!store.currentUser" class="empty-state">
       <strong>请先登录查看订单</strong>
+      <p><a href="/auth" @click.prevent="router.push('/auth')" style="text-decoration: underline; cursor: pointer; color: var(--primary);">点击这里登录</a></p>
     </div>
 
     <section v-else class="order-grid">
