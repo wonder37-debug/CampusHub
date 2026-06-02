@@ -368,6 +368,12 @@ img {
   flex-wrap: wrap;
 }
 
+.card-actions {
+  gap: 12px;
+  align-items: center;
+  margin-top: 4px;
+}
+
 .hero-panel {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -603,6 +609,20 @@ th {
   font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
+td .avatar-row {
+  max-width: 180px;
+}
+
+td .avatar-row strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-block;
+  max-width: 120px;
+  vertical-align: middle;
 }
 
 .stack {

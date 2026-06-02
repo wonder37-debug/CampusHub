@@ -173,16 +173,6 @@ async function toggleUserStatus(userId: string, banned: boolean): Promise<void> 
   }
 }
 
-async function changeUserRole(userId: string, newRole: string): Promise<void> {
-  try {
-    await store.updateUserRole(userId, newRole)
-    message.value = `用户角色已更新为${newRole === 'ADMIN' ? '管理员' : '普通用户'}。`
-    await refreshAdminData()
-  } catch (roleError) {
-    error.value = handleError(roleError, '角色更新失败')
-  }
-}
-
 function openDemandDetail(demandId: string): void {
   router.push(`/demands/${demandId}`)
 }
@@ -207,7 +197,7 @@ function openDemandDetail(demandId: string): void {
       </div>
     </section>
 
-    <section class="two-column page-grid">
+    <section class="page-grid">
       <article id="pending-section" class="panel">
         <div class="panel-head">
           <div>
@@ -315,15 +305,6 @@ function openDemandDetail(demandId: string): void {
                     {{ user.status === 'BANNED' ? '启用' : '禁用' }}
                   </button>
                   <span v-else class="muted" style="margin-left:8px;">管理员角色不可调整</span>
-                  <button
-                    v-if="user.id !== store.currentUser?.id"
-                    type="button"
-                    class="button secondary"
-                    style="margin-left:4px;"
-                    @click="changeUserRole(user.id, user.role === 'ADMIN' ? 'USER' : 'ADMIN')"
-                  >
-                    {{ user.role === 'ADMIN' ? '降级为用户' : '提升为管理员' }}
-                  </button>
                 </td>
               </tr>
             </tbody>

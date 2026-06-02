@@ -97,11 +97,14 @@ function mapUserSummary(raw: any): PublicUser {
 function mapDemandRecord(raw: any): DemandRecord {
   const publisherDisplayName = raw.publisherDisplayName ?? raw.publisherName ?? raw.creator?.nickname ?? '匿名'
   const publisher = raw.publisher ? mapUserSummary(raw.publisher) : null
+  // 兼容旧数据中的 DELEGATE 分类，统一映射为后端枚举 ERRAND
+  const rawCategory = String(raw.category ?? 'OTHER')
+  const normalizedCategory = (rawCategory === 'DELEGATE' ? 'ERRAND' : rawCategory) as DemandCategoryCode
   return {
     id: String(raw.id ?? raw.demandId ?? ''),
     title: String(raw.title ?? ''),
     description: String(raw.description ?? ''),
-    category: String(raw.category ?? 'OTHER') as DemandCategoryCode,
+    category: normalizedCategory,
     campusZone: String(raw.campusZone ?? 'GULOU') as CampusZone,
     location: String(raw.location ?? ''),
     startTime: String(raw.startTime ?? now()),

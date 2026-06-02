@@ -339,17 +339,6 @@ async function checkRewardBalance(): Promise<void> {
           <span v-for="tag in form.tags.split(/[，,]/).filter(Boolean)" :key="tag" class="badge is-neutral">{{ tag.trim() }}</span>
         </div>
       </div>
-
-      <div class="section-grid">
-        <div class="list-card">
-          <strong>发布后效果</strong>
-          <p>发布后需求会出现在列表里，方便其他同学浏览和接单。</p>
-        </div>
-        <div class="list-card">
-          <strong>审核说明</strong>
-          <p>部分需求会先经过确认，审核通过后就能更快被接单。</p>
-        </div>
-      </div>
     </section>
   </div>
 </template>
