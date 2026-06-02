@@ -71,17 +71,7 @@ onMounted(() => {
       </div>
     </section>
 
-    <section class="panel">
-      <p class="eyebrow">功能入口</p>
-      <div class="section-grid">
-        <button type="button" class="button secondary" @click="router.push('/orders')">我的订单</button>
-        <button type="button" class="button secondary" @click="router.push('/notifications')">消息通知</button>
-        <button v-if="store.currentUser.role === 'ADMIN'" type="button" class="button secondary" @click="router.push('/admin')">管理后台</button>
-        <button type="button" class="button primary" @click="logout">退出登录</button>
-      </div>
-
-      <div class="hero-badge" style="margin-top: 16px;">v1.0.0</div>
-    </section>
+    <!-- 功能入口已移除，退出登录按钮已移动到页面底部 -->
 
     <section class="panel">
       <p class="eyebrow">评价列表</p>
@@ -100,6 +90,13 @@ onMounted(() => {
 
       <div v-else class="empty-state">
         <strong>暂无评价</strong>
+      </div>
+    </section>
+
+    <!-- 页面底部：退出登录（横向全宽样式） -->
+    <section class="panel" style="margin-top: 16px;">
+      <div>
+        <button type="button" class="button primary" style="width:100%;" @click="logout">退出登录</button>
       </div>
     </section>
   </div>

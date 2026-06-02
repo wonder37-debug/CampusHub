@@ -20,8 +20,10 @@ const navigation = computed<Array<{ label: string; to: string; requiresAuth?: bo
     base.splice(1, 0, { label: '订单', to: '/orders', requiresAuth: true })
   }
   if (store.currentUser?.role === 'ADMIN') {
-    // 管理员额外显示“管理后台”入口
-    base.push({ label: '管理后台', to: '/admin', requiresAuth: true })
+    // 管理员额外显示“管理后台”入口，插入到“我的”之前
+    const myIndex = base.findIndex((b) => b.label === '我的')
+    const insertIndex = myIndex >= 0 ? myIndex : base.length
+    base.splice(insertIndex, 0, { label: '管理后台', to: '/admin', requiresAuth: true })
   }
   return base
 })

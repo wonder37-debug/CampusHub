@@ -19,17 +19,7 @@ const profileForm = reactive({
   avatarUrl: store.currentUser?.avatarUrl ?? ''
 })
 
-function onAvatarFileSelected(event: Event): void {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (!file) return
-
-  const reader = new FileReader()
-  reader.onload = () => {
-    profileForm.avatarUrl = String(reader.result || '')
-  }
-  reader.readAsDataURL(file)
-}
+// 本地上传已移除
 
 async function save(): Promise<void> {
   // run local validations
@@ -85,11 +75,7 @@ onMounted(() => {
           <input id="avatar" v-model="profileForm.avatarUrl" @input="fieldErrors.avatarUrl = ''" />
           <p v-if="fieldErrors.avatarUrl" class="input-help" style="color: var(--danger)">{{ fieldErrors.avatarUrl }}</p>
         </div>
-        <div class="field" style="grid-column: 1 / -1;">
-          <label for="avatar-file">本地上传头像</label>
-          <input id="avatar-file" type="file" accept="image/*" @change="onAvatarFileSelected" />
-          <span class="input-help">上传后会自动写入头像链接字段。</span>
-        </div>
+        <!-- 本地上传头像控件已移除 -->
       </div>
 
       <div class="card-actions" style="margin-top: 16px;">
