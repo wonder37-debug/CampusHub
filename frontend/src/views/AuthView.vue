@@ -208,35 +208,45 @@ async function submitRegister(): Promise<void> {
       <form v-if="activeTab === 'login'" class="field-grid" @submit.prevent="submitLogin">
         <div class="field">
           <label for="login-student-id">学号</label>
-          <input id="login-student-id" v-model="loginForm.studentId" placeholder="20260001" />
+          <input id="login-student-id" v-model="loginForm.studentId" placeholder="请输入您的学号" />
         </div>
-        <div class="field" style="position: relative;">
+        <div class="field">
           <label for="login-password">密码</label>
-          <input :type="showLoginPassword ? 'text' : 'password'" id="login-password" v-model="loginForm.password" placeholder="campus123" />
-          <button type="button" class="button secondary" style="position: absolute; right: 8px; top: 30px;" @click="showLoginPassword = !showLoginPassword">{{ showLoginPassword ? '隐藏' : '显示' }}</button>
+          <div class="password-wrapper">
+            <input :type="showLoginPassword ? 'text' : 'password'" id="login-password" v-model="loginForm.password" placeholder="请输入您的密码" />
+            <button type="button" class="password-toggle" @click="showLoginPassword = !showLoginPassword" :aria-label="showLoginPassword ? '隐藏密码' : '显示密码'">
+              <svg v-if="showLoginPassword" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+              <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
         </div>
         <button type="submit" class="button primary">登录到平台</button>
       </form>
 
       <form v-else class="form-grid two-column" @submit.prevent="submitRegister">
         <div class="field">
-          <label for="register-student-id">学号</label>
+          <label for="register-student-id"><span class="required">*</span> 学号</label>
           <input id="register-student-id" v-model="registerForm.studentId" placeholder="例如 20260012" />
         </div>
-        <div class="field" style="position: relative;">
-          <label for="register-password">密码</label>
-          <input :type="showRegisterPassword ? 'text' : 'password'" id="register-password" v-model="registerForm.password" placeholder="至少 8 位" />
-          <button type="button" class="button secondary" style="position: absolute; right: 8px; top: 30px;" @click="showRegisterPassword = !showRegisterPassword">{{ showRegisterPassword ? '隐藏' : '显示' }}</button>
+        <div class="field">
+          <label for="register-password"><span class="required">*</span> 密码</label>
+          <div class="password-wrapper">
+            <input :type="showRegisterPassword ? 'text' : 'password'" id="register-password" v-model="registerForm.password" placeholder="至少 8 位" />
+            <button type="button" class="password-toggle" @click="showRegisterPassword = !showRegisterPassword" :aria-label="showRegisterPassword ? '隐藏密码' : '显示密码'">
+              <svg v-if="showRegisterPassword" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+              <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
         </div>
         <div class="field" style="grid-column: 1 / -1;">
-          <label for="register-email-prefix">邮箱</label>
+          <label for="register-email-prefix"><span class="required">*</span> 邮箱</label>
           <div class="inline-actions" style="align-items: stretch;">
             <input
               id="register-email-prefix"
               v-model="registerForm.emailPrefix"
               inputmode="numeric"
               pattern="[0-9]*"
-              placeholder="241880515"
+              placeholder="例如241880515"
               style="flex: 1 1 220px;"
             />
             <span class="chip is-neutral" style="padding-inline: 14px;">@</span>
@@ -249,7 +259,7 @@ async function submitRegister(): Promise<void> {
           <span class="input-help">请输入邮箱前缀，并在右侧选择学校邮箱域名。</span>
         </div>
         <div class="field" style="grid-column: 1 / -1;">
-          <label for="register-code">邮箱验证码</label>
+          <label for="register-code"><span class="required">*</span> 邮箱验证码</label>
           <div class="inline-actions" style="align-items: stretch;">
             <input
               id="register-code"
@@ -269,17 +279,17 @@ async function submitRegister(): Promise<void> {
           <span v-if="verificationCodeHint" class="input-help">请使用收到的验证码完成注册：{{ verificationCodeHint }}</span>
         </div>
         <div class="field">
-          <label for="register-nickname">昵称</label>
+          <label for="register-nickname"><span class="required">*</span> 昵称</label>
           <input id="register-nickname" v-model="registerForm.nickname" placeholder="你的校园昵称" />
         </div>
         <div class="field" style="grid-column: 1 / -1;">
-          <label for="register-avatar">头像链接</label>
+          <label for="register-avatar">头像链接 <span class="optional-hint">（选填）</span></label>
           <input
             id="register-avatar"
             v-model="registerForm.avatarUrl"
             placeholder="https://..."
           />
-          <span class="input-help">请输入可访问的头像图片链接，注册后会直接保存该地址。</span>
+          <span class="input-help">你可以填写一张头像图片链接来设置个人头像，不填也完全没关系。</span>
           <div v-if="registerForm.avatarUrl.trim()" class="avatar-row" style="margin-top: 12px;">
             <img :src="registerForm.avatarUrl" alt="头像预览" class="avatar" />
             <div>
@@ -298,8 +308,8 @@ async function submitRegister(): Promise<void> {
     <section class="panel">
       <div class="panel-head">
         <div>
-          <p class="eyebrow">账号概览</p>
-          <h2 class="section-title">当前登录状态</h2>
+          <p class="eyebrow">快速指引</p>
+          <h2 class="section-title">登录与注册</h2>
         </div>
       </div>
 
