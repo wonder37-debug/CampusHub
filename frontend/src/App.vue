@@ -71,9 +71,17 @@ function onStatusClick(): void {
 <template>
   <div class="app-shell">
     <header class="topbar">
-      <div class="brand-block">
-        <div class="brand-mark">CH</div>
-        <h1 class="brand-title">CampusHub</h1>
+      <div class="brand-block" role="button" tabindex="0" aria-label="返回首页" @click="$router.push('/')" @keydown.enter="$router.push('/')">
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+          </svg>
+        </div>
+        <div class="brand-text">
+          <span class="brand-subtitle">CampusHub</span>
+          <span class="brand-title">南京大学校园互助平台</span>
+        </div>
       </div>
 
       <nav class="nav-pills" aria-label="主导航">
@@ -91,8 +99,18 @@ function onStatusClick(): void {
 
       <div class="topbar-tools">
         <div class="status-chip" role="button" tabindex="0" @click="onStatusClick" @keydown.enter="onStatusClick" style="cursor: pointer;">
-          <span>{{ roleLabel }}</span>
-          <strong>{{ store.currentUser?.nickname ?? '访客' }}</strong>
+          <template v-if="store.currentUser">
+            <span>{{ roleLabel }}</span>
+            <strong>{{ store.currentUser.nickname }}</strong>
+          </template>
+          <template v-else>
+            <div class="status-info">
+              <span>未登录</span>
+              <strong>访客</strong>
+            </div>
+            <div class="status-divider"></div>
+            <span class="login-link">请先登录 →</span>
+          </template>
         </div>
         <RouterLink class="nav-button ghost" to="/notifications">未读消息 {{ store.unreadNotificationCount }}</RouterLink>
       </div>
