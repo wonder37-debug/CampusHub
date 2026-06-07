@@ -13,6 +13,7 @@ import com.campushub.backend.common.api.PageResponse;
 import com.campushub.backend.common.exception.BusinessException;
 import com.campushub.backend.common.exception.ErrorCode;
 import com.campushub.backend.common.model.PageQuery;
+import com.campushub.backend.demand.domain.DemandStatus;
 import com.campushub.backend.demand.dto.DemandDetailResponse;
 import com.campushub.backend.demand.dto.PublishDemandCommand;
 import com.campushub.backend.demand.repository.DemandRepository;
@@ -43,7 +44,6 @@ class OrderApplicationServiceImplTest {
     private OrderRepository orderRepository;
     private DemandApplicationService demandApplicationService;
     private OrderApplicationService orderApplicationService;
-    private NotificationApplicationService notificationApplicationService;
     private Long publisherId;
     private Long accepterId;
 
@@ -52,7 +52,8 @@ class OrderApplicationServiceImplTest {
         userRepository = new InMemoryUserRepository();
         demandRepository = new InMemoryDemandRepository();
         orderRepository = new InMemoryOrderRepository();
-        notificationApplicationService = new NotificationApplicationServiceImpl(new InMemoryNotificationRepository());
+        NotificationApplicationService notificationApplicationService =
+            new NotificationApplicationServiceImpl(new InMemoryNotificationRepository());
         demandApplicationService = new DemandApplicationServiceImpl(
             demandRepository,
             userRepository,
@@ -66,12 +67,34 @@ class OrderApplicationServiceImplTest {
         );
 
         publisherId = userRepository.save(new User(
-            null, "publisher@example.edu.cn", "20260001", "hash", "发布者", null,
-            UserRole.USER, UserStatus.ACTIVE, 100, LocalDateTime.now(), LocalDateTime.now()
+            null,
+            "publisher@example.edu.cn",
+            "20260001",
+            "hash",
+            "发布者",
+            null,
+            UserRole.USER,
+            UserStatus.ACTIVE,
+            100,
+            new BigDecimal("100.00"),
+            BigDecimal.ZERO,
+            LocalDateTime.now(),
+            LocalDateTime.now()
         )).getId();
         accepterId = userRepository.save(new User(
-            null, "accepter@example.edu.cn", "20260002", "hash", "接单者", null,
-            UserRole.USER, UserStatus.ACTIVE, 100, LocalDateTime.now(), LocalDateTime.now()
+            null,
+            "accepter@example.edu.cn",
+            "20260002",
+            "hash",
+            "接单者",
+            null,
+            UserRole.USER,
+            UserStatus.ACTIVE,
+            100,
+            new BigDecimal("100.00"),
+            BigDecimal.ZERO,
+            LocalDateTime.now(),
+            LocalDateTime.now()
         )).getId();
     }
 
@@ -122,16 +145,22 @@ class OrderApplicationServiceImplTest {
             accepted.orderId(),
             new UpdateOrderStatusCommand("IN_PROGRESS", "开始处理", null)
         );
-        OrderDetailResponse completed = orderApplicationService.updateStatus(
+        OrderDetailResponse waitingConfirm = orderApplicationService.updateStatus(
             accepterId,
             accepted.orderId(),
             new UpdateOrderStatusCommand("COMPLETED", "已完成并上传凭证", 2)
         );
+        OrderDetailResponse finalCompleted = orderApplicationService.updateStatus(
+            publisherId,
+            accepted.orderId(),
+            new UpdateOrderStatusCommand("COMPLETED", "确认完成", null)
+        );
 
         assertEquals("IN_PROGRESS", inProgress.status());
-        assertEquals("COMPLETED", completed.status());
-        assertTrue(completed.proofSubmitted());
-        assertEquals(2, completed.proofImageCount());
+        assertEquals("IN_PROGRESS", waitingConfirm.status());
+        assertEquals("COMPLETED", finalCompleted.status());
+        assertTrue(waitingConfirm.proofSubmitted());
+        assertEquals(2, waitingConfirm.proofImageCount());
         assertEquals("COMPLETED", demandApplicationService.getDetail(demand.id()).status());
     }
 
@@ -157,8 +186,19 @@ class OrderApplicationServiceImplTest {
         DemandDetailResponse demand = createDemand();
         OrderDetailResponse accepted = orderApplicationService.accept(accepterId, demand.id(), new AcceptOrderCommand("我来"));
         Long outsiderId = userRepository.save(new User(
-            null, "outsider@example.edu.cn", "20260003", "hash", "路人", null,
-            UserRole.USER, UserStatus.ACTIVE, 100, LocalDateTime.now(), LocalDateTime.now()
+            null,
+            "outsider@example.edu.cn",
+            "20260003",
+            "hash",
+            "路人",
+            null,
+            UserRole.USER,
+            UserStatus.ACTIVE,
+            100,
+            new BigDecimal("100.00"),
+            BigDecimal.ZERO,
+            LocalDateTime.now(),
+            LocalDateTime.now()
         )).getId();
 
         BusinessException exception = assertThrows(
@@ -178,6 +218,7 @@ class OrderApplicationServiceImplTest {
             new PublishDemandCommand(
                 "第二个需求",
                 "第二个描述",
+                null,
                 "OTHER",
                 "GULOU",
                 "鼓楼",
@@ -188,6 +229,10 @@ class OrderApplicationServiceImplTest {
                 false
             )
         );
+        demandRepository.findById(secondDemand.id()).ifPresent(saved -> {
+            saved.setStatus(DemandStatus.PENDING);
+            demandRepository.save(saved);
+        });
         orderApplicationService.accept(accepterId, secondDemand.id(), new AcceptOrderCommand("第二单"));
 
         PageResponse<OrderSummaryResponse> history = orderApplicationService.listHistory(
@@ -200,11 +245,12 @@ class OrderApplicationServiceImplTest {
     }
 
     private DemandDetailResponse createDemand() {
-        return demandApplicationService.publish(
+        DemandDetailResponse demand = demandApplicationService.publish(
             publisherId,
             new PublishDemandCommand(
                 "帮拿快递",
                 "下午帮忙拿个快递",
+                null,
                 "EXPRESS",
                 "XIANLIN",
                 "菜鸟驿站",
@@ -215,5 +261,10 @@ class OrderApplicationServiceImplTest {
                 false
             )
         );
+        demandRepository.findById(demand.id()).ifPresent(saved -> {
+            saved.setStatus(DemandStatus.PENDING);
+            demandRepository.save(saved);
+        });
+        return demandApplicationService.getDetail(demand.id());
     }
 }

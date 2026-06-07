@@ -1,5 +1,6 @@
 package com.campushub.backend.auth.domain;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 public class User {
@@ -13,6 +14,8 @@ public class User {
     private UserRole role;
     private UserStatus status;
     private int creditScore;
+    private BigDecimal balance;
+    private BigDecimal frozenBalance;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -29,6 +32,8 @@ public class User {
         UserRole role,
         UserStatus status,
         int creditScore,
+        BigDecimal balance,
+        BigDecimal frozenBalance,
         LocalDateTime createdAt,
         LocalDateTime updatedAt
     ) {
@@ -41,8 +46,40 @@ public class User {
         this.role = role;
         this.status = status;
         this.creditScore = creditScore;
+        this.balance = balance;
+        this.frozenBalance = frozenBalance;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
+    }
+
+    public User(
+        Long id,
+        String email,
+        String studentId,
+        String passwordHash,
+        String nickname,
+        String avatarUrl,
+        UserRole role,
+        UserStatus status,
+        int creditScore,
+        LocalDateTime createdAt,
+        LocalDateTime updatedAt
+    ) {
+        this(
+            id,
+            email,
+            studentId,
+            passwordHash,
+            nickname,
+            avatarUrl,
+            role,
+            status,
+            creditScore,
+            BigDecimal.ZERO,
+            BigDecimal.ZERO,
+            createdAt,
+            updatedAt
+        );
     }
 
     public Long getId() {
@@ -115,6 +152,22 @@ public class User {
 
     public void setCreditScore(int creditScore) {
         this.creditScore = creditScore;
+    }
+
+    public BigDecimal getBalance() {
+        return balance;
+    }
+
+    public void setBalance(BigDecimal balance) {
+        this.balance = balance;
+    }
+
+    public BigDecimal getFrozenBalance() {
+        return frozenBalance;
+    }
+
+    public void setFrozenBalance(BigDecimal frozenBalance) {
+        this.frozenBalance = frozenBalance;
     }
 
     public LocalDateTime getCreatedAt() {

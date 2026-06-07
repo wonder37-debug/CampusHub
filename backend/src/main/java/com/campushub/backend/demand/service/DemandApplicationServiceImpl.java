@@ -1,6 +1,7 @@
 package com.campushub.backend.demand.service;
 
 import com.campushub.backend.auth.domain.User;
+import com.campushub.backend.auth.domain.UserRole;
 import com.campushub.backend.auth.domain.UserStatus;
 import com.campushub.backend.auth.repository.UserRepository;
 import com.campushub.backend.common.api.PageResponse;
@@ -17,14 +18,15 @@ import com.campushub.backend.demand.dto.DemandSummaryResponse;
 import com.campushub.backend.demand.dto.PublishDemandCommand;
 import com.campushub.backend.demand.dto.UpdateDemandCommand;
 import com.campushub.backend.demand.repository.DemandRepository;
+import com.campushub.backend.notification.service.NotificationApplicationService;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
-import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Stream;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -33,31 +35,45 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
     private final DemandRepository demandRepository;
     private final UserRepository userRepository;
     private final SensitiveWordChecker sensitiveWordChecker;
+    private final NotificationApplicationService notificationApplicationService;
 
     public DemandApplicationServiceImpl(
         DemandRepository demandRepository,
         UserRepository userRepository,
         SensitiveWordChecker sensitiveWordChecker
     ) {
+        this(demandRepository, userRepository, sensitiveWordChecker, null);
+    }
+
+    @Autowired
+    public DemandApplicationServiceImpl(
+        DemandRepository demandRepository,
+        UserRepository userRepository,
+        SensitiveWordChecker sensitiveWordChecker,
+        @Autowired(required = false) NotificationApplicationService notificationApplicationService
+    ) {
         this.demandRepository = demandRepository;
         this.userRepository = userRepository;
         this.sensitiveWordChecker = sensitiveWordChecker;
+        this.notificationApplicationService = notificationApplicationService;
     }
 
     @Override
     public DemandDetailResponse publish(Long publisherId, PublishDemandCommand command) {
         validatePublishCommand(command);
 
-        User publisher = findActiveUser(publisherId);
+        User publisher = findActivePublisher(publisherId);
         guardForbiddenWords(command.title(), command.description());
-        LocalDateTime now = LocalDateTime.now();
+        validateRewardAgainstBalance(publisher, command.reward());
 
+        LocalDateTime now = LocalDateTime.now();
         Demand demand = new Demand(
             null,
             publisher.getId(),
             publisher.getNickname(),
             command.title().trim(),
             trimToNull(command.description()),
+            trimToNull(command.note()),
             parseCategory(command.category()),
             parseCampusZone(command.campusZone()),
             trimToNull(command.location()),
@@ -65,14 +81,20 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
             command.endTime(),
             normalizeReward(command.reward()),
             command.tags(),
-            DemandStatus.PENDING,
+            DemandStatus.REVIEWING,
+            false,
             command.anonymous(),
             command.anonymous() ? generateAnonymousCode() : null,
+            null,
+            null,
+            null,
             now,
             now
         );
 
-        return DemandDetailResponse.from(demandRepository.save(demand));
+        Demand saved = demandRepository.save(demand);
+        notifyAdminsForReview(saved);
+        return DemandDetailResponse.from(saved);
     }
 
     @Override
@@ -81,8 +103,9 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "demand query must not be null");
         }
 
-        List<Demand> allDemands = demandRepository.findAll();
-        Stream<Demand> filtered = allDemands.stream()
+        LocalDateTime now = LocalDateTime.now();
+        Stream<Demand> filtered = demandRepository.findAll().stream()
+            .filter(demand -> isPubliclyVisible(demand, now))
             .filter(demand -> matchesKeyword(demand, query.q()))
             .filter(demand -> matchesCategory(demand, query.category()))
             .filter(demand -> matchesCampusZone(demand, query.campusZone()))
@@ -126,6 +149,9 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
             validateDescription(command.description());
             demand.setDescription(trimToNull(command.description()));
         }
+        if (command.note() != null) {
+            demand.setNote(trimToNull(command.note()));
+        }
         if (command.category() != null) {
             demand.setCategory(parseCategory(command.category()));
         }
@@ -144,6 +170,9 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
             demand.setEndTime(endTime);
         }
         if (command.reward() != null) {
+            User publisher = userRepository.findById(demand.getPublisherId())
+                .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "publisher not found"));
+            validateRewardAgainstBalance(publisher, command.reward());
             demand.setReward(normalizeReward(command.reward()));
         }
         if (command.tags() != null) {
@@ -158,7 +187,7 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
         return DemandDetailResponse.from(demandRepository.save(demand));
     }
 
-    private User findActiveUser(Long publisherId) {
+    private User findActivePublisher(Long publisherId) {
         if (publisherId == null) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "publisherId must not be null");
         }
@@ -166,6 +195,9 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
             .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "publisher not found"));
         if (user.getStatus() == UserStatus.BANNED) {
             throw new BusinessException(ErrorCode.PERMISSION_DENIED, "banned user cannot publish demands");
+        }
+        if (user.getRole() == UserRole.ADMIN) {
+            throw new BusinessException(ErrorCode.PERMISSION_DENIED, "admin cannot publish demands");
         }
         return user;
     }
@@ -222,6 +254,20 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
         }
     }
 
+    private void validateRewardAgainstBalance(User publisher, BigDecimal reward) {
+        BigDecimal normalizedReward = normalizeReward(reward);
+        if (normalizedReward.compareTo(resolveAvailableBalance(publisher)) > 0) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "reward must not exceed available balance");
+        }
+    }
+
+    private BigDecimal resolveAvailableBalance(User user) {
+        BigDecimal balance = user.getBalance() == null ? BigDecimal.ZERO : user.getBalance();
+        BigDecimal frozenBalance = user.getFrozenBalance() == null ? BigDecimal.ZERO : user.getFrozenBalance();
+        BigDecimal available = balance.subtract(frozenBalance);
+        return available.max(BigDecimal.ZERO);
+    }
+
     private void guardForbiddenWords(String title, String description) {
         String merged = (title == null ? "" : title) + "\n" + (description == null ? "" : description);
         if (sensitiveWordChecker.containsForbiddenWords(merged)) {
@@ -233,11 +279,11 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
         if (category == null || category.isBlank()) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "category must not be blank");
         }
-        try {
-            return DemandCategory.valueOf(category.trim().toUpperCase(Locale.ROOT));
-        } catch (IllegalArgumentException exception) {
+        DemandCategory resolved = DemandCategory.fromValue(category);
+        if (resolved == null) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "unsupported category: " + category);
         }
+        return resolved;
     }
 
     private CampusZone parseCampusZone(String campusZone) {
@@ -263,6 +309,14 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
 
     private String trimToNull(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private boolean isPubliclyVisible(Demand demand, LocalDateTime now) {
+        return demand.getStatus() == DemandStatus.PENDING && !isExpired(demand, now);
+    }
+
+    private boolean isExpired(Demand demand, LocalDateTime now) {
+        return demand.getEndTime() != null && demand.getEndTime().isBefore(now);
     }
 
     private boolean matchesKeyword(Demand demand, String keyword) {
@@ -302,16 +356,25 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
         return switch (sort) {
             case REWARD -> Comparator.comparing(Demand::getReward, Comparator.nullsLast(BigDecimal::compareTo))
                 .reversed()
-                .thenComparing(
-                    Demand::getCreatedAt,
-                    Comparator.nullsLast(Comparator.reverseOrder())
-                );
-            case DISTANCE, TIME, RECOMMEND -> Comparator.comparing(Demand::getCreatedAt, Comparator.nullsLast(LocalDateTime::compareTo))
-                .reversed();
+                .thenComparing(Demand::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder()));
+            case DISTANCE, TIME, RECOMMEND ->
+                Comparator.comparing(Demand::getCreatedAt, Comparator.nullsLast(LocalDateTime::compareTo)).reversed();
         };
     }
 
     private String generateAnonymousCode() {
         return "匿名校友" + UUID.randomUUID().toString().replace("-", "").substring(0, 4).toUpperCase(Locale.ROOT);
+    }
+
+    private void notifyAdminsForReview(Demand demand) {
+        if (notificationApplicationService == null || demand == null || demand.getId() == null) {
+            return;
+        }
+        for (User admin : userRepository.findByRole(UserRole.ADMIN)) {
+            if (admin.getId() == null || admin.getStatus() == UserStatus.BANNED) {
+                continue;
+            }
+            notificationApplicationService.notifyDemandReviewRequested(admin.getId(), demand.getId());
+        }
     }
 }

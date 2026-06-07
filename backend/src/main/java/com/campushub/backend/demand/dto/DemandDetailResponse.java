@@ -11,6 +11,7 @@ public record DemandDetailResponse(
     String publisherDisplayName,
     String title,
     String description,
+    String note,
     String category,
     String campusZone,
     String location,
@@ -21,6 +22,9 @@ public record DemandDetailResponse(
     String status,
     boolean anonymous,
     String anonymousCode,
+    Long reviewedBy,
+    LocalDateTime reviewedAt,
+    String reviewReason,
     LocalDateTime createdAt,
     LocalDateTime updatedAt
 ) {
@@ -34,6 +38,7 @@ public record DemandDetailResponse(
             visibleName,
             demand.getTitle(),
             demand.getDescription(),
+            demand.getNote(),
             demand.getCategory().name(),
             demand.getCampusZone().name(),
             demand.getLocation(),
@@ -44,6 +49,9 @@ public record DemandDetailResponse(
             demand.getStatus().name(),
             demand.isAnonymous(),
             demand.getAnonymousCode(),
+            demand.getReviewedBy(),
+            demand.getReviewedAt(),
+            demand.getReviewReason(),
             demand.getCreatedAt(),
             demand.getUpdatedAt()
         );

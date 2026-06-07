@@ -5,5 +5,6 @@ public enum DemandStatus {
     REVIEWING,
     IN_PROGRESS,
     COMPLETED,
-    CANCELLED
+    CANCELLED,
+    EXPIRED
 }

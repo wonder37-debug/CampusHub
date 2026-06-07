@@ -414,6 +414,73 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /users/me:
+    get:
+      summary: 获取当前用户资料
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 当前用户资料
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /users/{userId}/reviews:
+    get:
+      summary: 获取指定用户的评价列表
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - in: query
+          name: size
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: 评价列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewListResponse'
+        '404':
+          description: 未找到
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /recommendations:
     get:
       summary: 简单推荐需求（基于分类/位置/历史行为的规则推荐）
@@ -623,6 +690,23 @@ components:
           type: string
         avatarUrl:
           type: string
+        role:
+          type: string
+          description: 用户角色
+        status:
+          type: string
+          description: 用户状态
+        creditScore:
+          type: integer
+          description: 信用分
+        balance:
+          type: number
+          format: double
+          description: 可用余额
+        frozenBalance:
+          type: number
+          format: double
+          description: 冻结金额
     UserResponse:
       allOf:
         - $ref: '#/components/schemas/StandardResponse'
@@ -727,24 +811,46 @@ components:
       properties:
         id:
           type: string
+        publisherId:
+          type: string
+        publisherDisplayName:
+          type: string
+        publisher:
+          $ref: '#/components/schemas/UserSummary'
         title:
           type: string
         description:
           type: string
         category:
           type: string
+        campusZone:
+          type: string
         location:
           type: string
         startTime:
           type: string
+          format: date-time
         endTime:
           type: string
+          format: date-time
         reward:
           type: number
+        tags:
+          type: array
+          items:
+            type: string
         status:
           type: string
-        creator:
-          $ref: '#/components/schemas/UserSummary'
+        anonymous:
+          type: boolean
+        anonymousCode:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
     DemandResponse:
       allOf:
         - $ref: '#/components/schemas/StandardResponse'
@@ -809,20 +915,42 @@ components:
           type: string
         orderId:
           type: string
-        author:
-          $ref: '#/components/schemas/UserSummary'
+        authorId:
+          type: string
+        targetId:
+          type: string
         rating:
           type: integer
         comment:
           type: string
         createdAt:
           type: string
+          format: date-time
     ReviewResponse:
       allOf:
         - $ref: '#/components/schemas/StandardResponse'
       properties:
         data:
           $ref: '#/components/schemas/Review'
+    ReviewList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Review'
+        page:
+          type: integer
+        size:
+          type: integer
+        total:
+          type: integer
+    ReviewListResponse:
+      allOf:
+        - $ref: '#/components/schemas/StandardResponse'
+      properties:
+        data:
+          $ref: '#/components/schemas/ReviewList'
     Notification:
       type: object
       properties:

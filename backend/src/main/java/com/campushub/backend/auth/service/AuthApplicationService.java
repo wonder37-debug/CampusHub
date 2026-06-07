@@ -1,5 +1,6 @@
 package com.campushub.backend.auth.service;
 
+import com.campushub.backend.auth.dto.EmailVerificationIssue;
 import com.campushub.backend.auth.dto.LoginCommand;
 import com.campushub.backend.auth.dto.LoginResult;
 import com.campushub.backend.auth.dto.RegisterCommand;
@@ -7,6 +8,8 @@ import com.campushub.backend.auth.dto.UpdateProfileCommand;
 import com.campushub.backend.auth.dto.UserProfileResponse;
 
 public interface AuthApplicationService {
+
+    EmailVerificationIssue sendRegistrationCode(String email, String studentId);
 
     UserProfileResponse register(RegisterCommand command);
 
