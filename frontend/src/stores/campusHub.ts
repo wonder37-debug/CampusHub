@@ -587,7 +587,8 @@ export const useCampusHubStore = defineStore('campusHub', {
         }, this.token)
 
         const mapped = mapOrderRecord(order)
-        await this.fetchDemands()
+        // 单独刷新当前需求状态，避免 fetchDemands() 覆盖列表导致详情页显示“未找到需求”
+        await this.fetchDemandDetail(demandId)
         await this.fetchOrders()
         await this.fetchNotifications()
         return mapped
@@ -607,7 +608,7 @@ export const useCampusHubStore = defineStore('campusHub', {
       }, this.token)
 
       const mapped = mapOrderRecord(order)
-      await this.fetchDemands()
+      await this.fetchDemandDetail(String(mapped.demandId ?? ''))
       await this.fetchOrders()
       await this.fetchNotifications()
       return mapped
@@ -620,7 +621,7 @@ export const useCampusHubStore = defineStore('campusHub', {
       }, this.token)
 
       const mapped = mapOrderRecord(order)
-      await this.fetchDemands()
+      await this.fetchDemandDetail(String(mapped.demandId ?? ''))
       await this.fetchOrders()
       await this.fetchNotifications()
       return mapped
@@ -633,7 +634,7 @@ export const useCampusHubStore = defineStore('campusHub', {
       }, this.token)
 
       const mapped = mapOrderRecord(order)
-      await this.fetchDemands()
+      await this.fetchDemandDetail(String(mapped.demandId ?? ''))
       await this.fetchOrders()
       await this.fetchNotifications()
       return mapped

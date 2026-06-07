@@ -70,7 +70,13 @@ ON DUPLICATE KEY UPDATE id=id;
 
 INSERT INTO `sys_user` (`email`, `student_id`, `password_hash`, `nickname`, `role`) 
 
-VALUES ('test@edu.cn', 'TEST001', '$2a$10$ZZ9LIwTu25X6iXkfc1SASe4YEghRHDiD1jTMuvWiqCuDEvAunM68O', '测试用户', 'USER')
+VALUES ('test1@edu.cn', 'TEST001', '$2a$10$ZZ9LIwTu25X6iXkfc1SASe4YEghRHDiD1jTMuvWiqCuDEvAunM68O', '测试用户', 'USER')
+
+ON DUPLICATE KEY UPDATE id=id;
+
+INSERT INTO `sys_user` (`email`, `student_id`, `password_hash`, `nickname`, `role`) 
+
+VALUES ('test2@edu.cn', 'TEST002', '$2a$10$ZZ9LIwTu25X6iXkfc1SASe4YEghRHDiD1jTMuvWiqCuDEvAunM68O', '测试用户', 'USER')
 
 ON DUPLICATE KEY UPDATE id=id;
 
