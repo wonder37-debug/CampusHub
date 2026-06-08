@@ -268,6 +268,8 @@ public class ApiViewMapper {
                 && entry.operatorId().equals(userId)
                 && entry.fromStatus() == OrderStatus.IN_PROGRESS
                 && entry.toStatus() == OrderStatus.IN_PROGRESS
-                && "已确认完成，等待对方确认".equals(entry.note()));
+                && ("接单方确认完成，等待需求方确认".equals(entry.note())
+                    || "需求方确认完成，等待接单方确认".equals(entry.note())
+                    || "已确认完成，等待对方确认".equals(entry.note())));
     }
 }

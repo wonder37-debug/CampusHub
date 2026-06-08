@@ -39,6 +39,11 @@ public class InMemoryReviewRepository implements ReviewRepository {
     }
 
     @Override
+    public List<Review> findByAuthorId(Long authorId) {
+        return reviews.stream().filter(review -> review.getAuthorId().equals(authorId)).toList();
+    }
+
+    @Override
     public List<Review> findByOrderId(Long orderId) {
         return new ArrayList<>(reviews.stream().filter(review -> review.getOrderId().equals(orderId)).toList());
     }

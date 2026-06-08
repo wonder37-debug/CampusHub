@@ -5,7 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import { useCampusHubStore } from '@/stores/campusHub'
 import SkeletonCard from '@/components/SkeletonCard.vue'
-import { formatOrderStatus, formatRelativeTime, formatScore, statusToneClass } from '@/utils/format'
+import { formatOrderStatus, formatRelativeTime, formatScore, formatCampusZone, statusToneClass } from '@/utils/format'
 
 const route = useRoute()
 const router = useRouter()
@@ -40,6 +40,85 @@ const pendingReviewTargetLabel = computed(() => {
   if (!pendingReviewTarget.value) return ''
   return store.getUserById(String(pendingReviewTarget.value))?.nickname ?? String(pendingReviewTarget.value)
 })
+
+const formattedCampusZone = computed(() => {
+  const zone = order.value?.demandCampusZone
+  if (!zone) return ''
+  try {
+    return formatCampusZone(zone as Parameters<typeof formatCampusZone>[0])
+  } catch {
+    return zone
+  }
+})
+
+function formatTimelineLabel(label: string, operatorId?: string): string {
+  if (label === '进行中') return '订单进行中'
+  // 新格式文本：根据当前用户角色个性化
+  if (label === '接单方确认完成，等待需求方确认') {
+    return isProvider.value ? '你已确认完成，等待需求方确认' : '接单方已确认完成，等待你的确认'
+  }
+  if (label === '需求方确认完成，等待接单方确认') {
+    return isRequester.value ? '你已确认完成，等待接单方确认' : '需求方已确认完成，等待你的确认'
+  }
+  // 旧格式文本兼容：根据 operatorId 判断角色后个性化
+  if (label === '已确认完成，等待对方确认' && operatorId && order.value) {
+    const isProviderAction = operatorId === order.value.serviceProviderId
+    if (isProviderAction) {
+      return isProvider.value ? '你已确认完成，等待需求方确认' : '接单方已确认完成，等待你的确认'
+    } else {
+      return isRequester.value ? '你已确认完成，等待接单方确认' : '需求方已确认完成，等待你的确认'
+    }
+  }
+  return label
+}
+
+const enhancedTimeline = computed(() => {
+  if (!order.value) return []
+  const items = order.value.timeline.map((entry) => ({
+    ...entry,
+    displayLabel: formatTimelineLabel(entry.label, entry.operatorId),
+  }))
+  const reviews = relatedReviews.value
+  if (reviews.length > 0) {
+    const requesterReviewed = reviews.some((r) => r.reviewerId === order.value!.requesterId)
+    const providerReviewed = reviews.some((r) => r.reviewerId === order.value!.serviceProviderId)
+    if (requesterReviewed) {
+      const review = reviews.find((r) => r.reviewerId === order.value!.requesterId)!
+      items.push({ at: review.createdAt, label: 'reviewer', displayLabel: '需求方已评价' })
+    }
+    if (providerReviewed) {
+      const review = reviews.find((r) => r.reviewerId === order.value!.serviceProviderId)!
+      items.push({ at: review.createdAt, label: 'provider', displayLabel: '接单方已评价' })
+    }
+  }
+  return items
+})
+
+const hasAvailableActions = computed(() => {
+  if (!order.value) return false
+  if (order.value.status === 'ACCEPTED' && (isProvider.value || isRequester.value)) return true
+  if (order.value.status === 'IN_PROGRESS') return true
+  return false
+})
+
+const providerConfirmed = computed(() => {
+  if (!order.value) return false
+  return order.value.timeline.some(
+    (t) => t.label.includes('接单方确认完成') || t.label === '已确认完成，等待对方确认'
+  )
+})
+
+const requesterConfirmed = computed(() => {
+  if (!order.value) return false
+  return order.value.timeline.some(
+    (t) => t.label.includes('需求方确认完成') || t.label === '已确认完成，等待对方确认'
+  )
+})
+
+function reviewDisplayName(name: string, reviewerId: string): string {
+  if (store.currentUser && reviewerId === store.currentUser.id) return '我'
+  return name
+}
 
 function goBack(): void {
   router.back()
@@ -132,41 +211,53 @@ onMounted(() => {
       <div class="mini-grid">
         <div class="mini-stat"><span class="subtle">需求方</span><strong>{{ order.requesterName }}</strong><div class="meta">信用分 {{ formatScore(order.requesterCreditScore) }}</div></div>
         <div class="mini-stat"><span class="subtle">接单方</span><strong>{{ order.serviceProviderName }}</strong><div class="meta">信用分 {{ formatScore(order.serviceProviderCreditScore) }}</div></div>
-        <div class="mini-stat"><span class="subtle">留言</span><strong>{{ order.note || '无' }}</strong></div>
+        <div class="mini-stat"><span class="subtle">接单人的留言</span><strong>{{ order.note || '无' }}</strong></div>
       </div>
 
-      <div class="mini-grid" style="margin-top:12px;">
+      <div class="mini-grid">
+        <div class="mini-stat"><span class="subtle">校区</span><strong>{{ formattedCampusZone || '未填写' }}</strong></div>
         <div class="mini-stat"><span class="subtle">地点</span><strong>{{ order.demandLocation || '未填写' }}</strong></div>
         <div class="mini-stat"><span class="subtle">开始时间</span><strong>{{ order.demandStartTime ? new Date(order.demandStartTime).toLocaleString() : '—' }}</strong></div>
         <div class="mini-stat"><span class="subtle">结束时间</span><strong>{{ order.demandEndTime ? new Date(order.demandEndTime).toLocaleString() : '—' }}</strong></div>
         <div class="mini-stat"><span class="subtle">报酬</span><strong>{{ order.demandReward ? order.demandReward + ' 元' : '无' }}</strong></div>
       </div>
 
+      <div v-if="order.demandDescription" class="mini-grid" style="margin-top:12px;">
+        <div class="mini-stat description-stat">
+          <span class="subtle">需求描述</span>
+          <strong>{{ order.demandDescription }}</strong>
+        </div>
+      </div>
+
       <p v-if="message" class="hero-badge">{{ message }}</p>
       <p v-if="error" class="hero-badge" style="background: rgba(181, 71, 71, 0.14); color: var(--danger)">{{ error }}</p>
 
-      <div class="timeline" style="margin-top: 16px;">
-        <div v-for="entry in order.timeline" :key="`${entry.at}-${entry.label}`" class="timeline-item">
-          <span>{{ entry.label }}</span>
-          <span class="meta">{{ formatRelativeTime(entry.at) }}</span>
+      <div class="timeline-section" style="margin-top: 16px;">
+        <p class="eyebrow" style="margin-bottom: 8px;">订单时间线</p>
+        <div class="timeline">
+          <div v-for="(entry, idx) in enhancedTimeline" :key="`${entry.at}-${entry.displayLabel}-${idx}`" class="timeline-item">
+            <span>{{ entry.displayLabel }}</span>
+            <span class="meta">{{ formatRelativeTime(entry.at) }}</span>
+          </div>
         </div>
       </div>
-      <div v-if="order.status === 'COMPLETED'" class="section-grid" style="margin-top: 16px;">
+      <div v-if="order.status === 'COMPLETED'" style="margin-top: 16px;">
         <div class="list-card">
           <strong>相关评价</strong>
-          <div class="review-grid">
+          <div class="order-review-list">
             <div v-if="relatedReviews.length === 0" class="empty-state">暂无评价记录</div>
-            <div v-for="review in relatedReviews" :key="review.id" class="timeline-item">
-              <div>
-                <strong>{{ review.reviewerName }} → {{ review.targetName }}</strong>
-                <div class="meta">{{ review.comment }}</div>
+            <div v-for="review in relatedReviews" :key="review.id" class="order-review-item">
+              <div class="order-review-body">
+                <strong>{{ reviewDisplayName(review.reviewerName, review.reviewerId) }} → {{ reviewDisplayName(review.targetName, review.targetId) }}</strong>
+                <p v-if="review.comment" class="order-review-comment">{{ review.comment }}</p>
+                <p v-else class="order-review-comment meta">（无文字评价）</p>
               </div>
               <span class="chip is-success">{{ review.rating }} 星</span>
             </div>
           </div>
         </div>
 
-        <div class="list-card" v-if="!hasSubmittedReview && (isRequester || isProvider)">
+        <div class="list-card" v-if="!hasSubmittedReview && (isRequester || isProvider)" style="margin-top: 12px;">
           <strong>提交评价</strong>
           <p v-if="pendingReviewTargetLabel" class="meta">当前待评价对象：{{ pendingReviewTargetLabel }}</p>
           <div class="field">
@@ -185,14 +276,14 @@ onMounted(() => {
           </div>
           <button type="button" class="button primary" @click="submitReview">提交评价</button>
         </div>
-        <div class="list-card" v-else-if="hasSubmittedReview">
+        <div class="list-card" v-else-if="hasSubmittedReview" style="margin-top: 12px;">
           <strong>评价</strong>
           <p class="hero-badge" style="margin-top:8px;">您已提交评价，不可重复评价。</p>
         </div>
       </div>
     </section>
 
-    <section class="panel">
+    <section v-if="hasAvailableActions" class="panel">
       <p class="eyebrow">订单操作</p>
       <div class="card-actions">
         <button v-if="order.status === 'ACCEPTED' && isProvider" type="button" class="button secondary" @click="startOrder">开始执行</button>
@@ -205,14 +296,17 @@ onMounted(() => {
           提交完成确认
         </button>
         <button
-          v-else-if="order.status === 'IN_PROGRESS' && isRequester && !completionSubmitted"
+          v-if="order.status === 'IN_PROGRESS' && isRequester && providerConfirmed && !completionSubmitted"
           type="button"
           class="button primary"
           @click="completeOrder"
         >
           确认完成
         </button>
-        <span v-else-if="order.status === 'IN_PROGRESS'" class="chip is-warning">等待对方确认完成</span>
+        <span
+          v-if="order.status === 'IN_PROGRESS' && ((isProvider && completionSubmitted) || (isRequester && !providerConfirmed) || (!isProvider && !isRequester))"
+          class="chip is-warning"
+        >{{ completionHint || '等待接单方确认完成' }}</span>
         <button v-if="order.status === 'ACCEPTED' && isRequester" type="button" class="button secondary" @click="cancelOrder">取消订单</button>
       </div>
     </section>

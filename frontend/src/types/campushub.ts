@@ -68,12 +68,14 @@ export interface DemandRecord {
 export interface OrderTimelineEntry {
   at: string
   label: string
+  operatorId?: string
 }
 
 export interface OrderRecord {
   id: string
   demandId: string
   demandTitle: string
+  demandDescription?: string
   demandLocation?: string
   demandStartTime?: string
   demandEndTime?: string

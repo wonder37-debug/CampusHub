@@ -141,6 +141,7 @@ function mapOrderRecord(raw: any): OrderRecord {
     id: String(raw.orderId ?? raw.id ?? ''),
     demandId: String(demand.id ?? raw.demandId ?? ''),
     demandTitle: String(demand.title ?? raw.demandTitle ?? ''),
+    demandDescription: String(demand.description ?? raw.demandDescription ?? ''),
     demandLocation: String(demand.location ?? raw.location ?? ''),
     demandStartTime: String(demand.startTime ?? raw.startTime ?? ''),
     demandEndTime: String(demand.endTime ?? raw.endTime ?? ''),
@@ -169,7 +170,14 @@ function mapOrderRecord(raw: any): OrderRecord {
     timeline: Array.isArray(raw.statusHistory)
       ? raw.statusHistory.map((entry: any) => ({
           at: String(entry.changedAt ?? entry.createdAt ?? now()),
-          label: String(entry.note ?? formatOrderStatus(String(entry.toStatus ?? 'ACCEPTED') as OrderStatus))
+          operatorId: entry.operatorId == null ? undefined : String(entry.operatorId),
+          label: String(
+            entry.toStatus === 'ACCEPTED'
+              ? formatOrderStatus('ACCEPTED' as OrderStatus)
+              : entry.toStatus === 'IN_PROGRESS' && !entry.note
+                ? formatOrderStatus('IN_PROGRESS' as OrderStatus)
+                : (entry.note ?? formatOrderStatus(String(entry.toStatus ?? 'ACCEPTED') as OrderStatus))
+          )
         }))
       : []
   }
