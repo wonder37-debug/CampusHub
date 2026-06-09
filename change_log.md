@@ -167,6 +167,22 @@
   - `ProfileView` 新增"别人对我评价"和"我对别人评价"两部分，分类展示用户评价并支持跳转订单详情。
   - 新增 CSS 样式优化评价列表及个人资料页布局。
 
+## 2026-06-09
+
+- `feat(frontend)` 页面切换增加淡入淡出过渡动画（`<Transition name="fade" mode="out-in">`），提升 SPA 流畅感。
+- `fix(frontend)` 修复过渡动画导致的多根节点渲染异常：`AdminView`、`ProfileView`、`DemandDetailView`、`OrderDetailView`、`ProfileEditView` 加包装 `<div>` 确保单一根元素；将 `AdminView` 的 `<teleport>` 移入包装层内部解决页面切换锁死问题。
+- `feat(frontend)` 危险操作全覆盖二次确认：
+  - 取消订单（订单列表页 + 订单详情页）
+  - 完成订单（需求详情页 + 订单详情页 + 订单列表页）
+  - 接单（需求详情页）
+  - 修改个人信息保存（资料编辑页）
+  - 发布需求（需求发布页）
+- `feat(frontend)` 接单方提交完成确认后，订单列表与详情页的"提交完成确认"/"确认完成"按钮自动隐藏，避免重复操作。
+- `feat(frontend)` 需求发布页的报酬输入框下方增加当前可用余额提示。
+- `feat(ui)` `NotFoundView` 与各页面空状态增加 emoji 图标渲染：需求列表 `📋`、订单列表 `📦`、消息列表 `🔔`、未找到需求 `🔍`，其余空状态默认 `📭`。
+- `fix(ci)` 修复流水线配置错误问题。
+- `fix(frontend)` 修复 CI 中委托代办分类前后端不一致问题，统一分类枚举。
+
 ## 补充说明
 
 - 本日志偏向阶段性变更归纳，不等同于逐条 git commit 原文。
