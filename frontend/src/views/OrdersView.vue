@@ -4,6 +4,7 @@ import SkeletonCard from '@/components/SkeletonCard.vue'
 import { useRouter } from 'vue-router'
 
 import { useCampusHubStore } from '@/stores/campusHub'
+import type { DemandRecord, DemandStatus, OrderRecord, OrderStatus } from '@/types/campushub'
 import { formatOrderStatus, formatRelativeTime, statusToneClass, formatDemandStatus, formatMoney, formatDateTime } from '@/utils/format'
 
 const store = useCampusHubStore()
@@ -11,69 +12,113 @@ const router = useRouter()
 const activeTab = ref<'published' | 'accepted'>('published')
 const loadingOrders = ref(false)
 
-const visibleOrders = computed(() => {
-  const currentUserId = store.currentUser?.id
-  if (!currentUserId) return []
+type PublishedOrderItem = OrderRecord & {
+  demandStatus?: never
+  isPlaceholder?: false
+}
 
-  if (activeTab.value === 'accepted') {
-    return store.orders.filter((order) => order.serviceProviderId === currentUserId)
-  }
+type DemandPlaceholderOrder = Omit<OrderRecord, 'status'> & {
+  status: DemandStatus
+  demandStatus: DemandStatus
+  isPlaceholder: true
+}
 
-  // published: include actual orders where current user is requester,
-  // plus published demands by current user that have no order yet (as placeholders)
-  const publishedOrders = store.orders.filter((order) => order.requesterId === currentUserId)
+type OrderListItem = PublishedOrderItem | DemandPlaceholderOrder
 
-  const userDemands = store.demands.filter((d) => d.publisherId === currentUserId)
-  const demandsWithoutOrder = userDemands.filter((d) => !store.orders.some((o) => o.demandId === d.id))
+const PRIORITY_DEMAND_STATUSES = new Set<DemandStatus>(['REVIEWING', 'PENDING'])
 
-  const placeholders = demandsWithoutOrder.map((d) => ({
-    id: `d-${d.id}`,
-    demandId: d.id,
-    demandTitle: d.title,
-    requesterId: d.publisherId,
-    requesterName: d.publisherName,
-    requesterAvatar: d.publisherAvatar,
-    requesterCreditScore: d.publisher?.creditScore ?? 0,
+function createDemandPlaceholder(demand: DemandRecord): DemandPlaceholderOrder {
+  return {
+    id: `d-${demand.id}`,
+    demandId: demand.id,
+    demandTitle: demand.title,
+    requesterId: demand.publisherId,
+    requesterName: demand.publisherName,
+    requesterAvatar: demand.publisherAvatar,
+    requesterCreditScore: demand.publisher?.creditScore ?? 0,
     serviceProviderId: '',
     serviceProviderName: '',
     serviceProviderAvatar: '',
     serviceProviderCreditScore: 0,
-    // keep demand status for placeholders (could be EXPIRED)
-    status: d.status as unknown as import('@/types/campushub').OrderStatus,
-    demandStatus: d.status,
+    status: demand.status,
+    demandStatus: demand.status,
     note: '',
     proofSubmitted: false,
     proofImageCount: 0,
-    createdAt: d.createdAt,
-    updatedAt: d.updatedAt,
-    // include demand fields so the UI can show reward/time/location for placeholders
-    demandStartTime: d.startTime,
-    demandEndTime: d.endTime,
-    demandReward: d.reward,
-    demandLocation: d.location,
+    createdAt: demand.createdAt,
+    updatedAt: demand.updatedAt,
+    demandStartTime: demand.startTime,
+    demandEndTime: demand.endTime,
+    demandReward: demand.reward,
+    demandLocation: demand.location,
     completedAt: '',
     timeline: [],
     isPlaceholder: true
-  }))
+  }
+}
 
-  return [...publishedOrders, ...placeholders]
+function isDemandPlaceholder(order: OrderListItem): order is DemandPlaceholderOrder {
+  return order.isPlaceholder === true
+}
+
+function compareOrderItems(left: OrderListItem, right: OrderListItem): number {
+  const leftPriority = isDemandPlaceholder(left) && PRIORITY_DEMAND_STATUSES.has(left.demandStatus)
+  const rightPriority = isDemandPlaceholder(right) && PRIORITY_DEMAND_STATUSES.has(right.demandStatus)
+  if (leftPriority !== rightPriority) {
+    return leftPriority ? -1 : 1
+  }
+
+  return right.createdAt.localeCompare(left.createdAt)
+}
+
+function displayStatusLabel(order: OrderListItem): string {
+  return isDemandPlaceholder(order) ? formatDemandStatus(order.demandStatus) : formatOrderStatus(order.status as OrderStatus)
+}
+
+function displayStatusTone(order: OrderListItem): string {
+  return statusToneClass(isDemandPlaceholder(order) ? order.demandStatus : order.status)
+}
+
+const visibleOrders = computed<OrderListItem[]>(() => {
+  const currentUserId = store.currentUser?.id
+  if (!currentUserId) return []
+
+  if (activeTab.value === 'accepted') {
+    return store.orders
+      .filter((order) => order.serviceProviderId === currentUserId)
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+  }
+
+  // published: include actual orders where current user is requester,
+  // plus published demands by current user that have no order yet (as placeholders)
+  const publishedOrders = store.orders.filter((order) => order.requesterId === currentUserId) as PublishedOrderItem[]
+  const orderedDemandIds = new Set(publishedOrders.map((order) => order.demandId))
+
+  const userDemands = store.demands.filter((demand) => demand.publisherId === currentUserId)
+  const demandsWithoutOrder = userDemands.filter((demand) => !orderedDemandIds.has(demand.id))
+  const placeholders = demandsWithoutOrder.map(createDemandPlaceholder)
+
+  return [...publishedOrders, ...placeholders].sort(compareOrderItems)
 })
 
-function otherPartyName(order: (typeof store.orders)[number] & { isPlaceholder?: boolean }): string {
+function otherPartyName(order: OrderListItem): string {
   if (activeTab.value === 'published') {
-    return order.isPlaceholder ? '未被接单' : order.serviceProviderName
+    if (isDemandPlaceholder(order)) {
+      if (order.demandStatus === 'REVIEWING') return '待管理员审核'
+      if (order.demandStatus === 'CANCELLED') return '审核未通过'
+      return '未被接单'
+    }
+    return order.serviceProviderName
   }
   return order.requesterName
 }
 
-function openOrder(orderId: string): void {
-  // if placeholder id (starts with d-), open demand instead
-  if (orderId.startsWith('d-')) {
-    const demandId = orderId.replace(/^d-/, '')
-    router.push(`/demands/${demandId}`)
+function openOrder(order: OrderListItem): void {
+  if (isDemandPlaceholder(order)) {
+    router.push(`/demands/${order.demandId}`)
     return
   }
-  router.push(`/orders/${orderId}`)
+  router.push(`/orders/${order.id}`)
 }
 
 async function startOrder(orderId: string): Promise<void> {
@@ -93,7 +138,10 @@ onMounted(() => {
   loadingOrders.value = true
   void (async () => {
     try {
-      await store.fetchOrders()
+      await Promise.all([
+        store.fetchOrders({ page: 1, size: 100, all: true }),
+        store.fetchDemands({ page: 1, size: 100, all: true, includeOwn: true })
+      ])
     } finally {
       loadingOrders.value = false
     }
@@ -133,16 +181,10 @@ onMounted(() => {
         <p>发布需求并等同学接单后，订单会出现在这里。</p>
       </div>
 
-      <article v-for="order in visibleOrders" :key="order.id" class="list-card order-card" @click="openOrder(order.id)">
+      <article v-for="order in visibleOrders" :key="order.id" class="list-card order-card" @click="openOrder(order)">
         <div class="status-row">
-          <template v-if="(order as any).isPlaceholder">
-            <span class="chip" :class="statusToneClass((order as any).demandStatus || 'PENDING')">{{ formatDemandStatus((order as any).demandStatus || 'PENDING') }}</span>
-            <span class="chip">发布单</span>
-          </template>
-          <template v-else>
-            <span class="chip" :class="statusToneClass(order.status)">{{ formatOrderStatus(order.status) }}</span>
-            <span class="chip">{{ activeTab === 'published' ? '发布单' : '接单单' }}</span>
-          </template>
+          <span class="chip" :class="displayStatusTone(order)">{{ displayStatusLabel(order) }}</span>
+          <span class="chip">{{ activeTab === 'published' ? '发布单' : '接单单' }}</span>
         </div>
 
         <div class="card-head">

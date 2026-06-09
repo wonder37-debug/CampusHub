@@ -12,11 +12,25 @@ public record DemandQuery(
     LocalDateTime startTimeFrom,
     LocalDateTime startTimeTo,
     DemandSort sort,
-    PageQuery pageQuery
+    PageQuery pageQuery,
+    Long currentUserId
 ) {
 
     public DemandQuery {
         pageQuery = pageQuery == null ? PageQuery.defaultPage() : pageQuery;
         sort = sort == null ? DemandSort.TIME : sort;
+    }
+
+    public DemandQuery(
+        String q,
+        String category,
+        String campusZone,
+        String location,
+        LocalDateTime startTimeFrom,
+        LocalDateTime startTimeTo,
+        DemandSort sort,
+        PageQuery pageQuery
+    ) {
+        this(q, category, campusZone, location, startTimeFrom, startTimeTo, sort, pageQuery, null);
     }
 }

@@ -54,6 +54,26 @@ function unwrapApiPayload<T>(payload: any): T {
   return payload as T
 }
 
+const MAX_PAGE_SIZE = 100
+
+function normalizePageSize(size: number | undefined): number {
+  const resolved = Number(size ?? MAX_PAGE_SIZE)
+  if (!Number.isFinite(resolved)) {
+    return MAX_PAGE_SIZE
+  }
+
+  return Math.min(Math.max(Math.trunc(resolved), 1), MAX_PAGE_SIZE)
+}
+
+function extractPageItems(payload: any): any[] {
+  return Array.isArray(payload?.items) ? payload.items : Array.isArray(payload) ? payload : payload?.data?.items ?? []
+}
+
+function extractPageTotal(payload: any, fallback: number): number {
+  const total = Number(payload?.total ?? payload?.data?.total)
+  return Number.isFinite(total) ? total : fallback
+}
+
 // translateFieldName is defined in utils/errorHandler and intentionally not duplicated here
 
 import { translateApiError } from '@/utils/errorHandler'
@@ -738,9 +758,13 @@ export const useCampusHubStore = defineStore('campusHub', {
       sort?: string
       page?: number
       size?: number
+      all?: boolean
+      includeOwn?: boolean
     }): Promise<void> {
       try {
-        const params = new URLSearchParams({ page: '1', size: '100' })
+        const params = new URLSearchParams()
+        const requestedPage = typeof query === 'object' && query?.page != null ? query.page : 1
+        const requestedSize = normalizePageSize(typeof query === 'object' ? query?.size : undefined)
         if (typeof query === 'string') {
           if (query) params.set('status', query)
         } else if (query) {
@@ -752,11 +776,36 @@ export const useCampusHubStore = defineStore('campusHub', {
           if (query.startTimeFrom?.trim()) params.set('startTimeFrom', query.startTimeFrom.trim())
           if (query.startTimeTo?.trim()) params.set('startTimeTo', query.startTimeTo.trim())
           if (query.sort?.trim()) params.set('sort', query.sort.trim())
-          if (query.page != null) params.set('page', String(query.page))
-          if (query.size != null) params.set('size', String(query.size))
+          if (query.includeOwn) params.set('includeOwn', 'true')
         }
-        const payload = await requestJson<any>(`/demands?${params.toString()}`, {}, this.token)
-        const items = Array.isArray(payload?.items) ? payload.items : Array.isArray(payload) ? payload : payload?.data?.items ?? []
+
+        const loadPage = async (page: number) => {
+          params.set('page', String(page))
+          params.set('size', String(requestedSize))
+          return requestJson<any>(`/demands?${params.toString()}`, {}, this.token)
+        }
+
+        if (typeof query === 'object' && query?.all) {
+          const firstPayload = await loadPage(1)
+          const firstItems = extractPageItems(firstPayload)
+          const items = [...firstItems]
+          const total = extractPageTotal(firstPayload, firstItems.length)
+
+          for (let page = 2; items.length < total; page += 1) {
+            const payload = await loadPage(page)
+            const pageItems = extractPageItems(payload)
+            if (!pageItems.length) {
+              break
+            }
+            items.push(...pageItems)
+          }
+
+          this.demands = items.map((item: any) => mapDemandRecord(item))
+          return
+        }
+
+        const payload = await loadPage(requestedPage)
+        const items = extractPageItems(payload)
         this.demands = items.map((item: any) => mapDemandRecord(item))
       } catch {
         this.demands = []
@@ -765,10 +814,38 @@ export const useCampusHubStore = defineStore('campusHub', {
 
     // (recent demand-resolution helpers reverted)
 
-    async fetchOrders(): Promise<void> {
+    async fetchOrders(query: { page?: number; size?: number; all?: boolean } = {}): Promise<void> {
       try {
-        const payload = await requestJson<any>('/orders?page=1&size=100', {}, this.token)
-        const items = Array.isArray(payload?.items) ? payload.items : Array.isArray(payload) ? payload : payload?.data?.items ?? []
+        const requestedSize = normalizePageSize(query.size)
+        const loadPage = async (page: number) => {
+          const params = new URLSearchParams({
+            page: String(page),
+            size: String(requestedSize)
+          })
+          return requestJson<any>(`/orders?${params.toString()}`, {}, this.token)
+        }
+
+        if (query.all) {
+          const firstPayload = await loadPage(1)
+          const firstItems = extractPageItems(firstPayload)
+          const items = [...firstItems]
+          const total = extractPageTotal(firstPayload, firstItems.length)
+
+          for (let page = 2; items.length < total; page += 1) {
+            const payload = await loadPage(page)
+            const pageItems = extractPageItems(payload)
+            if (!pageItems.length) {
+              break
+            }
+            items.push(...pageItems)
+          }
+
+          this.orders = items.map((item: any) => mapOrderRecord(item))
+          return
+        }
+
+        const payload = await loadPage(query.page ?? 1)
+        const items = extractPageItems(payload)
         this.orders = items.map((item: any) => mapOrderRecord(item))
       } catch {
         this.orders = []
