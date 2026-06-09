@@ -74,6 +74,8 @@ async function acceptCurrentDemand(): Promise<void> {
     return
   }
 
+  if (!window.confirm('确认接单？接单后将生成订单。')) return
+
   try {
     const order = await store.acceptDemand(demand.value.id, note.value)
     message.value = `已接单，生成订单 ${order.id}`
@@ -99,6 +101,8 @@ async function completeOrder(): Promise<void> {
   if (!relatedOrder.value) {
     return
   }
+
+  if (!window.confirm('确认完成此订单？此操作不可撤销。')) return
 
   try {
     const updatedOrder = await store.completeOrder(relatedOrder.value.id)
@@ -150,7 +154,8 @@ onMounted(() => {
 </script>
 
 <template>
-  <div v-if="loadingDemand" class="page-grid two-column">
+  <div>
+    <div v-if="loadingDemand" class="page-grid two-column">
     <section class="panel">
       <SkeletonCard />
     </section>
@@ -317,15 +322,16 @@ onMounted(() => {
         </div>
       </div>
 
-      <div v-else class="empty-state">
+      <div v-else class="empty-state" style="--empty-icon:'📦'">
         <strong>当前还没有订单记录</strong>
         <p>你可以先在该需求上完成接单操作，再回到这里查看订单与评价流程。</p>
       </div>
     </section>
   </div>
 
-  <div v-else class="empty-state">
+  <div v-else class="empty-state" style="--empty-icon:'🔍'">
     <strong>未找到需求</strong>
     <p>请返回需求列表重新选择一个条目。</p>
+  </div>
   </div>
 </template>

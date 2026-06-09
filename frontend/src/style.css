@@ -1136,3 +1136,28 @@ td .avatar-row strong {
     justify-content: center;
   }
 }
+
+
+/* 页面切换淡入淡出过渡 */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.18s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+/* 空状态卡片 */
+.empty-state {
+  text-align: center;
+  padding: 32px 20px;
+}
+
+.empty-state::before {
+  display: block;
+  font-size: 42px;
+  margin-bottom: 10px;
+  line-height: 1;
+  content: var(--empty-icon, '📭');
+}

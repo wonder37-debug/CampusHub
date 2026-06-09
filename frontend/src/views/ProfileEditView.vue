@@ -31,6 +31,8 @@ async function save(): Promise<void> {
     return
   }
 
+  if (!window.confirm('确认保存个人信息？')) return
+
   saving.value = true
   message.value = ''
   error.value = ''
@@ -54,7 +56,8 @@ onMounted(() => {
 </script>
 
 <template>
-  <div v-if="store.currentUser" class="page-grid">
+  <div>
+    <div v-if="store.currentUser" class="page-grid">
     <section class="panel">
       <div class="page-head">
         <div>
@@ -89,5 +92,6 @@ onMounted(() => {
 
   <div v-else class="empty-state">
     <strong>请先登录</strong>
+  </div>
   </div>
 </template>

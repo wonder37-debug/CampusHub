@@ -125,6 +125,8 @@ async function startOrder(): Promise<void> {
 async function completeOrder(): Promise<void> {
   if (!order.value) return
 
+  if (!window.confirm('确认完成此订单？此操作不可撤销。')) return
+
   message.value = ''
   error.value = ''
 
@@ -177,7 +179,8 @@ onMounted(() => {
 </script>
 
 <template>
-  <div v-if="loadingOrder" class="page-grid">
+  <div>
+    <div v-if="loadingOrder" class="page-grid">
     <section class="panel">
       <SkeletonCard />
     </section>
@@ -308,5 +311,6 @@ onMounted(() => {
 
   <div v-else class="empty-state">
     <strong>未找到订单</strong>
+  </div>
   </div>
 </template>

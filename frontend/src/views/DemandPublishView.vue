@@ -148,6 +148,8 @@ async function submitDemand(): Promise<void> {
     return
   }
 
+  if (!window.confirm('确认发布此需求？发布后将进入审核流程。')) return
+
   submitting.value = true
 
   try {
@@ -297,6 +299,7 @@ async function checkRewardBalance(): Promise<void> {
           <div class="field">
             <label for="demand-reward">报酬 <span class="required-mark">*</span></label>
             <input id="demand-reward" v-model="form.reward" type="number" min="0" step="1" @blur="checkRewardBalance" @input="errors.reward = ''" />
+            <p class="input-help" style="margin-top:4px;">可用余额：{{ formatMoney(store.currentUser?.balance ?? 0) }}</p>
             <p v-if="rewardError || errors.reward" style="color: var(--danger); margin-top: 6px">{{ rewardError || errors.reward }}</p>
           </div>
 

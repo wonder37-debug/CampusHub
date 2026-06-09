@@ -81,6 +81,7 @@ async function startOrder(orderId: string): Promise<void> {
 }
 
 async function completeOrder(orderId: string): Promise<void> {
+  if (!window.confirm('确认完成此订单？此操作不可撤销。')) return
   await store.completeOrder(orderId)
 }
 
@@ -127,8 +128,9 @@ onMounted(() => {
         <SkeletonCard v-for="n in 4" :key="n" />
       </div>
 
-      <div v-else-if="!visibleOrders.length" class="empty-state">
+      <div v-else-if="!visibleOrders.length" class="empty-state" style="--empty-icon:'📦'">
         <strong>暂无订单</strong>
+        <p>发布需求并等同学接单后，订单会出现在这里。</p>
       </div>
 
       <article v-for="order in visibleOrders" :key="order.id" class="list-card order-card" @click="openOrder(order.id)">
@@ -176,12 +178,20 @@ onMounted(() => {
             开始执行
           </button>
           <button
-            v-if="order.status === 'IN_PROGRESS' && activeTab === 'accepted'"
+            v-if="order.status === 'IN_PROGRESS' && activeTab === 'accepted' && !(order as any).completionHint"
             type="button"
             class="button primary"
             @click.stop="completeOrder(order.id)"
           >
             提交完成确认
+          </button>
+          <button
+            v-if="order.status === 'IN_PROGRESS' && activeTab === 'published' && (order as any).completionHint"
+            type="button"
+            class="button primary"
+            @click.stop="completeOrder(order.id)"
+          >
+            确认完成
           </button>
         </div>
       </article>

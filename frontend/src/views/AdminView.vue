@@ -179,7 +179,8 @@ function openDemandDetail(demandId: string): void {
 </script>
 
 <template>
-  <div v-if="isAdmin" class="page-grid">
+  <div>
+    <div v-if="isAdmin" class="page-grid">
     <section class="panel">
       <div class="page-head">
         <div>
@@ -364,6 +365,7 @@ function openDemandDetail(demandId: string): void {
       </div>
     </div>
   </teleport>
+  </div>
 </template>
 
 <style scoped>

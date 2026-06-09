@@ -88,13 +88,14 @@ onMounted(() => {
     </section>
 
     <section class="notification-grid">
-      <div v-if="!store.currentUser" class="empty-state">
+      <div v-if="!store.currentUser" class="empty-state" style="--empty-icon:'🔔'">
         <strong>请先登录查看消息</strong>
         <p><a href="/auth" @click.prevent="router.push('/auth')" style="text-decoration: underline; cursor: pointer; color: var(--primary);">点击这里登录</a></p>
       </div>
 
-      <div v-else-if="!notifications.length" class="empty-state">
+      <div v-else-if="!notifications.length" class="empty-state" style="--empty-icon:'🔔'">
         <strong>暂无消息</strong>
+        <p>接单、评价和订单状态会在这里通知你。</p>
       </div>
 
       <article

@@ -320,8 +320,9 @@ onBeforeUnmount(() => {
         <SkeletonCard v-for="n in 6" :key="n" />
       </div>
 
-      <div v-else-if="!visibleDemands.length" class="empty-state">
-        <strong>暂无需求，去发布第一条~</strong>
+      <div v-else-if="!visibleDemands.length" class="empty-state" style="--empty-icon:'📋'">
+        <strong>暂无需求</strong>
+        <p>去发布第一条需求，让同学们看到你。</p>
       </div>
 
       <article

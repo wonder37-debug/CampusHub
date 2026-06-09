@@ -51,7 +51,8 @@ onMounted(() => {
 </script>
 
 <template>
-  <div v-if="store.currentUser" class="page-grid">
+  <div>
+    <div v-if="store.currentUser" class="page-grid">
     <section class="panel">
       <div class="avatar-row">
         <img :src="store.currentUser.avatarUrl" :alt="store.currentUser.nickname" class="avatar large" />
@@ -156,5 +157,6 @@ onMounted(() => {
     <strong>请先登录</strong>
     <p>前往认证页后再查看个人中心。</p>
     <button type="button" class="button primary" @click="router.push('/auth')">去认证页</button>
+  </div>
   </div>
 </template>
