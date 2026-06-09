@@ -22,6 +22,11 @@ public interface ReviewRepository {
     List<Review> findByTargetId(Long targetId);
 
     /**
+     * 查询某个用户发出的全部评价。
+     */
+    List<Review> findByAuthorId(Long authorId);
+
+    /**
      * 查询某个订单下的全部评价记录。
      */
     List<Review> findByOrderId(Long orderId);

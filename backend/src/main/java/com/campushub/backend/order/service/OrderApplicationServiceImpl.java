@@ -29,7 +29,8 @@ import org.springframework.stereotype.Service;
 @Service
 public class OrderApplicationServiceImpl implements OrderApplicationService {
 
-    private static final String COMPLETION_PENDING_NOTE = "已确认完成，等待对方确认";
+    private static final String PROVIDER_CONFIRMED_NOTE = "接单方确认完成，等待需求方确认";
+    private static final String REQUESTER_CONFIRMED_NOTE = "需求方确认完成，等待接单方确认";
     private static final String COMPLETION_FINAL_NOTE = "双方已确认完成";
 
     private final OrderRepository orderRepository;
@@ -155,13 +156,23 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
             throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "completion already confirmed by this user");
         }
 
+        // 接单方必须首先确认完成
+        boolean isOperatorProvider = operatorId.equals(order.getAccepterId());
+        boolean isOperatorRequester = operatorId.equals(order.getPublisherId());
+        boolean providerConfirmed = hasCompletionConfirmation(order, order.getAccepterId());
+
+        if (isOperatorRequester && !providerConfirmed) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "接单方需要先确认完成");
+        }
+
         LocalDateTime now = LocalDateTime.now();
         if (!hasCompletionConfirmation(order, counterpartId)) {
             if (command != null && command.proofImageCount() != null) {
                 order.setProofSubmitted(true);
                 order.setProofImageCount(command.proofImageCount());
             }
-            order.addHistory(OrderStatus.IN_PROGRESS, OrderStatus.IN_PROGRESS, operatorId, COMPLETION_PENDING_NOTE, now);
+            String pendingNote = isOperatorProvider ? PROVIDER_CONFIRMED_NOTE : REQUESTER_CONFIRMED_NOTE;
+            order.addHistory(OrderStatus.IN_PROGRESS, OrderStatus.IN_PROGRESS, operatorId, pendingNote, now);
             order.setUpdatedAt(now);
             orderRepository.save(order);
             notificationApplicationService.notifyOrderCompletionPending(counterpartId, order.getId());
@@ -260,7 +271,8 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
                 && entry.operatorId().equals(userId)
                 && entry.fromStatus() == OrderStatus.IN_PROGRESS
                 && entry.toStatus() == OrderStatus.IN_PROGRESS
-                && COMPLETION_PENDING_NOTE.equals(entry.note()));
+                && (PROVIDER_CONFIRMED_NOTE.equals(entry.note())
+                    || REQUESTER_CONFIRMED_NOTE.equals(entry.note())));
     }
 
     private Long getCounterpartId(Order order, Long operatorId) {
