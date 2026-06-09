@@ -1,6 +1,7 @@
 package com.campushub.backend.demand.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -169,6 +170,58 @@ class DemandApplicationServiceImplTest {
 
         assertEquals(1, response.total());
         assertEquals("STUDY_TUTORING", response.items().get(0).category());
+    }
+
+    @Test
+    void shouldIncludeOwnReviewingAndCancelledDemandsInList() {
+        DemandDetailResponse reviewing = demandApplicationService.publish(
+            publisherId,
+            new PublishDemandCommand(
+                "待审核跑腿",
+                "等待管理员审核",
+                null,
+                "EXPRESS",
+                "XIANLIN",
+                "仙林校区",
+                null,
+                null,
+                BigDecimal.ZERO,
+                List.of(),
+                false
+            )
+        );
+        DemandDetailResponse cancelled = demandApplicationService.publish(
+            publisherId,
+            new PublishDemandCommand(
+                "审核未通过需求",
+                "模拟审核驳回后的发布单",
+                null,
+                "OTHER",
+                "GULOU",
+                "鼓楼校区",
+                null,
+                null,
+                BigDecimal.ZERO,
+                List.of(),
+                false
+            )
+        );
+        demandRepository.findById(cancelled.id()).ifPresent(demand -> {
+            demand.setStatus(DemandStatus.CANCELLED);
+            demandRepository.save(demand);
+        });
+
+        PageResponse<DemandSummaryResponse> publicPage = demandApplicationService.list(
+            new DemandQuery(null, null, null, null, null, null, DemandSort.TIME, new PageQuery(1, 20))
+        );
+        PageResponse<DemandSummaryResponse> ownerPage = demandApplicationService.list(
+            new DemandQuery(null, null, null, null, null, null, DemandSort.TIME, new PageQuery(1, 20), publisherId)
+        );
+
+        assertFalse(publicPage.items().stream().anyMatch(item -> item.id().equals(reviewing.id())));
+        assertFalse(publicPage.items().stream().anyMatch(item -> item.id().equals(cancelled.id())));
+        assertTrue(ownerPage.items().stream().anyMatch(item -> item.id().equals(reviewing.id()) && item.status().equals("REVIEWING")));
+        assertTrue(ownerPage.items().stream().anyMatch(item -> item.id().equals(cancelled.id()) && item.status().equals("CANCELLED")));
     }
 
     @Test

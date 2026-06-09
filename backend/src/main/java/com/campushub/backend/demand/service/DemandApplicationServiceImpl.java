@@ -105,7 +105,9 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
 
         LocalDateTime now = LocalDateTime.now();
         Stream<Demand> filtered = demandRepository.findAll().stream()
-            .filter(demand -> isPubliclyVisible(demand, now))
+            .filter(demand -> isPubliclyVisible(demand, now)
+                || (query.currentUserId() != null && demand.getPublisherId() != null
+                    && demand.getPublisherId().equals(query.currentUserId())))
             .filter(demand -> matchesKeyword(demand, query.q()))
             .filter(demand -> matchesCategory(demand, query.category()))
             .filter(demand -> matchesCampusZone(demand, query.campusZone()))
