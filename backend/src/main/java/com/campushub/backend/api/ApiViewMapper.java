@@ -40,8 +40,7 @@ public class ApiViewMapper {
     }
 
     public DemandView toDemandView(Demand demand, CurrentUser currentUser) {
-        boolean canSeePublisher = !demand.isAnonymous()
-            || currentUser != null && (currentUser.isAdmin() || demand.getPublisherId().equals(currentUser.userId()));
+        boolean canSeePublisher = canSeeDemandPublisher(demand, currentUser);
         User publisherUser = demand.getPublisherId() == null ? null : userRepository.findById(demand.getPublisherId()).orElse(null);
         Long publisherId = canSeePublisher ? demand.getPublisherId() : null;
         String publisherDisplayName = canSeePublisher ? demand.getPublisherDisplayName() : demand.getAnonymousCode();
@@ -93,8 +92,12 @@ public class ApiViewMapper {
         Demand demand = demandRepository.findById(order.getDemandId()).orElse(null);
         User requester = userRepository.findById(order.getPublisherId()).orElse(null);
         User provider = userRepository.findById(order.getAccepterId()).orElse(null);
+
+        boolean canSeePublisher = demand == null || canSeeDemandPublisher(demand, currentUser);
+        String anonymousCode = demand != null ? demand.getAnonymousCode() : null;
+
         List<ReviewView> reviews = reviewRepository.findByOrderId(order.getId()).stream()
-            .map(this::toReviewView)
+            .map(review -> toReviewView(review, canSeePublisher, order.getPublisherId(), anonymousCode))
             .toList();
         boolean currentUserReviewed = currentUser != null
             && reviewRepository.findByOrderIdAndAuthorId(order.getId(), currentUser.userId()).isPresent();
@@ -115,7 +118,7 @@ public class ApiViewMapper {
             order.getUpdatedAt(),
             order.getCompletedAt(),
             demand == null ? null : toDemandView(demand, currentUser),
-            requester == null ? null : UserSummaryView.from(requester),
+            requester == null ? null : anonymizeUserSummary(UserSummaryView.from(requester), canSeePublisher, anonymousCode),
             provider == null ? null : UserSummaryView.from(provider),
             order.getStatusHistory().stream().map(this::toTimelineView).toList(),
             reviews,
@@ -126,17 +129,52 @@ public class ApiViewMapper {
     }
 
     public ReviewView toReviewView(Review review) {
+        return toReviewView(review, true, null, null);
+    }
+
+    private ReviewView toReviewView(Review review, boolean canSeePublisher, Long publisherId, String anonymousCode) {
         User author = userRepository.findById(review.getAuthorId()).orElse(null);
         User target = userRepository.findById(review.getTargetId()).orElse(null);
+
+        boolean authorIsAnonPublisher = !canSeePublisher && publisherId != null && publisherId.equals(review.getAuthorId());
+        boolean targetIsAnonPublisher = !canSeePublisher && publisherId != null && publisherId.equals(review.getTargetId());
+
+        UserSummaryView authorView = author == null ? null
+            : anonymizeUserSummary(UserSummaryView.from(author), canSeePublisher || !publisherId.equals(review.getAuthorId()), anonymousCode);
+        String targetName = target == null ? null
+            : (targetIsAnonPublisher ? (anonymousCode != null ? anonymousCode : "匿名校友") : target.getNickname());
+
         return new ReviewView(
             review.getId(),
             review.getOrderId(),
             review.getRating(),
             review.getComment(),
             review.getTargetId(),
-            target == null ? null : target.getNickname(),
-            author == null ? null : UserSummaryView.from(author),
+            targetName,
+            authorView,
             review.getCreatedAt()
+        );
+    }
+
+    private boolean canSeeDemandPublisher(Demand demand, CurrentUser currentUser) {
+        return !demand.isAnonymous()
+            || currentUser != null && (currentUser.isAdmin() || demand.getPublisherId().equals(currentUser.userId()));
+    }
+
+    private UserSummaryView anonymizeUserSummary(UserSummaryView original, boolean canSee, String anonymousCode) {
+        if (canSee || original == null) return original;
+        String anonName = anonymousCode != null ? anonymousCode : "匿名校友";
+        return new UserSummaryView(
+            original.id(),
+            null,
+            null,
+            anonName,
+            original.avatarUrl(),
+            original.role(),
+            original.status(),
+            original.creditScore(),
+            original.balance(),
+            original.frozenBalance()
         );
     }
 
