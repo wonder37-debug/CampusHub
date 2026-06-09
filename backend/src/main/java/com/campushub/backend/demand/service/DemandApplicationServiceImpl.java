@@ -314,7 +314,12 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
     }
 
     private boolean isPubliclyVisible(Demand demand, LocalDateTime now) {
-        return demand.getStatus() == DemandStatus.PENDING && !isExpired(demand, now);
+        if (isExpired(demand, now)) {
+            return false;
+        }
+        return demand.getStatus() == DemandStatus.PENDING
+            || demand.getStatus() == DemandStatus.IN_PROGRESS
+            || demand.getStatus() == DemandStatus.COMPLETED;
     }
 
     private boolean isExpired(Demand demand, LocalDateTime now) {
