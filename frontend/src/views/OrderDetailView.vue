@@ -104,14 +104,8 @@ const hasAvailableActions = computed(() => {
 const providerConfirmed = computed(() => {
   if (!order.value) return false
   return order.value.timeline.some(
-    (t) => t.label.includes('接单方确认完成') || t.label === '已确认完成，等待对方确认'
-  )
-})
-
-const requesterConfirmed = computed(() => {
-  if (!order.value) return false
-  return order.value.timeline.some(
-    (t) => t.label.includes('需求方确认完成') || t.label === '已确认完成，等待对方确认'
+    (t) => t.label.includes('接单方确认完成')
+      || (t.label === '已确认完成，等待对方确认' && t.operatorId === order.value!.serviceProviderId)
   )
 })
 
