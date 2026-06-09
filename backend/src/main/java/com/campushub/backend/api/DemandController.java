@@ -79,6 +79,7 @@ public class DemandController {
         @RequestParam(required = false) LocalDateTime startTimeFrom,
         @RequestParam(required = false) LocalDateTime startTimeTo,
         @RequestParam(required = false) String sort,
+        @RequestParam(defaultValue = "false") boolean includeOwn,
         @RequestParam(defaultValue = "1") int page,
         @RequestParam(defaultValue = "20") int size
     ) {
@@ -93,7 +94,8 @@ public class DemandController {
                 startTimeFrom,
                 startTimeTo,
                 resolvedSort,
-                new PageQuery(page, size)
+                new PageQuery(page, size),
+                includeOwn && currentUser != null ? currentUser.userId() : null
             )
         );
         List<DemandView> items = rawPage.items().stream()
