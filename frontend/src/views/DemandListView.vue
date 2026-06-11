@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import SkeletonCard from '@/components/SkeletonCard.vue'
 import { useRouter } from 'vue-router'
 
@@ -24,11 +24,9 @@ const filters = reactive({
   size: 6
 })
 
-const listRef = ref<HTMLElement | null>(null)
 const refreshing = ref(false)
 const loadingDemands = ref(false)
 const recommendedItems = ref<RecommendationRecord[]>([])
-let observer: IntersectionObserver | null = null
 
 function setSortField(field: DemandSortField): void {
   if (filters.sortField === field) {
@@ -129,6 +127,7 @@ const totalCount = computed(() => {
   return filteredDemandItems(store.demands).length
 })
 const hasMore = computed(() => visibleDemands.value.length < totalCount.value)
+const allLoaded = computed(() => !hasMore.value && totalCount.value > 0)
 
 async function refreshList(): Promise<void> {
   refreshing.value = true
@@ -149,12 +148,6 @@ async function refreshList(): Promise<void> {
     }
   } finally {
     refreshing.value = false
-  }
-}
-
-function loadMore(): void {
-  if (hasMore.value) {
-    filters.page += 1
   }
 }
 
@@ -183,27 +176,16 @@ async function syncRecommendations(): Promise<void> {
 }
 
 onMounted(() => {
-  // 首页仅请求 PENDING 的需求以减小数据量并符合展示目的
   loadingDemands.value = true
   void (async () => {
     try {
       await refreshList()
+    } catch {
+      // handled by store
     } finally {
       loadingDemands.value = false
     }
   })()
-
-  if (listRef.value) {
-    observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          loadMore()
-        }
-      },
-      { rootMargin: '200px' }
-    )
-    observer.observe(listRef.value)
-  }
 })
 
 watch(
@@ -214,15 +196,12 @@ watch(
 )
 
 watch(
-  () => [filters.q, filters.category, filters.campusZone],
+  () => [filters.q, filters.category, filters.campusZone, filters.status],
   () => {
     void refreshList()
   }
 )
 
-onBeforeUnmount(() => {
-  observer?.disconnect()
-})
 </script>
 
 <template>
@@ -234,7 +213,6 @@ onBeforeUnmount(() => {
           <h1 class="page-title">需求列表</h1>
           <p class="page-summary">筛选最新需求，点击卡片查看详情并可直接接单。</p>
         </div>
-        <!-- 已有刷新列表按钮，移除重复的“下拉刷新”按钮 -->
       </div>
 
       <div class="filters">
@@ -244,7 +222,7 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="field" style="flex: 0 1 160px;">
-          <label for="demand-category">分类</label>
+          <label for="demand-category">订单分类</label>
           <select id="demand-category" v-model="filters.category">
             <option value="">全部分类</option>
             <option v-for="category in DEMAND_CATEGORY_OPTIONS" :key="category" :value="category">
@@ -254,7 +232,7 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="field" style="flex: 0 1 140px;">
-          <label for="demand-status">状态</label>
+          <label for="demand-status">订单状态</label>
           <select id="demand-status" v-model="filters.status">
             <option value="">全部状态</option>
             <option value="PENDING">开放中</option>
@@ -311,7 +289,14 @@ onBeforeUnmount(() => {
       </div>
     </section>
 
-    <section class="demand-grid" ref="listRef">
+    <div class="publish-action-bar">
+      <button class="publish-button" type="button" @click="goPublish">
+        <span class="publish-icon">+</span>
+        发布需求
+      </button>
+    </div>
+
+    <section class="demand-grid">
       <div v-if="refreshing" class="empty-state">
         <strong>正在刷新...</strong>
       </div>
@@ -375,26 +360,64 @@ onBeforeUnmount(() => {
         <p>描述：{{ truncateText(demand.description || '无', 86) }}</p>
 
         <div class="avatar-row">
-          <img :src="demand.publisher?.avatarUrl ?? demand.publisherAvatar" :alt="demand.publisher?.nickname ?? demand.publisherName" class="avatar" />
+          <img :src="demand.publisher?.avatarUrl ?? demand.publisherAvatar" :alt="(demand.anonymous ? demand.anonymousCode : null) ?? demand.publisher?.nickname ?? demand.publisherName" class="avatar" />
           <div>
-            <strong>{{ demand.anonymous ? demand.anonymousCode ?? '匿名用户' : (demand.publisher?.nickname ?? demand.publisherName) }}</strong>
-            <div class="meta">信用分：{{ demand.publisher ? formatScore(demand.publisher.creditScore) : '未知' }}</div>
+            <strong>{{ demand.anonymous ? (demand.anonymousCode ?? '匿名用户') : (demand.publisher?.nickname ?? demand.publisherName) }}</strong>
+            <div class="meta">信用分：{{ demand.anonymous ? '匿名保护' : (demand.publisher?.creditScore != null ? formatScore(demand.publisher.creditScore) : '未知') }}</div>
           </div>
         </div>
 
         <div class="meta">{{ formatRelativeTime(demand.createdAt) }}</div>
       </article>
 
-      <div v-if="hasMore" class="empty-state subtle" style="background: transparent; box-shadow: none; border: 0;">
-        正在加载更多...
+      <div v-if="allLoaded" class="empty-state subtle" style="background: transparent; box-shadow: none; border: 0;">
+        已展示全部 {{ totalCount }} 条需求
       </div>
     </section>
-
-    <button class="fab" type="button" title="发布需求" @click="goPublish">发布需求</button>
   </div>
 </template>
 
 <style scoped>
+.publish-action-bar {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px 0 12px;
+}
+
+.publish-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 40px;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #2d8a4e 0%, #1b6e3a 100%);
+  color: #fff;
+  font-size: 1.05em;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(45, 138, 78, 0.3);
+  transition: all 0.2s ease;
+}
+
+.publish-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(45, 138, 78, 0.4);
+}
+
+.publish-button:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(45, 138, 78, 0.25);
+}
+
+.publish-icon {
+  font-size: 1.3em;
+  font-weight: 300;
+  line-height: 1;
+}
+
 .sort-toggle-group {
   display: flex;
   flex-wrap: wrap;
