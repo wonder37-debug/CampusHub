@@ -25,6 +25,7 @@ import org.springframework.stereotype.Service;
 public class AuthApplicationServiceImpl implements AuthApplicationService {
 
     private static final int DEFAULT_CREDIT_SCORE = 100;
+    private static final BigDecimal DEFAULT_INITIAL_BALANCE = new BigDecimal("100.00");
     private static final long TOKEN_EXPIRES_IN_SECONDS = 3600L;
     private static final String DEFAULT_NICKNAME = "匿名校友";
 
@@ -94,7 +95,7 @@ public class AuthApplicationServiceImpl implements AuthApplicationService {
             UserRole.USER,
             UserStatus.ACTIVE,
             DEFAULT_CREDIT_SCORE,
-            BigDecimal.ZERO,
+            DEFAULT_INITIAL_BALANCE,
             BigDecimal.ZERO,
             now,
             now
