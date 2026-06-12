@@ -32,17 +32,21 @@ const canAccept = computed(() => {
 
 const acceptDisabledReason = computed(() => {
   if (!demand.value) return '未找到需求'
-  if (demand.value.acceptDisabledReason) return formatAcceptDisabledReason(demand.value.acceptDisabledReason)
+  // 优先展示订单状态相关的真实情况
   if (relatedOrder.value) {
     const s = relatedOrder.value.status
+    if (s === 'COMPLETED') return '订单已完成，无法再次操作'
+    if (s === 'CANCELLED') return '订单已取消，无法再次操作'
     if (s === 'ACCEPTED') return '该需求已被接单，来晚了一步。'
-    if (s === 'COMPLETED' || s === 'CANCELLED') return '该需求已结束。'
+    if (s === 'IN_PROGRESS') return '订单正在执行中。'
   }
+  // 后端提供的不可接单原因
+  if (demand.value.acceptDisabledReason) return formatAcceptDisabledReason(demand.value.acceptDisabledReason)
   if (demand.value.status === 'REVIEWING') return '该需求仍在审核中，暂时无法接单。'
   if (demand.value.status === 'EXPIRED') return '该需求已过期，无法接单。'
   if (!store.currentUser) return '请先登录后再接单。'
-  if (store.currentUser.id === demand.value.publisherId) return '这是您自己发布的需求，不能自行接单'
-  if (store.currentUser.role === 'ADMIN') return '管理员账号无法接单'
+  if (store.currentUser.id === demand.value.publisherId) return '这是您自己发布的需求，不能自行接单。'
+  if (store.currentUser.role === 'ADMIN') return '管理员账号无法接单。'
   return null
 })
 const canStartExecution = computed(() => {
@@ -52,7 +56,20 @@ const canStartExecution = computed(() => {
 })
 const canViewAcceptNote = computed(() => demand.value?.canViewAcceptNote !== false)
 const canSubmitAcceptNote = computed(() => demand.value?.canSubmitAcceptNote !== false)
-const relatedReviews = computed(() => store.reviews.filter((review) => review.orderId === relatedOrder.value?.id))
+const relatedReviews = computed(() => {
+  const orderId = relatedOrder.value?.id
+  if (!orderId) return []
+  const merged = new Map<string, any>()
+  // 从订单响应中获取评价（包含双方评价，第三方用户也能看到）
+  if (relatedOrder.value?.reviews) {
+    for (const r of relatedOrder.value.reviews) merged.set(r.id, r)
+  }
+  // 从 store 中补充（当前用户提交的评价）
+  for (const r of store.reviews.filter((review) => review.orderId === orderId)) {
+    merged.set(r.id, r)
+  }
+  return Array.from(merged.values())
+})
 const hasSubmittedReview = computed(() => {
   if (!relatedOrder.value || !store.currentUser) return false
   if (typeof relatedOrder.value.currentUserReviewed === 'boolean') {
@@ -139,6 +156,12 @@ onMounted(() => {
       await store.fetchDemandDetail(String(route.params.id))
       if (store.currentUser) {
         await store.fetchOrders()
+        // 第三方用户可能不在 store.orders 中，通过 demandId 单独获取关联订单
+        const demandId = String(route.params.id)
+        const hasRelatedOrder = store.orders.some((o) => o.demandId === demandId)
+        if (!hasRelatedOrder) {
+          await store.fetchOrderByDemandId(demandId)
+        }
       }
     } catch {
       try {
@@ -177,9 +200,8 @@ onMounted(() => {
 
       <div class="page-head">
         <div>
-          <p class="eyebrow">需求详情</p>
           <h1 class="page-title">{{ demand.title }}</h1>
-          <p class="page-summary">{{ demand.description }}</p>
+          <p class="page-summary">需求详情：{{ demand.description }}</p>
           <p class="page-meta">时间：{{ formatDateTime(demand.startTime || '') }} - {{ formatDateTime(demand.endTime || '') }}</p>
           <p class="page-meta">地点：{{ demand.location || '未填写' }}</p>
         </div>
@@ -198,6 +220,7 @@ onMounted(() => {
 
       <div class="tag-row">
         <span class="badge is-neutral">{{ demand.anonymous ? '匿名发布' : '实名发布' }}</span>
+        <span v-for="tag in demand.tags" :key="tag" class="badge is-neutral">{{ tag }}</span>
       </div>
 
       <div v-if="demand.status === 'CANCELLED' && demand.reviewReason" class="list-card" style="margin-top: 16px;">
@@ -205,17 +228,13 @@ onMounted(() => {
         <p style="margin-top: 8px; color: var(--danger);">{{ demand.reviewReason }}</p>
       </div>
 
-      <div class="tag-row">
-        <span v-for="tag in demand.tags" :key="tag" class="badge is-neutral">{{ tag }}</span>
-      </div>
-
       <div class="list-card">
         <strong>接单留言</strong>
+        <p v-if="relatedOrder" class="meta" style="margin-top: 4px;">{{ relatedOrder.note || '暂无留言' }}</p>
         <div v-if="canAccept || (canSubmitAcceptNote && canViewAcceptNote)" class="field">
           <label for="accept-note">留言内容</label>
           <textarea id="accept-note" v-model="note" placeholder="给发布者留一句话"></textarea>
         </div>
-        <p v-else-if="!canAccept && relatedOrder" class="meta">接单留言仅对参与者可见。</p>
         <div class="card-actions">
           <button
             v-if="canAccept"
@@ -225,7 +244,6 @@ onMounted(() => {
           >
             立即接单
           </button>
-          <span v-else class="chip is-warning">{{ acceptDisabledReason || '当前需求暂时不可接单' }}</span>
 
           <button v-if="canStartExecution" type="button" class="button secondary" @click="startOrder">开始执行</button>
           <button
@@ -248,6 +266,8 @@ onMounted(() => {
         </div>
       </div>
 
+      <span v-if="!canAccept && acceptDisabledReason" class="chip is-warning">{{ acceptDisabledReason }}</span>
+
       <p v-if="message" class="hero-badge">{{ message }}</p>
       <p v-if="error" class="hero-badge" style="background: rgba(181, 71, 71, 0.14); color: var(--danger)">{{ error }}</p>
     </section>
@@ -269,8 +289,7 @@ onMounted(() => {
               <div class="meta">接单方 · 信用分 {{ formatScore(relatedOrder.serviceProviderCreditScore) }}</div>
             </div>
           </div>
-          <div class="meta" style="margin-top: 8px;">需求方 · 信用分 {{ formatScore(relatedOrder.requesterCreditScore) }}</div>
-          <p>{{ relatedOrder.note || '暂无留言' }}</p>
+          <p>接单留言：{{ relatedOrder.note || '暂无留言' }}</p>
         </div>
 
         <div class="list-card">
@@ -310,7 +329,7 @@ onMounted(() => {
 
         <div v-if="relatedReviews.length" class="list-card">
           <strong>相关评价</strong>
-          <div class="review-grid">
+          <div class="review-list">
             <div v-for="review in relatedReviews" :key="review.id" class="timeline-item">
               <div>
                 <strong>{{ review.reviewerName }} → {{ review.targetName }}</strong>

@@ -73,6 +73,15 @@ public class OrderController {
         return ApiResponse.success(new PageResponse<>(items, rawPage.page(), rawPage.size(), rawPage.total()));
     }
 
+    @GetMapping("/by-demand/{demandId}")
+    public ApiResponse<OrderView> getByDemandId(HttpServletRequest request, @PathVariable Long demandId) {
+        CurrentUser currentUser = requestUserExtractor.requireCurrentUser(request);
+        OrderView view = orderRepository.findByDemandId(demandId)
+            .map(order -> apiViewMapper.toOrderView(order, currentUser))
+            .orElse(null);
+        return ApiResponse.success(view);
+    }
+
     @GetMapping("/{orderId}")
     public ApiResponse<OrderView> detail(HttpServletRequest request, @PathVariable Long orderId) {
         CurrentUser currentUser = requestUserExtractor.requireCurrentUser(request);

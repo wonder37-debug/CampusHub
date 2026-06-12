@@ -18,6 +18,7 @@ import com.campushub.backend.demand.domain.DemandStatus;
 import com.campushub.backend.demand.dto.DemandDetailResponse;
 import com.campushub.backend.demand.dto.DemandSummaryResponse;
 import com.campushub.backend.demand.repository.DemandRepository;
+import com.campushub.backend.demand.service.DemandApplicationService;
 import com.campushub.backend.notification.service.NotificationApplicationService;
 import com.campushub.backend.order.domain.Order;
 import com.campushub.backend.order.domain.OrderStatus;
@@ -47,6 +48,7 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
     private final DemandRepository demandRepository;
     private final OrderRepository orderRepository;
     private final NotificationApplicationService notificationApplicationService;
+    private final DemandApplicationService demandApplicationService;
 
     @Autowired(required = false)
     private ReviewRepository reviewRepository;
@@ -58,12 +60,14 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
         UserRepository userRepository,
         DemandRepository demandRepository,
         OrderRepository orderRepository,
-        NotificationApplicationService notificationApplicationService
+        NotificationApplicationService notificationApplicationService,
+        DemandApplicationService demandApplicationService
     ) {
         this.userRepository = userRepository;
         this.demandRepository = demandRepository;
         this.orderRepository = orderRepository;
         this.notificationApplicationService = notificationApplicationService;
+        this.demandApplicationService = demandApplicationService;
     }
 
     @Override
@@ -191,6 +195,7 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
             demand.setStatus(DemandStatus.CANCELLED);
             demand.setIsApproved(false);
             demand.setReviewReason(reviewReason);
+            demandApplicationService.unfreezePublisherBalance(demandId);
             notificationApplicationService.notifyDemandRejected(
                 demand.getPublisherId(),
                 demand.getId(),

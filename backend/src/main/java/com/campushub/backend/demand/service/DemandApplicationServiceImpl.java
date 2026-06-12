@@ -66,6 +66,9 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
         guardForbiddenWords(command.title(), command.description());
         validateRewardAgainstBalance(publisher, command.reward());
 
+        BigDecimal reward = normalizeReward(command.reward());
+        freezeBalance(publisher, reward);
+
         LocalDateTime now = LocalDateTime.now();
         Demand demand = new Demand(
             null,
@@ -175,7 +178,15 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
             User publisher = userRepository.findById(demand.getPublisherId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "publisher not found"));
             validateRewardAgainstBalance(publisher, command.reward());
-            demand.setReward(normalizeReward(command.reward()));
+            BigDecimal newReward = normalizeReward(command.reward());
+            BigDecimal oldReward = demand.getReward() == null ? BigDecimal.ZERO : demand.getReward();
+            BigDecimal diff = newReward.subtract(oldReward);
+            if (diff.compareTo(BigDecimal.ZERO) > 0) {
+                freezeBalance(publisher, diff);
+            } else if (diff.compareTo(BigDecimal.ZERO) < 0) {
+                unfreezeBalance(publisher, diff.negate());
+            }
+            demand.setReward(newReward);
         }
         if (command.tags() != null) {
             validateTags(command.tags());
@@ -187,6 +198,18 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
         }
         demand.setUpdatedAt(LocalDateTime.now());
         return DemandDetailResponse.from(demandRepository.save(demand));
+    }
+
+    @Override
+    public void unfreezePublisherBalance(Long demandId) {
+        Demand demand = findDemandById(demandId);
+        if (demand.getPublisherId() == null) {
+            return;
+        }
+        User publisher = userRepository.findById(demand.getPublisherId())
+            .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "publisher not found"));
+        BigDecimal reward = demand.getReward() == null ? BigDecimal.ZERO : demand.getReward();
+        unfreezeBalance(publisher, reward);
     }
 
     private User findActivePublisher(Long publisherId) {
@@ -268,6 +291,19 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
         BigDecimal frozenBalance = user.getFrozenBalance() == null ? BigDecimal.ZERO : user.getFrozenBalance();
         BigDecimal available = balance.subtract(frozenBalance);
         return available.max(BigDecimal.ZERO);
+    }
+
+    private void freezeBalance(User user, BigDecimal amount) {
+        BigDecimal currentFrozen = user.getFrozenBalance() == null ? BigDecimal.ZERO : user.getFrozenBalance();
+        user.setFrozenBalance(currentFrozen.add(amount));
+        userRepository.save(user);
+    }
+
+    void unfreezeBalance(User user, BigDecimal amount) {
+        BigDecimal currentFrozen = user.getFrozenBalance() == null ? BigDecimal.ZERO : user.getFrozenBalance();
+        BigDecimal newFrozen = currentFrozen.subtract(amount).max(BigDecimal.ZERO);
+        user.setFrozenBalance(newFrozen);
+        userRepository.save(user);
     }
 
     private void guardForbiddenWords(String title, String description) {

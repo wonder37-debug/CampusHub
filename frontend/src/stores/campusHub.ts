@@ -555,6 +555,27 @@ export const useCampusHubStore = defineStore('campusHub', {
       return mapped
     },
 
+    async fetchOrderByDemandId(demandId: string): Promise<OrderRecord | null> {
+      if (!demandId || !this.token) {
+        return null
+      }
+
+      try {
+        const order = await requestJson<any>(`/orders/by-demand/${encodeURIComponent(demandId)}`, {}, this.token)
+        if (!order) return null
+        const mapped = mapOrderRecord(order)
+        const existingIndex = this.orders.findIndex((item) => item.id === mapped.id)
+        if (existingIndex >= 0) {
+          this.orders.splice(existingIndex, 1, mapped)
+        } else {
+          this.orders.unshift(mapped)
+        }
+        return mapped
+      } catch {
+        return null
+      }
+    },
+
     async approveDemand(demandId: string, approved: boolean, reason?: string): Promise<DemandRecord> {
       const body: any = { action: approved ? 'approve' : 'reject' }
       if (!approved && reason) body.reason = String(reason)

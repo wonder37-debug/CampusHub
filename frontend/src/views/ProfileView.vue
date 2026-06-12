@@ -19,6 +19,12 @@ const reviewsReceived = computed(() =>
   store.currentUserReviews.filter((r) => r.targetId === store.currentUserId)
 )
 
+const availableBalance = computed(() => {
+  const balance = store.currentUser?.balance ?? 0
+  const frozen = store.currentUser?.frozenBalance ?? 0
+  return Math.max(0, balance - frozen)
+})
+
 const reviewsGiven = computed(() =>
   store.currentUserReviews.filter((r) => r.reviewerId === store.currentUserId)
 )
@@ -79,7 +85,7 @@ onMounted(() => {
         </div>
         <div class="mini-stat">
           <span class="subtle">可用余额</span>
-          <strong>{{ formatMoney(store.currentUser.balance) }}</strong>
+          <strong>{{ formatMoney(availableBalance) }}</strong>
         </div>
         <div class="mini-stat">
           <span class="subtle">冻结金额</span>
