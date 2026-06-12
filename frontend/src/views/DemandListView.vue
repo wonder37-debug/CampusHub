@@ -17,7 +17,7 @@ const filters = reactive({
   q: '',
   category: '' as '' | (typeof DEMAND_CATEGORY_OPTIONS)[number],
   campusZone: '' as '' | CampusZone,
-  status: '' as string,
+  status: 'PENDING' as string,
   sortField: 'recommend' as DemandSortField,
   sortDirection: 'desc' as DemandSortDirection,
   page: 1,
@@ -29,21 +29,10 @@ const loadingDemands = ref(false)
 const recommendedItems = ref<RecommendationRecord[]>([])
 
 function setSortField(field: DemandSortField): void {
-  if (filters.sortField === field) {
-    filters.sortDirection = filters.sortDirection === 'asc' ? 'desc' : 'asc'
-    return
+  if (filters.sortField !== field) {
+    filters.sortField = field
+    filters.sortDirection = (field === 'time' || field === 'reward') ? 'desc' : 'desc'
   }
-
-  filters.sortField = field
-  filters.sortDirection = 'asc'
-}
-
-function isSortActive(field: DemandSortField): boolean {
-  return filters.sortField === field
-}
-
-function formatSortDirectionLabel(direction: DemandSortDirection): string {
-  return direction === 'asc' ? '正序' : '逆序'
 }
 
 function getBackendSortMode(): DemandSortMode {
@@ -96,21 +85,6 @@ const visibleDemands = computed(() => {
 
     if (filters.sortField === 'reward') {
       return isAscendingSort() ? left.reward - right.reward : right.reward - left.reward
-    }
-
-    if (isRecommendSort()) {
-      if (recommendedItems.value.length) {
-        const leftRank = recommendedItems.value.find((item) => item.demand.id === left.id)?.rank ?? Number.MAX_SAFE_INTEGER
-        const rightRank = recommendedItems.value.find((item) => item.demand.id === right.id)?.rank ?? Number.MAX_SAFE_INTEGER
-        return isAscendingSort() ? leftRank - rightRank : rightRank - leftRank
-      }
-      const preferredCategories = store.popularCategories
-      const leftIndex = preferredCategories.indexOf(left.category)
-      const rightIndex = preferredCategories.indexOf(right.category)
-      const normalizedLeft = leftIndex === -1 ? preferredCategories.length : leftIndex
-      const normalizedRight = rightIndex === -1 ? preferredCategories.length : rightIndex
-      const baseCompare = normalizedLeft - normalizedRight || right.createdAt.localeCompare(left.createdAt)
-      return isAscendingSort() ? -baseCompare : baseCompare
     }
 
     return right.createdAt.localeCompare(left.createdAt)
@@ -252,49 +226,38 @@ watch(
           </select>
         </div>
 
-        <div class="field" style="flex: 1 1 100%;">
-          <label>排序方式</label>
-          <div class="sort-toggle-group" role="group" aria-label="排序方式">
-            <button
-              type="button"
-              class="button"
-              :class="isSortActive('time') ? 'primary' : 'secondary'"
-              @click="setSortField('time')"
-            >
-              时间最近
-              <span class="sort-toggle-state">{{ isSortActive('time') ? formatSortDirectionLabel(filters.sortDirection) : '' }}</span>
+        <div class="sort-controls">
+          <div class="sort-section sort-left">
+            <div class="field sort-field">
+              <label for="demand-sort">订单排序</label>
+              <select
+                id="demand-sort"
+                class="sort-select"
+                :value="filters.sortField"
+                @change="setSortField(($event.target as HTMLSelectElement).value as DemandSortField)"
+              >
+                <option value="recommend">推荐排序</option>
+                <option value="reward">报酬最高</option>
+                <option value="time">时间最近</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="sort-section sort-center">
+            <button type="button" class="publish-button" @click="goPublish">
+              <span class="publish-icon">+</span>
+              发布需求
             </button>
-            <button
-              type="button"
-              class="button"
-              :class="isSortActive('reward') ? 'primary' : 'secondary'"
-              @click="setSortField('reward')"
-            >
-              报酬最高
-              <span class="sort-toggle-state">{{ isSortActive('reward') ? formatSortDirectionLabel(filters.sortDirection) : '' }}</span>
-            </button>
-            <button
-              type="button"
-              class="button"
-              :class="isSortActive('recommend') ? 'primary' : 'secondary'"
-              @click="setSortField('recommend')"
-            >
-              推荐排序
-              <span class="sort-toggle-state">{{ isSortActive('recommend') ? formatSortDirectionLabel(filters.sortDirection) : '' }}</span>
+          </div>
+
+          <div class="sort-section sort-right">
+            <button type="button" class="button secondary refresh-button" @click="refreshList">
+              ↻ 刷新列表
             </button>
           </div>
         </div>
-
-        <button type="button" class="button secondary" @click="refreshList">刷新列表</button>
       </div>
     </section>
-
-    <div class="publish-action-bar">
-      <button class="publish-button" type="button" @click="goPublish">
-        <span class="publish-icon">+</span>
-        发布需求
-      </button>
-    </div>
 
     <section class="demand-grid">
       <div v-if="refreshing" class="empty-state">
@@ -355,6 +318,11 @@ watch(
 
         <div class="tag-row">
           <span class="badge is-neutral">{{ formatCampusZone(demand.campusZone) }}</span>
+          <template v-if="demand.tags && demand.tags.length">
+            <span v-for="tag in demand.tags" :key="tag" class="badge is-neutral">
+              {{ tag }}
+            </span>
+          </template>
         </div>
 
         <p>描述：{{ truncateText(demand.description || '无', 86) }}</p>
@@ -363,7 +331,7 @@ watch(
           <img :src="demand.publisher?.avatarUrl ?? demand.publisherAvatar" :alt="(demand.anonymous ? demand.anonymousCode : null) ?? demand.publisher?.nickname ?? demand.publisherName" class="avatar" />
           <div>
             <strong>{{ demand.anonymous ? (demand.anonymousCode ?? '匿名用户') : (demand.publisher?.nickname ?? demand.publisherName) }}</strong>
-            <div class="meta">信用分：{{ demand.anonymous ? '匿名保护' : (demand.publisher?.creditScore != null ? formatScore(demand.publisher.creditScore) : '未知') }}</div>
+            <div class="meta">信用分：{{ demand.publisher?.creditScore != null ? formatScore(demand.publisher.creditScore) : '未知' }}</div>
           </div>
         </div>
 
@@ -378,38 +346,34 @@ watch(
 </template>
 
 <style scoped>
-.publish-action-bar {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  padding: 20px 0 12px;
-}
-
 .publish-button {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  padding: 12px 40px;
+  padding: 10px 24px;
   border: none;
-  border-radius: 12px;
+  border-radius: 14px;
   background: linear-gradient(135deg, #2d8a4e 0%, #1b6e3a 100%);
   color: #fff;
-  font-size: 1.05em;
-  font-weight: 600;
-  letter-spacing: 0.5px;
+  font-size: 0.95em;
+  font-weight: 700;
+  letter-spacing: 0.3px;
   cursor: pointer;
-  box-shadow: 0 4px 14px rgba(45, 138, 78, 0.3);
+  box-shadow: 0 4px 14px rgba(45, 138, 78, 0.28);
   transition: all 0.2s ease;
+  white-space: nowrap;
+  min-width: 150px;
 }
 
 .publish-button:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(45, 138, 78, 0.4);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 22px rgba(45, 138, 78, 0.38);
 }
 
 .publish-button:active {
   transform: translateY(0);
-  box-shadow: 0 2px 8px rgba(45, 138, 78, 0.25);
+  box-shadow: 0 3px 10px rgba(45, 138, 78, 0.22);
 }
 
 .publish-icon {
@@ -418,20 +382,60 @@ watch(
   line-height: 1;
 }
 
-.sort-toggle-group {
+.sort-controls {
+  flex: 1 1 100%;
   display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
+  align-items: flex-end;
+  gap: 0;
+  padding-top: 8px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
 }
 
-.sort-toggle-group .button {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
+.sort-section {
+  flex: 1;
+  display: flex;
 }
 
-.sort-toggle-state {
-  font-size: 0.85em;
-  opacity: 0.8;
+.sort-left {
+  justify-content: flex-start;
+}
+
+.sort-center {
+  justify-content: center;
+}
+
+.sort-right {
+  justify-content: flex-end;
+}
+
+.sort-field {
+  flex: 0 1 160px;
+}
+
+.sort-select {
+  width: 100%;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: rgba(255, 255, 255, 0.84);
+  color: var(--text-strong);
+  border-radius: 16px;
+  padding: 12px 14px;
+  outline: none;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+  cursor: pointer;
+}
+
+.sort-select:focus {
+  border-color: rgba(31, 95, 83, 0.46);
+  box-shadow: 0 0 0 4px rgba(31, 95, 83, 0.12);
+}
+
+.refresh-button {
+  color: var(--accent) !important;
+  border-color: rgba(31, 95, 83, 0.18) !important;
+  white-space: nowrap;
+}
+
+.refresh-button:hover {
+  background: rgba(31, 95, 83, 0.08) !important;
 }
 </style>

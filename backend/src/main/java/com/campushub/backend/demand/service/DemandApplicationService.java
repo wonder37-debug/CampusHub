@@ -16,4 +16,6 @@ public interface DemandApplicationService {
     DemandDetailResponse getDetail(Long demandId);
 
     DemandDetailResponse update(Long operatorId, Long demandId, UpdateDemandCommand command);
+
+    void unfreezePublisherBalance(Long demandId);
 }

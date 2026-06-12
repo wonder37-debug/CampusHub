@@ -44,7 +44,21 @@ public class ApiViewMapper {
         User publisherUser = demand.getPublisherId() == null ? null : userRepository.findById(demand.getPublisherId()).orElse(null);
         Long publisherId = canSeePublisher ? demand.getPublisherId() : null;
         String publisherDisplayName = canSeePublisher ? demand.getPublisherDisplayName() : demand.getAnonymousCode();
-        UserSummaryView publisher = canSeePublisher && publisherUser != null ? UserSummaryView.from(publisherUser) : null;
+        UserSummaryView publisher;
+        if (publisherUser != null) {
+            if (canSeePublisher) {
+                publisher = UserSummaryView.from(publisherUser);
+            } else {
+                String anonCode = demand.getAnonymousCode() != null ? demand.getAnonymousCode() : "匿名校友";
+                publisher = new UserSummaryView(
+                    null, null, null, anonCode, publisherUser.getAvatarUrl(),
+                    publisherUser.getRole().name(), publisherUser.getStatus().name(),
+                    publisherUser.getCreditScore(), null, null
+                );
+            }
+        } else {
+            publisher = null;
+        }
         boolean publisherIdentityVisible = publisherUser != null
             && (!demand.isAnonymous()
             || currentUser != null && (currentUser.isAdmin() || demand.getPublisherId().equals(currentUser.userId())));

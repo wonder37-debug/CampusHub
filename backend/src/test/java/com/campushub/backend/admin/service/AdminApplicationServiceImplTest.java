@@ -77,7 +77,8 @@ class AdminApplicationServiceImplTest {
             userRepository,
             demandRepository,
             orderRepository,
-            notificationApplicationService
+            notificationApplicationService,
+            demandApplicationService
         );
 
         adminId = userRepository.save(new User(

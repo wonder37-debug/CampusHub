@@ -20,6 +20,7 @@ import com.campushub.backend.order.dto.OrderHistoryQuery;
 import com.campushub.backend.order.dto.OrderSummaryResponse;
 import com.campushub.backend.order.dto.UpdateOrderStatusCommand;
 import com.campushub.backend.order.repository.OrderRepository;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
@@ -130,6 +131,7 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         }
         if (targetStatus == OrderStatus.CANCELLED) {
             demand.setStatus(DemandStatus.CANCELLED);
+            unfreezePublisherBalance(demand);
         }
 
         order.addHistory(fromStatus, targetStatus, operatorId, trimToNull(command.note()), now);
@@ -191,6 +193,8 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         demand.setUpdatedAt(now);
         orderRepository.save(order);
         demandRepository.save(demand);
+
+        transferReward(demand, order);
 
         notificationApplicationService.notifyOrderStatusChanged(order.getPublisherId(), order.getId(), OrderStatus.COMPLETED);
         notificationApplicationService.notifyOrderStatusChanged(order.getAccepterId(), order.getId(), OrderStatus.COMPLETED);
@@ -320,6 +324,43 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
 
     private String trimToNull(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private void transferReward(Demand demand, Order order) {
+        BigDecimal reward = demand.getReward() == null ? BigDecimal.ZERO : demand.getReward();
+        if (reward.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+
+        User publisher = userRepository.findById(order.getPublisherId()).orElse(null);
+        User accepter = userRepository.findById(order.getAccepterId()).orElse(null);
+
+        if (publisher != null) {
+            BigDecimal publisherBalance = publisher.getBalance() == null ? BigDecimal.ZERO : publisher.getBalance();
+            BigDecimal publisherFrozen = publisher.getFrozenBalance() == null ? BigDecimal.ZERO : publisher.getFrozenBalance();
+            publisher.setBalance(publisherBalance.subtract(reward).max(BigDecimal.ZERO));
+            publisher.setFrozenBalance(publisherFrozen.subtract(reward).max(BigDecimal.ZERO));
+            userRepository.save(publisher);
+        }
+
+        if (accepter != null) {
+            BigDecimal accepterBalance = accepter.getBalance() == null ? BigDecimal.ZERO : accepter.getBalance();
+            accepter.setBalance(accepterBalance.add(reward));
+            userRepository.save(accepter);
+        }
+    }
+
+    private void unfreezePublisherBalance(Demand demand) {
+        BigDecimal reward = demand.getReward() == null ? BigDecimal.ZERO : demand.getReward();
+        if (reward.compareTo(BigDecimal.ZERO) <= 0 || demand.getPublisherId() == null) {
+            return;
+        }
+        User publisher = userRepository.findById(demand.getPublisherId()).orElse(null);
+        if (publisher != null) {
+            BigDecimal frozen = publisher.getFrozenBalance() == null ? BigDecimal.ZERO : publisher.getFrozenBalance();
+            publisher.setFrozenBalance(frozen.subtract(reward).max(BigDecimal.ZERO));
+            userRepository.save(publisher);
+        }
     }
 
     private boolean isDemandExpired(Demand demand, LocalDateTime now) {
