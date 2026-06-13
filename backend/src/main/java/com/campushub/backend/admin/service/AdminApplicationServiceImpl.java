@@ -190,6 +190,10 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
             demand.setStatus(DemandStatus.PENDING);
             demand.setIsApproved(true);
             demand.setReviewReason(null);
+            notificationApplicationService.notifyDemandApproved(
+                demand.getPublisherId(),
+                demand.getId()
+            );
         } else if ("reject".equals(action)) {
             String reviewReason = normalizeRejectReason(command.reason());
             demand.setStatus(DemandStatus.CANCELLED);

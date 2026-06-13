@@ -5,5 +5,6 @@ public enum NotificationType {
     STATUS_CHANGED,
     REVIEW_RECEIVED,
     REVIEW_REQUEST,
-    DEMAND_REJECTED
+    DEMAND_REJECTED,
+    DEMAND_APPROVED
 }
