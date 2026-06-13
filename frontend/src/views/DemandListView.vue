@@ -53,7 +53,7 @@ function filteredDemandItems(source: DemandRecord[]): DemandRecord[] {
   const selectedStatus = filters.status
 
   return source
-    .filter((demand) => demand.status !== 'EXPIRED')
+    .filter((demand) => !['EXPIRED', 'REVIEWING', 'CANCELLED'].includes(demand.status))
     .filter((demand) => !selectedCategory || demand.category === selectedCategory)
     .filter((demand) => !selectedCampusZone || demand.campusZone === selectedCampusZone)
     .filter((demand) => !filters.q.trim() || `${demand.title} ${demand.description} ${demand.location}`.toLowerCase().includes(filters.q.trim().toLowerCase()))
@@ -67,15 +67,20 @@ function filteredDemandItems(source: DemandRecord[]): DemandRecord[] {
 }
 
 const visibleDemands = computed(() => {
-  const source = isRecommendSort() && recommendedItems.value.length
-    ? recommendedItems.value.map((item) => item.demand)
-    : [...store.demands]
-
+  // 始终使用完整需求列表作为数据源，推荐排序仅影响排序顺序
+  const source = [...store.demands]
   const filtered = filteredDemandItems(source)
 
-  if (isRecommendSort()) {
-    const ordered = isAscendingSort() ? filtered : [...filtered].reverse()
-    return ordered.slice(0, filters.page * filters.size)
+  if (isRecommendSort() && recommendedItems.value.length) {
+    // 推荐排序：推荐需求优先，其余按时间排序
+    const recIds = new Set(recommendedItems.value.map((item) => item.demand.id))
+    const sorted = [...filtered].sort((a: DemandRecord, b: DemandRecord) => {
+      const aRec = recIds.has(a.id) ? 1 : 0
+      const bRec = recIds.has(b.id) ? 1 : 0
+      if (aRec !== bRec) return bRec - aRec
+      return b.createdAt.localeCompare(a.createdAt)
+    })
+    return sorted.slice(0, filters.page * filters.size)
   }
 
   const sorted = filtered.sort((left: DemandRecord, right: DemandRecord) => {
@@ -94,10 +99,6 @@ const visibleDemands = computed(() => {
 })
 
 const totalCount = computed(() => {
-  if (isRecommendSort() && recommendedItems.value.length) {
-    return filteredDemandItems(recommendedItems.value.map((item) => item.demand)).length
-  }
-
   return filteredDemandItems(store.demands).length
 })
 const hasMore = computed(() => visibleDemands.value.length < totalCount.value)

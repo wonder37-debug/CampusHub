@@ -14,6 +14,7 @@ function iconFor(type: string): string {
   if (type === 'ORDER_ACCEPTED') return '🧩'
   if (type === 'REVIEW_RECEIVED') return '⭐'
   if (type === 'REVIEW_REQUEST' || type === 'DEMAND_REJECTED') return '📣'
+  if (type === 'DEMAND_APPROVED') return '✅'
   return '🔔'
 }
 
@@ -51,7 +52,7 @@ async function openNotification(notification: any): Promise<void> {
     return
   }
 
-  if (type === 'DEMAND_REJECTED') {
+  if (type === 'DEMAND_REJECTED' || type === 'DEMAND_APPROVED') {
     router.push(`/demands/${encodeURIComponent(targetId || relatedId)}`)
     return
   }
@@ -120,7 +121,7 @@ onMounted(() => {
           <span class="meta">{{ formatRelativeTime(notification.createdAt) }}</span>
         </div>
 
-        <p v-if="notification.type === 'DEMAND_REJECTED'" class="subtle" style="margin-top: 8px; white-space: pre-wrap;">
+        <p v-if="notification.type === 'DEMAND_REJECTED' || notification.type === 'DEMAND_APPROVED'" class="subtle" style="margin-top: 8px; white-space: pre-wrap;">
           {{ notification.content }}
         </p>
         <p v-else-if="notification.targetTitle || notification.relatedName" class="subtle" style="margin-top: 6px;">

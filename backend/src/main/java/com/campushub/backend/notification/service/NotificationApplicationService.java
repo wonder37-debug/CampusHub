@@ -11,7 +11,7 @@ public interface NotificationApplicationService {
 
     void notifyOrderAcceptedForAccepter(Long receiverId, Long orderId);
 
-    void notifyOrderStatusChanged(Long receiverId, Long orderId, OrderStatus status);
+    void notifyOrderStatusChanged(Long receiverId, Long orderId, OrderStatus status, boolean isPublisher);
 
     void notifyOrderCompletionPending(Long receiverId, Long orderId);
 
@@ -20,6 +20,8 @@ public interface NotificationApplicationService {
     void notifyDemandReviewRequested(Long receiverId, Long demandId);
 
     void notifyDemandRejected(Long receiverId, Long demandId, String reviewReason);
+
+    void notifyDemandApproved(Long receiverId, Long demandId);
 
     PageResponse<NotificationResponse> list(Long userId, NotificationQuery query);
 

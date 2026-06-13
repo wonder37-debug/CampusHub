@@ -139,8 +139,8 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         orderRepository.save(order);
         demandRepository.save(demand);
 
-        notificationApplicationService.notifyOrderStatusChanged(order.getPublisherId(), order.getId(), targetStatus);
-        notificationApplicationService.notifyOrderStatusChanged(order.getAccepterId(), order.getId(), targetStatus);
+        notificationApplicationService.notifyOrderStatusChanged(order.getPublisherId(), order.getId(), targetStatus, true);
+        notificationApplicationService.notifyOrderStatusChanged(order.getAccepterId(), order.getId(), targetStatus, false);
         return OrderDetailResponse.from(order, DemandDetailResponse.from(demand));
     }
 
@@ -196,8 +196,8 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
 
         transferReward(demand, order);
 
-        notificationApplicationService.notifyOrderStatusChanged(order.getPublisherId(), order.getId(), OrderStatus.COMPLETED);
-        notificationApplicationService.notifyOrderStatusChanged(order.getAccepterId(), order.getId(), OrderStatus.COMPLETED);
+        notificationApplicationService.notifyOrderStatusChanged(order.getPublisherId(), order.getId(), OrderStatus.COMPLETED, true);
+        notificationApplicationService.notifyOrderStatusChanged(order.getAccepterId(), order.getId(), OrderStatus.COMPLETED, false);
         return OrderDetailResponse.from(order, DemandDetailResponse.from(demand));
     }
 

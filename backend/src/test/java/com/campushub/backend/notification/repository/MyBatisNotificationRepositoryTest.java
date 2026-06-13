@@ -120,6 +120,7 @@ class MyBatisNotificationRepositoryTest {
             case REVIEW_RECEIVED -> "收到新评价";
             case REVIEW_REQUEST -> "需求待审核";
             case DEMAND_REJECTED -> "需求审核未通过";
+            case DEMAND_APPROVED -> "需求审核通过";
         });
         notification.setContent(switch (type) {
             case ORDER_ACCEPTED -> "接单成功";
@@ -127,6 +128,7 @@ class MyBatisNotificationRepositoryTest {
             case REVIEW_RECEIVED -> "有人评价了你";
             case REVIEW_REQUEST -> "有新的需求等待审核";
             case DEMAND_REJECTED -> "需求审核未通过";
+            case DEMAND_APPROVED -> "需求审核通过";
         });
         notification.setRead(false);
         notification.setCreatedAt(LocalDateTime.now());

@@ -51,8 +51,8 @@ public class NotificationApplicationServiceImpl implements NotificationApplicati
     }
 
     @Override
-    public void notifyOrderStatusChanged(Long receiverId, Long orderId, OrderStatus status) {
-        createNotification(receiverId, buildOrderStatusChanged(orderId, status));
+    public void notifyOrderStatusChanged(Long receiverId, Long orderId, OrderStatus status, boolean isPublisher) {
+        createNotification(receiverId, buildOrderStatusChanged(orderId, status, isPublisher));
     }
 
     @Override
@@ -73,6 +73,11 @@ public class NotificationApplicationServiceImpl implements NotificationApplicati
     @Override
     public void notifyDemandRejected(Long receiverId, Long demandId, String reviewReason) {
         createNotification(receiverId, buildDemandRejected(demandId, reviewReason));
+    }
+
+    @Override
+    public void notifyDemandApproved(Long receiverId, Long demandId) {
+        createNotification(receiverId, buildDemandApproved(demandId));
     }
 
     @Override
@@ -150,12 +155,38 @@ public class NotificationApplicationServiceImpl implements NotificationApplicati
         );
     }
 
-    private NotificationDraft buildOrderStatusChanged(Long orderId, OrderStatus status) {
+    private NotificationDraft buildOrderStatusChanged(Long orderId, OrderStatus status, boolean isPublisher) {
         String demandTitle = resolveOrderDemandTitle(orderId);
+        String title;
+        String content;
+        switch (status) {
+            case IN_PROGRESS -> {
+                title = isPublisher ? "订单已开始处理" : "您已开始处理订单";
+                content = isPublisher
+                    ? "接单方已开始处理您的需求《" + demandTitle + "》。"
+                    : "您已开始处理《" + demandTitle + "》，请按约定完成。";
+            }
+            case COMPLETED -> {
+                title = "订单已完成";
+                content = isPublisher
+                    ? "您的需求《" + demandTitle + "》已完成，请对接单方进行评价。"
+                    : "订单《" + demandTitle + "》已完成，请对发布者进行评价。";
+            }
+            case CANCELLED -> {
+                title = isPublisher ? "订单已被取消" : "您已取消订单";
+                content = isPublisher
+                    ? "订单《" + demandTitle + "》已被取消。"
+                    : "您已取消订单《" + demandTitle + "》。";
+            }
+            default -> {
+                title = "订单状态更新";
+                content = "订单《" + demandTitle + "》当前状态已更新为" + formatOrderStatus(status) + "。";
+            }
+        }
         return new NotificationDraft(
             NotificationType.STATUS_CHANGED,
-            "订单状态更新",
-            "订单《" + demandTitle + "》当前状态已更新为“" + formatOrderStatus(status) + "”。",
+            title,
+            content,
             orderId
         );
     }
@@ -200,6 +231,16 @@ public class NotificationApplicationServiceImpl implements NotificationApplicati
         );
     }
 
+    private NotificationDraft buildDemandApproved(Long demandId) {
+        String demandTitle = resolveDemandTitle(demandId);
+        return new NotificationDraft(
+            NotificationType.DEMAND_APPROVED,
+            "需求审核通过",
+            "您的需求《" + demandTitle + "》已通过审核，现已开放接单。",
+            demandId
+        );
+    }
+
     private NotificationResponse toNotificationResponse(Notification notification) {
         String targetType = resolveTargetType(notification);
         Long targetId = notification.getRelatedId();
@@ -214,7 +255,7 @@ public class NotificationApplicationServiceImpl implements NotificationApplicati
         }
         return switch (notification.getType()) {
             case ORDER_ACCEPTED, STATUS_CHANGED, REVIEW_RECEIVED -> "ORDER";
-            case REVIEW_REQUEST, DEMAND_REJECTED -> "DEMAND";
+            case REVIEW_REQUEST, DEMAND_REJECTED, DEMAND_APPROVED -> "DEMAND";
         };
     }
 
@@ -242,7 +283,7 @@ public class NotificationApplicationServiceImpl implements NotificationApplicati
         }
         return switch (type) {
             case REVIEW_REQUEST -> "REVIEW_DEMAND";
-            case DEMAND_REJECTED -> "VIEW_DEMAND";
+            case DEMAND_REJECTED, DEMAND_APPROVED -> "VIEW_DEMAND";
             case REVIEW_RECEIVED -> "VIEW_ORDER_REVIEWS";
             case ORDER_ACCEPTED, STATUS_CHANGED -> "ORDER".equals(targetType) ? "VIEW_ORDER" : "VIEW_DEMAND";
         };
