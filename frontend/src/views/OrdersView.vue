@@ -6,6 +6,7 @@ import { useRouter } from 'vue-router'
 import { useCampusHubStore } from '@/stores/campusHub'
 import type { DemandRecord, DemandStatus, OrderRecord, OrderStatus } from '@/types/campushub'
 import { formatOrderStatus, formatRelativeTime, statusToneClass, formatDemandStatus, formatMoney, formatDateTime } from '@/utils/format'
+import { useConfirm } from '@/composables/useDialog'
 
 const store = useCampusHubStore()
 const router = useRouter()
@@ -126,7 +127,7 @@ async function startOrder(orderId: string): Promise<void> {
 }
 
 async function completeOrder(orderId: string): Promise<void> {
-  if (!window.confirm('确认完成此订单？此操作不可撤销。')) return
+  if (!await useConfirm('确认完成', '确认完成此订单？此操作不可撤销。', { danger: true })) return
   await store.completeOrder(orderId)
 }
 

@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { useCampusHubStore } from '@/stores/campusHub'
 import { formatUserRole } from '@/utils/format'
 
@@ -20,7 +21,7 @@ const navigation = computed<Array<{ label: string; to: string; requiresAuth?: bo
     base.splice(1, 0, { label: '订单', to: '/orders', requiresAuth: true })
   }
   if (store.currentUser?.role === 'ADMIN') {
-    // 管理员额外显示“管理后台”入口，插入到“我的”之前
+    // 管理员额外显示"管理后台"入口，插入到"我的"之前
     const myIndex = base.findIndex((b) => b.label === '我的')
     const insertIndex = myIndex >= 0 ? myIndex : base.length
     base.splice(insertIndex, 0, { label: '管理后台', to: '/admin', requiresAuth: true })
@@ -123,5 +124,8 @@ function onStatusClick(): void {
         </Transition>
       </RouterView>
     </main>
+
+    <!-- 全局确认/提示弹窗 -->
+    <ConfirmDialog />
   </div>
 </template>

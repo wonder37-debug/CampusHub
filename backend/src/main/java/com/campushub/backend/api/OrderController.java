@@ -116,25 +116,6 @@ public class OrderController {
     ) {
         CurrentUser currentUser = requestUserExtractor.requireCurrentUser(request);
         ReviewResponse review = reviewApplicationService.submit(currentUser.userId(), orderId, command);
-        return ApiResponse.success(toReviewView(review, currentUser.userId()));
-    }
-
-    private ReviewView toReviewView(ReviewResponse review, Long currentUserId) {
-        var author = userRepository.findById(review.authorId()).orElse(null);
-        var target = userRepository.findById(review.targetId()).orElse(null);
-        UserSummaryView authorView = author == null ? null : UserSummaryView.from(author);
-        if (authorView == null && currentUserId != null && currentUserId.equals(review.authorId())) {
-            authorView = UserSummaryView.from(userRepository.findById(currentUserId).orElseThrow());
-        }
-        return new ReviewView(
-            review.id(),
-            review.orderId(),
-            review.rating(),
-            review.comment(),
-            review.targetId(),
-            target == null ? null : target.getNickname(),
-            authorView,
-            review.createdAt()
-        );
+        return ApiResponse.success(apiViewMapper.toAnonymizedReviewView(review, currentUser));
     }
 }

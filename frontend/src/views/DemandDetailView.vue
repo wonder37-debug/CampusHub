@@ -6,6 +6,7 @@ import { useRoute } from 'vue-router'
 import { useCampusHubStore } from '@/stores/campusHub'
 import SkeletonCard from '@/components/SkeletonCard.vue'
 import { formatAcceptDisabledReason, formatCampusZone, formatDateTime, formatDemandCategory, formatDemandStatus, formatMoney, formatOrderStatus, formatScore, statusToneClass } from '@/utils/format'
+import { useConfirm } from '@/composables/useDialog'
 
 const route = useRoute()
 const store = useCampusHubStore()
@@ -37,8 +38,19 @@ const acceptDisabledReason = computed(() => {
     const s = relatedOrder.value.status
     if (s === 'COMPLETED') return '订单已完成，无法再次操作'
     if (s === 'CANCELLED') return '订单已取消，无法再次操作'
-    if (s === 'ACCEPTED') return '该需求已被接单，来晚了一步。'
-    if (s === 'IN_PROGRESS') return '订单正在执行中。'
+    // 区分身份：接单方 vs 发布方 vs 第三方
+    const isAcceptor = store.currentUser?.id === relatedOrder.value.serviceProviderId
+    const isPublisher = store.currentUser?.id === relatedOrder.value.requesterId
+    if (s === 'ACCEPTED') {
+      if (isAcceptor) return '您已接单，准备开始执行'
+      if (isPublisher) return '需求已被接单，等待服务完成'
+      return '该需求已被接单，来晚了一步。'
+    }
+    if (s === 'IN_PROGRESS') {
+      if (isAcceptor) return '您已接单，订单正在执行中'
+      if (isPublisher) return '订单正在执行中，等待服务完成'
+      return '订单正在执行中。'
+    }
   }
   // 后端提供的不可接单原因
   if (demand.value.acceptDisabledReason) return formatAcceptDisabledReason(demand.value.acceptDisabledReason)
@@ -49,13 +61,13 @@ const acceptDisabledReason = computed(() => {
   if (store.currentUser.role === 'ADMIN') return '管理员账号无法接单。'
   return null
 })
+// 个性化状态提示（由后端根据用户身份返回）
+const acceptStatusHint = computed(() => demand.value?.acceptStatusHint ?? null)
 const canStartExecution = computed(() => {
   if (!demand.value) return false
   if (typeof demand.value.canStartExecution === 'boolean') return demand.value.canStartExecution
   return relatedOrder.value?.status === 'ACCEPTED' && store.currentUser?.id === relatedOrder.value.serviceProviderId
 })
-const canViewAcceptNote = computed(() => demand.value?.canViewAcceptNote !== false)
-const canSubmitAcceptNote = computed(() => demand.value?.canSubmitAcceptNote !== false)
 const relatedReviews = computed(() => {
   const orderId = relatedOrder.value?.id
   if (!orderId) return []
@@ -78,6 +90,15 @@ const hasSubmittedReview = computed(() => {
   return relatedReviews.value.some((r) => r.reviewerId === store.currentUser?.id)
 })
 
+// 接单方是否已在时间线中确认完成（需求方需等待接单方先确认）
+const providerConfirmed = computed(() => {
+  if (!relatedOrder.value) return false
+  return relatedOrder.value.timeline.some(
+    (t) => t.label.includes('接单方确认完成')
+      || (t.label === '已确认完成，等待对方确认' && t.operatorId === relatedOrder.value!.serviceProviderId)
+  )
+})
+
 async function acceptCurrentDemand(): Promise<void> {
   if (!demand.value) {
     return
@@ -91,7 +112,7 @@ async function acceptCurrentDemand(): Promise<void> {
     return
   }
 
-  if (!window.confirm('确认接单？接单后将生成订单。')) return
+  if (!await useConfirm('确认接单', '确认接单？接单后将生成订单。')) return
 
   try {
     const order = await store.acceptDemand(demand.value.id, note.value)
@@ -119,7 +140,7 @@ async function completeOrder(): Promise<void> {
     return
   }
 
-  if (!window.confirm('确认完成此订单？此操作不可撤销。')) return
+  if (!await useConfirm('确认完成', '确认完成此订单？此操作不可撤销。', { danger: true })) return
 
   try {
     const updatedOrder = await store.completeOrder(relatedOrder.value.id)
@@ -230,8 +251,9 @@ onMounted(() => {
 
       <div class="list-card">
         <strong>接单留言</strong>
+        <!-- 接单后留言已确定，只读显示；接单前显示可编辑的 textarea -->
         <p v-if="relatedOrder" class="meta" style="margin-top: 4px;">{{ relatedOrder.note || '暂无留言' }}</p>
-        <div v-if="canAccept || (canSubmitAcceptNote && canViewAcceptNote)" class="field">
+        <div v-if="canAccept" class="field">
           <label for="accept-note">留言内容</label>
           <textarea id="accept-note" v-model="note" placeholder="给发布者留一句话"></textarea>
         </div>
@@ -245,28 +267,29 @@ onMounted(() => {
             立即接单
           </button>
 
-          <button v-if="canStartExecution" type="button" class="button secondary" @click="startOrder">开始执行</button>
+          <button v-if="canStartExecution" type="button" class="button primary" @click="startOrder">开始执行</button>
           <button
             v-if="relatedOrder?.status === 'IN_PROGRESS' && store.currentUser?.id === relatedOrder.serviceProviderId && !completionSubmitted"
             type="button"
-            class="button secondary"
+            class="button primary"
             @click="completeOrder"
           >
             提交完成确认
           </button>
           <button
-            v-else-if="relatedOrder?.status === 'IN_PROGRESS' && store.currentUser?.id === relatedOrder.requesterId && !completionSubmitted"
+            v-else-if="relatedOrder?.status === 'IN_PROGRESS' && store.currentUser?.id === relatedOrder.requesterId && providerConfirmed && !completionSubmitted"
             type="button"
-            class="button secondary"
+            class="button primary"
             @click="completeOrder"
           >
             确认完成
           </button>
-          <span v-else-if="relatedOrder?.status === 'IN_PROGRESS'" class="chip is-warning">等待对方确认完成</span>
+          <span v-else-if="relatedOrder?.status === 'IN_PROGRESS' && !completionSubmitted" class="chip is-warning">{{ providerConfirmed ? '等待对方确认完成' : '等待接单方确认完成' }}</span>
         </div>
       </div>
 
       <span v-if="!canAccept && acceptDisabledReason" class="chip is-warning">{{ acceptDisabledReason }}</span>
+      <span v-if="acceptStatusHint" class="chip is-warning">{{ acceptStatusHint }}</span>
 
       <p v-if="message" class="hero-badge">{{ message }}</p>
       <p v-if="error" class="hero-badge" style="background: rgba(181, 71, 71, 0.14); color: var(--danger)">{{ error }}</p>

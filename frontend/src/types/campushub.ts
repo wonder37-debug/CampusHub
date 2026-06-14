@@ -57,6 +57,7 @@ export interface DemandRecord {
   distanceKm: number
   canAccept?: boolean
   acceptDisabledReason?: string | null
+  acceptStatusHint?: string | null
   canStartExecution?: boolean
   canViewAcceptNote?: boolean
   canSubmitAcceptNote?: boolean

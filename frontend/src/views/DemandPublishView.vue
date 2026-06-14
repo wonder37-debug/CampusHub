@@ -4,8 +4,9 @@ import { useRouter } from 'vue-router'
 
 import { DEMAND_CATEGORY_OPTIONS, type CampusZone } from '@/types/campushub'
 import { useCampusHubStore } from '@/stores/campusHub'
-import { campusZoneOptions, formatCampusZone, formatDemandCategory, formatMoney } from '@/utils/format'
+import { campusZoneOptions, formatCampusZone, formatDemandCategory, formatMoney, formatDateTime } from '@/utils/format'
 import { handleError } from '@/utils/errorHandler'
+import { useConfirm } from '@/composables/useDialog'
 
 const router = useRouter()
 const store = useCampusHubStore()
@@ -31,11 +32,33 @@ const form = reactive({
   category: '' as '' | (typeof DEMAND_CATEGORY_OPTIONS)[number],
   campusZone: '' as CampusZone | '',
   location: '',
-  startTime: '',
-  endTime: '',
+  startDate: '',
+  startTimeValue: '',
+  endDate: '',
+  endTimeValue: '',
   reward: '10',
   tags: '',
   anonymous: false
+})
+
+// 计算属性：合并后的完整 datetime 字符串
+const startTime = computed(() => {
+  if (!form.startDate || !form.startTimeValue) return ''
+  return `${form.startDate}T${form.startTimeValue}`
+})
+
+const endTime = computed(() => {
+  if (!form.endDate || !form.endTimeValue) return ''
+  return `${form.endDate}T${form.endTimeValue}`
+})
+
+// 获取今天的日期（YYYY-MM-DD格式）
+const todayDate = computed(() => {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 })
 
 const isFormValid = computed(() => {
@@ -51,8 +74,10 @@ const isFormValid = computed(() => {
     Boolean(form.category) &&
     Boolean(form.campusZone) &&
     Boolean(form.location.trim()) &&
-    Boolean(form.startTime) &&
-    Boolean(form.endTime) &&
+    Boolean(form.startDate) &&
+    Boolean(form.startTimeValue) &&
+    Boolean(form.endDate) &&
+    Boolean(form.endTimeValue) &&
     Boolean(String(form.reward ?? '').trim())
   )
 })
@@ -101,12 +126,20 @@ function runValidations(): void {
     markRequiredError('location', '请填写地点，例如：图书馆/宿舍区')
   }
 
-  if (isEmpty(form.startTime)) {
-    markRequiredError('startTime', '请填写开始时间')
+  if (isEmpty(form.startDate)) {
+    markRequiredError('startTime', '请选择开始日期')
   }
 
-  if (isEmpty(form.endTime)) {
-    markRequiredError('endTime', '请填写结束时间')
+  if (isEmpty(form.startTimeValue)) {
+    markRequiredError('startTime', '请选择开始时间')
+  }
+
+  if (isEmpty(form.endDate)) {
+    markRequiredError('endTime', '请选择结束日期')
+  }
+
+  if (isEmpty(form.endTimeValue)) {
+    markRequiredError('endTime', '请选择结束时间')
   }
 
   const rewardText = getRewardText()
@@ -119,10 +152,11 @@ function runValidations(): void {
     }
   }
 
-  if (form.startTime && form.endTime) {
+  // 验证开始和结束时间
+  if (startTime.value && endTime.value) {
     try {
-      const start = new Date(form.startTime).getTime()
-      const end = new Date(form.endTime).getTime()
+      const start = new Date(startTime.value).getTime()
+      const end = new Date(endTime.value).getTime()
       if (Number.isNaN(start) || Number.isNaN(end) || start >= end) {
         errors.startTime = '请确保开始时间早于结束时间'
         errors.endTime = '请确保开始时间早于结束时间'
@@ -148,12 +182,18 @@ async function submitDemand(): Promise<void> {
     return
   }
 
-  if (!window.confirm('确认发布此需求？发布后将进入审核流程。')) return
+  if (!await useConfirm('确认发布', '确认发布此需求？发布后将进入审核流程。')) return
 
   submitting.value = true
 
   try {
-    await store.createDemand(form)
+    // 构建提交数据，使用合并后的 datetime
+    const submitData = {
+      ...form,
+      startTime: startTime.value,
+      endTime: endTime.value
+    }
+    await store.createDemand(submitData)
     message.value = '发布成功，等待审核'
     published.value = true
     setTimeout(() => {
@@ -164,6 +204,15 @@ async function submitDemand(): Promise<void> {
   } finally {
     submitting.value = false
   }
+}
+
+// 更新日期或时间时同步到完整的 datetime
+function updateStartTime(): void {
+  errors.startTime = ''
+}
+
+function updateEndTime(): void {
+  errors.endTime = ''
 }
 
 async function checkRewardBalance(): Promise<void> {
@@ -276,24 +325,7 @@ async function checkRewardBalance(): Promise<void> {
             <label for="demand-location">地点 <span class="required-mark">*</span></label>
             <input id="demand-location" v-model="form.location" placeholder="北区、南区、图书馆" @input="errors.location = ''" />
             <p v-if="errors.location" class="input-help" style="color: var(--danger)">{{ errors.location }}</p>
-          </div>
-
-          <div class="field">
-            <label for="demand-start">开始时间 <span class="required-mark">*</span></label>
-            <div style="display:flex; gap:8px; align-items:center;">
-              <input id="demand-start" v-model="form.startTime" type="datetime-local" @input="errors.startTime = ''" />
-              <button type="button" class="button small" @click="runValidations">确认时间</button>
-            </div>
-            <p v-if="errors.startTime" class="input-help" style="color: var(--danger)">{{ errors.startTime }}</p>
-          </div>
-
-          <div class="field">
-            <label for="demand-end">结束时间 <span class="required-mark">*</span></label>
-            <div style="display:flex; gap:8px; align-items:center;">
-              <input id="demand-end" v-model="form.endTime" type="datetime-local" @input="errors.endTime = ''" />
-              <button type="button" class="button small" @click="runValidations">确认时间</button>
-            </div>
-            <p v-if="errors.endTime" class="input-help" style="color: var(--danger)">{{ errors.endTime }}</p>
+            <p class="input-help" style="visibility: hidden;">&nbsp;</p>
           </div>
 
           <div class="field">
@@ -304,6 +336,50 @@ async function checkRewardBalance(): Promise<void> {
           </div>
 
           <div class="field">
+            <label for="demand-start-date">开始时间 <span class="required-mark">*</span></label>
+            <div class="datetime-input-group">
+              <input 
+                id="demand-start-date" 
+                v-model="form.startDate" 
+                type="date" 
+                :min="todayDate"
+                @change="updateStartTime" 
+                placeholder="选择日期"
+              />
+              <input 
+                id="demand-start-time" 
+                v-model="form.startTimeValue" 
+                type="time" 
+                @change="updateStartTime" 
+                placeholder="选择时间"
+              />
+            </div>
+            <p v-if="errors.startTime" class="input-help" style="color: var(--danger)">{{ errors.startTime }}</p>
+          </div>
+
+          <div class="field">
+            <label for="demand-end-date">结束时间 <span class="required-mark">*</span></label>
+            <div class="datetime-input-group">
+              <input 
+                id="demand-end-date" 
+                v-model="form.endDate" 
+                type="date" 
+                :min="form.startDate || todayDate"
+                @change="updateEndTime" 
+                placeholder="选择日期"
+              />
+              <input 
+                id="demand-end-time" 
+                v-model="form.endTimeValue" 
+                type="time" 
+                @change="updateEndTime" 
+                placeholder="选择时间"
+              />
+            </div>
+            <p v-if="errors.endTime" class="input-help" style="color: var(--danger)">{{ errors.endTime }}</p>
+          </div>
+
+          <div class="field" style="grid-column: 1 / -1;">
             <label for="demand-tags">标签</label>
             <input id="demand-tags" v-model="form.tags" placeholder="近距离, 宿舍楼下" />
             <p class="input-help">标签用于表示任务特点，例如：加急、近距离。多个标签用逗号分隔。</p>
@@ -324,7 +400,7 @@ async function checkRewardBalance(): Promise<void> {
       </template>
     </section>
 
-    <section class="panel">
+    <section class="preview-panel">
       <p class="eyebrow">实时预览</p>
       <h2 class="section-title">卡片展示</h2>
       <div class="list-card">
@@ -337,9 +413,15 @@ async function checkRewardBalance(): Promise<void> {
           <strong>{{ formatMoney(Number(form.reward || 0)) }}</strong>
         </div>
         <p>{{ form.description || '这里会显示需求描述与执行细节。' }}</p>
-        <div class="meta">{{ form.campusZone ? formatCampusZone(form.campusZone) : '请选择校区' }} · {{ form.location || '未填写地点' }}</div>
+        <div class="meta">地点：{{ form.location || '未填写地点' }}</div>
+        <div class="meta" style="margin-top:6px">
+          <span v-if="startTime || endTime">时间：{{ formatDateTime(startTime || '') }} - {{ formatDateTime(endTime || '') }}</span>
+        </div>
         <div class="tag-row">
-          <span v-for="tag in form.tags.split(/[，,]/).filter(Boolean)" :key="tag" class="badge is-neutral">{{ tag.trim() }}</span>
+          <span class="badge is-neutral">{{ form.campusZone ? formatCampusZone(form.campusZone) : '请选择校区' }}</span>
+          <template v-if="form.tags && form.tags.trim()">
+            <span v-for="tag in form.tags.split(/[，,]/).filter(Boolean)" :key="tag" class="badge is-neutral">{{ tag.trim() }}</span>
+          </template>
         </div>
       </div>
     </section>
@@ -351,5 +433,49 @@ async function checkRewardBalance(): Promise<void> {
   color: var(--danger);
   font-weight: 700;
   margin-left: 4px;
+}
+
+.preview-panel {
+  align-self: start;
+  position: sticky;
+  top: 24px;
+}
+
+/* 日期时间输入组样式 */
+.datetime-input-group {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.datetime-input-group input[type="date"],
+.datetime-input-group input[type="time"] {
+  width: 100%;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: rgba(255, 255, 255, 0.84);
+  color: var(--text-strong);
+  border-radius: 16px;
+  padding: 12px 14px;
+  outline: none;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+  font-size: 14px;
+}
+
+.datetime-input-group input[type="date"]:focus,
+.datetime-input-group input[type="time"]:focus {
+  border-color: rgba(31, 95, 83, 0.46);
+  box-shadow: 0 0 0 4px rgba(31, 95, 83, 0.12);
+}
+
+.datetime-input-group input[type="date"]::placeholder,
+.datetime-input-group input[type="time"]::placeholder {
+  color: var(--muted);
+}
+
+/* 移动端适配：堆叠布局 */
+@media (max-width: 780px) {
+  .datetime-input-group {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

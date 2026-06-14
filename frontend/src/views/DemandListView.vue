@@ -60,7 +60,8 @@ function filteredDemandItems(source: DemandRecord[]): DemandRecord[] {
     .filter((demand) => {
       if (!selectedStatus) return true
       if (selectedStatus === 'ACCEPTED') {
-        return store.orders.some((o) => o.demandId === demand.id && o.status === 'ACCEPTED')
+        // “已接单”对应 demand.status === 'IN_PROGRESS'（接单时后端已将需求状态更新为 IN_PROGRESS）
+        return demand.status === 'IN_PROGRESS'
       }
       return demand.status === selectedStatus
     })
@@ -212,7 +213,6 @@ watch(
             <option value="">全部状态</option>
             <option value="PENDING">开放中</option>
             <option value="ACCEPTED">已接单</option>
-            <option value="IN_PROGRESS">进行中</option>
             <option value="COMPLETED">已完成</option>
           </select>
         </div>
@@ -285,9 +285,9 @@ watch(
           <span class="badge is-neutral">{{ formatDemandCategory(demand.category) }}</span>
           <span
             class="chip"
-            :class="store.orders.some((o) => o.demandId === demand.id && o.status === 'ACCEPTED') ? 'is-warning' : statusToneClass(demand.status)"
+            :class="statusToneClass(demand.status)"
           >
-            {{ store.orders.some((o) => o.demandId === demand.id && o.status === 'ACCEPTED') ? '已接单' : formatDemandStatus(demand.status) }}
+            {{ demand.status === 'IN_PROGRESS' ? '已接单' : formatDemandStatus(demand.status) }}
           </span>
         </div>
 

@@ -15,6 +15,7 @@ import com.campushub.backend.order.domain.OrderStatus;
 import com.campushub.backend.order.domain.OrderStatusHistoryEntry;
 import com.campushub.backend.order.repository.OrderRepository;
 import com.campushub.backend.review.domain.Review;
+import com.campushub.backend.review.dto.ReviewResponse;
 import com.campushub.backend.review.repository.ReviewRepository;
 import java.util.List;
 import org.springframework.stereotype.Component;
@@ -69,6 +70,7 @@ public class ApiViewMapper {
         Order relatedOrder = demand.getId() == null ? null : orderRepository.findByDemandId(demand.getId()).orElse(null);
         boolean canAccept = canAcceptDemand(demand, relatedOrder, currentUser);
         String acceptDisabledReason = canAccept ? null : resolveAcceptDisabledReason(demand, relatedOrder, currentUser);
+        String acceptStatusHint = resolveAcceptStatusHint(demand, relatedOrder, currentUser);
         boolean canStartExecution = canStartExecution(relatedOrder, currentUser);
         boolean canViewAcceptNote = canViewAcceptNote(relatedOrder, currentUser);
         boolean canSubmitAcceptNote = canSubmitAcceptNote(relatedOrder, currentUser);
@@ -94,6 +96,7 @@ public class ApiViewMapper {
             demand.getAnonymousCode(),
             canAccept,
             acceptDisabledReason,
+            acceptStatusHint,
             canStartExecution,
             canViewAcceptNote,
             canSubmitAcceptNote,
@@ -144,6 +147,39 @@ public class ApiViewMapper {
 
     public ReviewView toReviewView(Review review) {
         return toReviewView(review, true, null, null);
+    }
+
+    /**
+     * 将 ReviewResponse 映射为 ReviewView，并根据关联需求的匿名设置进行身份脱敏。
+     */
+    public ReviewView toAnonymizedReviewView(ReviewResponse review, CurrentUser currentUser) {
+        Order order = orderRepository.findById(review.orderId()).orElse(null);
+        Demand demand = order != null ? demandRepository.findById(order.getDemandId()).orElse(null) : null;
+        boolean canSeePublisher = demand == null || canSeeDemandPublisher(demand, currentUser);
+        String anonymousCode = demand != null ? demand.getAnonymousCode() : null;
+        Long publisherId = order != null ? order.getPublisherId() : null;
+
+        User author = userRepository.findById(review.authorId()).orElse(null);
+        User target = userRepository.findById(review.targetId()).orElse(null);
+
+        boolean authorIsAnonPublisher = !canSeePublisher && publisherId != null && publisherId.equals(review.authorId());
+        boolean targetIsAnonPublisher = !canSeePublisher && publisherId != null && publisherId.equals(review.targetId());
+
+        UserSummaryView authorView = author == null ? null
+            : anonymizeUserSummary(UserSummaryView.from(author), canSeePublisher || !publisherId.equals(review.authorId()), anonymousCode);
+        String targetName = target == null ? null
+            : (targetIsAnonPublisher ? (anonymousCode != null ? anonymousCode : "匿名校友") : target.getNickname());
+
+        return new ReviewView(
+            review.id(),
+            review.orderId(),
+            review.rating(),
+            review.comment(),
+            review.targetId(),
+            targetName,
+            authorView,
+            review.createdAt()
+        );
     }
 
     private ReviewView toReviewView(Review review, boolean canSeePublisher, Long publisherId, String anonymousCode) {
@@ -229,6 +265,64 @@ public class ApiViewMapper {
             };
         }
         return null;
+    }
+
+    /**
+     * 根据当前用户身份返回个性化的接单状态提示文案。
+     * 
+     * @param demand 需求对象
+     * @param relatedOrder 关联的订单（如果存在）
+     * @param currentUser 当前登录用户
+     * @return 个性化提示文案，如果不应该显示则返回 null
+     */
+    private String resolveAcceptStatusHint(Demand demand, Order relatedOrder, CurrentUser currentUser) {
+        // 如果没有订单，不显示提示
+        if (relatedOrder == null) {
+            return null;
+        }
+
+        boolean isPublisher = currentUser != null && demand.getPublisherId() != null && demand.getPublisherId().equals(currentUser.userId());
+        boolean isAccepter = currentUser != null && relatedOrder.getAccepterId() != null && relatedOrder.getAccepterId().equals(currentUser.userId());
+
+        // 根据订单状态和用户身份返回不同的提示
+        switch (relatedOrder.getStatus()) {
+            case ACCEPTED:
+                if (isPublisher) {
+                    return "已有同学接单，请等待对方处理。";
+                } else if (isAccepter) {
+                    return "你已接单，请按时完成任务。";
+                } else {
+                    // 第三方访客
+                    return "该需求已被接单，来晚了一步。";
+                }
+            case IN_PROGRESS:
+                if (isPublisher) {
+                    return "订单正在执行中，请与接单方保持沟通。";
+                } else if (isAccepter) {
+                    return "订单正在执行中，请按时完成任务。";
+                } else {
+                    // 第三方访客
+                    return "订单正在执行中。";
+                }
+            case COMPLETED:
+                if (isPublisher || isAccepter) {
+                    return "订单已完成。";
+                } else {
+                    // 第三方访客
+                    return "该订单已完成。";
+                }
+            case CANCELLED:
+                if (isPublisher) {
+                    return "订单已取消。";
+                } else if (isAccepter) {
+                    return "订单已取消。";
+                } else {
+                    // 第三方访客
+                    return "该订单已取消。";
+                }
+            default:
+                return null;
+        }
     }
 
     private boolean canStartExecution(Order order, CurrentUser currentUser) {
