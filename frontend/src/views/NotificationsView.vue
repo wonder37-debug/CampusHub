@@ -116,7 +116,7 @@ onMounted(() => {
         v-for="notification in notifications"
         :key="notification.id"
         class="list-card notification-card"
-        :class="{ faded: notification.isRead }"
+        :class="notification.isRead ? 'is-read' : 'is-unread'"
         @click="openNotification(notification)"
       >
         <div class="status-row">
@@ -149,3 +149,44 @@ onMounted(() => {
     </section>
   </div>
 </template>
+
+<style scoped>
+.notification-card {
+  cursor: pointer;
+  border-left: 4px solid transparent;
+  transition: background 0.2s ease, border-color 0.2s ease, opacity 0.2s ease;
+}
+
+/* 未读：柔和蓝色调背景 + 左侧强调色条 */
+.is-unread {
+  background: linear-gradient(135deg, rgba(232, 244, 255, 0.92), rgba(215, 236, 255, 0.85));
+  border-left-color: #3b82f6;
+  box-shadow: 0 2px 10px rgba(59, 130, 246, 0.08);
+}
+
+.is-unread:hover {
+  background: linear-gradient(135deg, rgba(220, 238, 255, 0.96), rgba(205, 228, 255, 0.92));
+}
+
+/* 已读：柔和灰调背景 + 淡化视觉权重 */
+.is-read {
+  background: linear-gradient(135deg, rgba(248, 248, 250, 0.95), rgba(242, 242, 244, 0.88));
+  border-left-color: #c4c4c4;
+  opacity: 0.82;
+}
+
+.is-read:hover {
+  opacity: 1;
+  background: linear-gradient(135deg, rgba(246, 246, 248, 0.98), rgba(240, 240, 242, 0.92));
+}
+
+/* 未读圆点指示器 */
+.unread-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18);
+}
+</style>

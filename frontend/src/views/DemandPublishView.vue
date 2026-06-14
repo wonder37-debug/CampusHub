@@ -32,33 +32,26 @@ const form = reactive({
   category: '' as '' | (typeof DEMAND_CATEGORY_OPTIONS)[number],
   campusZone: '' as CampusZone | '',
   location: '',
-  startDate: '',
-  startTimeValue: '',
-  endDate: '',
-  endTimeValue: '',
+  startDateTime: '',
+  endDateTime: '',
   reward: '10',
   tags: '',
   anonymous: false
 })
 
-// 计算属性：合并后的完整 datetime 字符串
-const startTime = computed(() => {
-  if (!form.startDate || !form.startTimeValue) return ''
-  return `${form.startDate}T${form.startTimeValue}`
-})
+// datetime-local 输入格式为 YYYY-MM-DDTHH:MM，与 startTime/endTime 兼容
+const startTime = computed(() => form.startDateTime)
+const endTime = computed(() => form.endDateTime)
 
-const endTime = computed(() => {
-  if (!form.endDate || !form.endTimeValue) return ''
-  return `${form.endDate}T${form.endTimeValue}`
-})
-
-// 获取今天的日期（YYYY-MM-DD格式）
-const todayDate = computed(() => {
+// 获取当前时间（YYYY-MM-DDTHH:MM 格式，用于 min 约束）
+const minDateTime = computed(() => {
   const now = new Date()
   const year = now.getFullYear()
   const month = String(now.getMonth() + 1).padStart(2, '0')
   const day = String(now.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
+  const hours = String(now.getHours()).padStart(2, '0')
+  const minutes = String(now.getMinutes()).padStart(2, '0')
+  return `${year}-${month}-${day}T${hours}:${minutes}`
 })
 
 const isFormValid = computed(() => {
@@ -74,10 +67,8 @@ const isFormValid = computed(() => {
     Boolean(form.category) &&
     Boolean(form.campusZone) &&
     Boolean(form.location.trim()) &&
-    Boolean(form.startDate) &&
-    Boolean(form.startTimeValue) &&
-    Boolean(form.endDate) &&
-    Boolean(form.endTimeValue) &&
+    Boolean(form.startDateTime) &&
+    Boolean(form.endDateTime) &&
     Boolean(String(form.reward ?? '').trim())
   )
 })
@@ -126,19 +117,11 @@ function runValidations(): void {
     markRequiredError('location', '请填写地点，例如：图书馆/宿舍区')
   }
 
-  if (isEmpty(form.startDate)) {
-    markRequiredError('startTime', '请选择开始日期')
-  }
-
-  if (isEmpty(form.startTimeValue)) {
+  if (!form.startDateTime) {
     markRequiredError('startTime', '请选择开始时间')
   }
 
-  if (isEmpty(form.endDate)) {
-    markRequiredError('endTime', '请选择结束日期')
-  }
-
-  if (isEmpty(form.endTimeValue)) {
+  if (!form.endDateTime) {
     markRequiredError('endTime', '请选择结束时间')
   }
 
@@ -190,8 +173,8 @@ async function submitDemand(): Promise<void> {
     // 构建提交数据，使用合并后的 datetime
     const submitData = {
       ...form,
-      startTime: startTime.value,
-      endTime: endTime.value
+      startTime: form.startDateTime,
+      endTime: form.endDateTime
     }
     await store.createDemand(submitData)
     message.value = '发布成功，等待审核'
@@ -206,12 +189,12 @@ async function submitDemand(): Promise<void> {
   }
 }
 
-// 更新日期或时间时同步到完整的 datetime
-function updateStartTime(): void {
+// 清除错误状态（datetime-local 单字段无需额外同步）
+function clearStartTimeError(): void {
   errors.startTime = ''
 }
 
-function updateEndTime(): void {
+function clearEndTimeError(): void {
   errors.endTime = ''
 }
 
@@ -339,46 +322,26 @@ async function checkRewardBalance(): Promise<void> {
           </div>
 
           <div class="field">
-            <label for="demand-start-date">开始时间 <span class="required-mark">*</span></label>
-            <div class="datetime-input-group">
-              <input 
-                id="demand-start-date" 
-                v-model="form.startDate" 
-                type="date" 
-                :min="todayDate"
-                @change="updateStartTime" 
-                placeholder="选择日期"
-              />
-              <input 
-                id="demand-start-time" 
-                v-model="form.startTimeValue" 
-                type="time" 
-                @change="updateStartTime" 
-                placeholder="选择时间"
-              />
-            </div>
+            <label for="demand-start-datetime">开始时间 <span class="required-mark">*</span></label>
+            <input
+              id="demand-start-datetime"
+              v-model="form.startDateTime"
+              type="datetime-local"
+              :min="minDateTime"
+              @change="clearStartTimeError"
+            />
             <p v-if="errors.startTime" class="input-help" style="color: var(--danger)">{{ errors.startTime }}</p>
           </div>
 
           <div class="field">
-            <label for="demand-end-date">结束时间 <span class="required-mark">*</span></label>
-            <div class="datetime-input-group">
-              <input 
-                id="demand-end-date" 
-                v-model="form.endDate" 
-                type="date" 
-                :min="form.startDate || todayDate"
-                @change="updateEndTime" 
-                placeholder="选择日期"
-              />
-              <input 
-                id="demand-end-time" 
-                v-model="form.endTimeValue" 
-                type="time" 
-                @change="updateEndTime" 
-                placeholder="选择时间"
-              />
-            </div>
+            <label for="demand-end-datetime">结束时间 <span class="required-mark">*</span></label>
+            <input
+              id="demand-end-datetime"
+              v-model="form.endDateTime"
+              type="datetime-local"
+              :min="form.startDateTime || minDateTime"
+              @change="clearEndTimeError"
+            />
             <p v-if="errors.endTime" class="input-help" style="color: var(--danger)">{{ errors.endTime }}</p>
           </div>
 
@@ -444,15 +407,8 @@ async function checkRewardBalance(): Promise<void> {
   top: 24px;
 }
 
-/* 日期时间输入组样式 */
-.datetime-input-group {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
-.datetime-input-group input[type="date"],
-.datetime-input-group input[type="time"] {
+/* datetime-local 输入框样式 */
+input[type="datetime-local"] {
   width: 100%;
   border: 1px solid rgba(0, 0, 0, 0.12);
   background: rgba(255, 255, 255, 0.84);
@@ -462,23 +418,21 @@ async function checkRewardBalance(): Promise<void> {
   outline: none;
   transition: border-color 0.18s ease, box-shadow 0.18s ease;
   font-size: 14px;
+  cursor: pointer;
 }
 
-.datetime-input-group input[type="date"]:focus,
-.datetime-input-group input[type="time"]:focus {
+input[type="datetime-local"]:focus {
   border-color: rgba(31, 95, 83, 0.46);
   box-shadow: 0 0 0 4px rgba(31, 95, 83, 0.12);
 }
 
-.datetime-input-group input[type="date"]::placeholder,
-.datetime-input-group input[type="time"]::placeholder {
-  color: var(--muted);
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity 0.18s ease;
 }
 
-/* 移动端适配：堆叠布局 */
-@media (max-width: 780px) {
-  .datetime-input-group {
-    grid-template-columns: 1fr;
-  }
+input[type="datetime-local"]:hover::-webkit-calendar-picker-indicator {
+  opacity: 0.8;
 }
 </style>
