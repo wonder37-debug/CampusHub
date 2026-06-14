@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router'
 import { useCampusHubStore } from '@/stores/campusHub'
 import { validateNickname, validateAvatarUrl } from '@/utils/validators'
 import { handleError } from '@/utils/errorHandler'
+import { useConfirm } from '@/composables/useDialog'
 
 const store = useCampusHubStore()
 const router = useRouter()
@@ -31,7 +32,7 @@ async function save(): Promise<void> {
     return
   }
 
-  if (!window.confirm('确认保存个人信息？')) return
+  if (!await useConfirm('确认保存', '确认保存个人信息？')) return
 
   saving.value = true
   message.value = ''

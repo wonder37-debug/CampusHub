@@ -6,6 +6,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useCampusHubStore } from '@/stores/campusHub'
 import SkeletonCard from '@/components/SkeletonCard.vue'
 import { formatOrderStatus, formatRelativeTime, formatScore, formatCampusZone, statusToneClass } from '@/utils/format'
+import { useConfirm } from '@/composables/useDialog'
 
 const route = useRoute()
 const router = useRouter()
@@ -109,8 +110,20 @@ const providerConfirmed = computed(() => {
   )
 })
 
+const isDemandAnonymous = computed(() => {
+  const demand = order.value?.demandDescription != null ? (order.value as any).demand : null
+  return demand?.anonymous === true || order.value?.requesterName?.includes('匿名') === true
+})
+
 function reviewDisplayName(name: string, reviewerId: string): string {
   if (store.currentUser && reviewerId === store.currentUser.id) return '我'
+  // 匿名保护：如果需求是匿名发布的，且评价中的名字对应发布方，则显示匿名标识
+  if (isDemandAnonymous.value) {
+    const publisherId = order.value?.requesterId
+    if (publisherId && reviewerId === publisherId) {
+      return order.value?.requesterName ?? '匿名校友'
+    }
+  }
   return name
 }
 
@@ -125,7 +138,7 @@ async function startOrder(): Promise<void> {
 async function completeOrder(): Promise<void> {
   if (!order.value) return
 
-  if (!window.confirm('确认完成此订单？此操作不可撤销。')) return
+  if (!await useConfirm('确认完成', '确认完成此订单？此操作不可撤销。', { danger: true })) return
 
   message.value = ''
   error.value = ''

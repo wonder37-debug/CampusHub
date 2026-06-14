@@ -25,6 +25,7 @@ public record DemandView(
     String anonymousCode,
     boolean canAccept,
     String acceptDisabledReason,
+    String acceptStatusHint,
     boolean canStartExecution,
     boolean canViewAcceptNote,
     boolean canSubmitAcceptNote,
