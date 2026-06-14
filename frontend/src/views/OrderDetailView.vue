@@ -21,6 +21,16 @@ const completionSubmitted = ref(false)
 const reviewRating = ref('5')
 const reviewComment = ref('')
 const loadingOrder = ref(false)
+const refreshing = ref(false)
+
+async function refreshOrder(): Promise<void> {
+  refreshing.value = true
+  try {
+    await store.fetchOrderDetail(String(route.params.id))
+  } finally {
+    refreshing.value = false
+  }
+}
 
 const relatedReviews = computed(() => {
   if (!order.value) return []
@@ -155,7 +165,18 @@ async function completeOrder(): Promise<void> {
 }
 
 async function cancelOrder(): Promise<void> {
-  if (order.value) await store.cancelOrder(order.value.id)
+  if (!order.value) return
+
+  if (!await useConfirm('确认取消', '确认取消此订单？此操作不可撤销。', { danger: true })) return
+
+  message.value = ''
+  error.value = ''
+  try {
+    await store.cancelOrder(order.value.id)
+    message.value = '订单已取消。'
+  } catch (cancelError) {
+    error.value = handleError(cancelError, '取消失败')
+  }
 }
 
 async function submitReview(): Promise<void> {
@@ -205,12 +226,17 @@ onMounted(() => {
   <div v-else-if="order" class="page-grid">
     <section class="panel">
       <div class="page-head">
-        <button type="button" class="button secondary" @click="goBack">返回</button>
-        <div>
-          <p class="eyebrow">订单详情</p>
-          <h1 class="page-title">{{ order.demandTitle }}</h1>
-          <p class="page-summary">{{ formatRelativeTime(order.createdAt) }}</p>
+        <div style="display: flex; align-items: center; gap: 16px;">
+          <button type="button" class="button primary" @click="goBack">← 返回</button>
+          <div>
+            <p class="eyebrow">订单详情</p>
+            <h1 class="page-title">{{ order.demandTitle }}</h1>
+            <p class="page-summary">{{ formatRelativeTime(order.createdAt) }}</p>
+          </div>
         </div>
+        <button type="button" class="button primary" :disabled="refreshing" @click="refreshOrder">
+          {{ refreshing ? '刷新中...' : '↻ 刷新' }}
+        </button>
       </div>
 
       <div class="status-row">
@@ -296,7 +322,7 @@ onMounted(() => {
     <section v-if="hasAvailableActions" class="panel">
       <p class="eyebrow">订单操作</p>
       <div class="card-actions">
-        <button v-if="order.status === 'ACCEPTED' && isProvider" type="button" class="button secondary" @click="startOrder">开始执行</button>
+        <button v-if="order.status === 'ACCEPTED' && isProvider" type="button" class="button primary" @click="startOrder">开始执行</button>
         <button
           v-if="order.status === 'IN_PROGRESS' && isProvider && !completionSubmitted"
           type="button"
@@ -317,7 +343,7 @@ onMounted(() => {
           v-if="order.status === 'IN_PROGRESS' && ((isProvider && completionSubmitted) || (isRequester && !providerConfirmed) || (!isProvider && !isRequester))"
           class="chip is-warning"
         >{{ completionHint || '等待接单方确认完成' }}</span>
-        <button v-if="order.status === 'ACCEPTED' && isRequester" type="button" class="button secondary" @click="cancelOrder">取消订单</button>
+        <button v-if="order.status === 'ACCEPTED' && isRequester" type="button" class="button danger" @click="cancelOrder">取消订单</button>
       </div>
     </section>
   </div>
