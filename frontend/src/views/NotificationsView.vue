@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { useCampusHubStore } from '@/stores/campusHub'
@@ -9,6 +9,16 @@ const store = useCampusHubStore()
 const router = useRouter()
 
 const notifications = computed(() => store.currentUserNotifications)
+const refreshing = ref(false)
+
+async function refreshNotifications(): Promise<void> {
+  refreshing.value = true
+  try {
+    await store.fetchNotifications()
+  } finally {
+    refreshing.value = false
+  }
+}
 
 function iconFor(type: string): string {
   if (type === 'ORDER_ACCEPTED') return '🧩'
@@ -84,6 +94,9 @@ onMounted(() => {
           <h1 class="page-title">消息</h1>
           <p class="page-summary">接单、状态变更和评价会在这里显示。</p>
         </div>
+        <button type="button" class="button primary" :disabled="refreshing" @click="refreshNotifications">
+          {{ refreshing ? '刷新中...' : '↻ 刷新' }}
+        </button>
         <button type="button" class="button secondary" @click="store.markAllNotificationsRead">全部标记已读</button>
       </div>
     </section>

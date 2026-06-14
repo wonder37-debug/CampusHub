@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, onMounted } from 'vue'
 import { handleError } from '@/utils/errorHandler'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 import { useCampusHubStore } from '@/stores/campusHub'
 import SkeletonCard from '@/components/SkeletonCard.vue'
@@ -9,6 +9,7 @@ import { formatAcceptDisabledReason, formatCampusZone, formatDateTime, formatDem
 import { useConfirm } from '@/composables/useDialog'
 
 const route = useRoute()
+const router = useRouter()
 const store = useCampusHubStore()
 const note = ref('')
 const reviewRating = ref('5')
@@ -17,6 +18,24 @@ const message = ref('')
 const error = ref('')
 const completionSubmitted = ref(false)
 const loadingDemand = ref(false)
+const refreshing = ref(false)
+
+async function refreshDemand(): Promise<void> {
+  refreshing.value = true
+  try {
+    await store.fetchDemandDetail(String(route.params.id))
+    if (store.currentUser) {
+      await store.fetchOrders()
+      const demandId = String(route.params.id)
+      const hasRelatedOrder = store.orders.some((o) => o.demandId === demandId)
+      if (!hasRelatedOrder) {
+        await store.fetchOrderByDemandId(demandId)
+      }
+    }
+  } finally {
+    refreshing.value = false
+  }
+}
 
 const demand = computed(() => store.getDemandById(String(route.params.id)))
 const relatedOrder = computed(() => store.orders.find((order) => order.demandId === demand.value?.id))
@@ -210,6 +229,12 @@ onMounted(() => {
 
   <div v-else-if="demand" class="page-grid two-column">
     <section class="panel">
+      <div class="page-head" style="margin-bottom: 12px;">
+        <button type="button" class="button primary" @click="router.back()">← 返回</button>
+        <button type="button" class="button primary" :disabled="refreshing" @click="refreshDemand">
+          {{ refreshing ? '刷新中...' : '↻ 刷新' }}
+        </button>
+      </div>
       <div class="status-row">
         <span class="chip" :class="relatedOrder ? statusToneClass(relatedOrder.status) : statusToneClass(demand.status)">
           {{ relatedOrder ? formatOrderStatus(relatedOrder.status) : formatDemandStatus(demand.status) }}

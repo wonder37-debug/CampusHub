@@ -322,6 +322,11 @@ img {
   background: linear-gradient(135deg, var(--accent-strong), var(--accent));
 }
 
+.button.danger {
+  color: #fff;
+  background: linear-gradient(135deg, #c0392b, var(--danger));
+}
+
 .demo-strip {
   margin-top: 16px;
   display: grid;

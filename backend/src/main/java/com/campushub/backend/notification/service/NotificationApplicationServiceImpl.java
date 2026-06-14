@@ -173,10 +173,10 @@ public class NotificationApplicationServiceImpl implements NotificationApplicati
                     : "订单《" + demandTitle + "》已完成，请对发布者进行评价。";
             }
             case CANCELLED -> {
-                title = isPublisher ? "订单已被取消" : "您已取消订单";
+                title = isPublisher ? "您已取消订单" : "订单已被取消";
                 content = isPublisher
-                    ? "订单《" + demandTitle + "》已被取消。"
-                    : "您已取消订单《" + demandTitle + "》。";
+                    ? "您已取消订单《" + demandTitle + "》。"
+                    : "订单《" + demandTitle + "》已被取消。";
             }
             default -> {
                 title = "订单状态更新";

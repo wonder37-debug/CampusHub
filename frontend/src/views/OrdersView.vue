@@ -12,6 +12,19 @@ const store = useCampusHubStore()
 const router = useRouter()
 const activeTab = ref<'published' | 'accepted'>('published')
 const loadingOrders = ref(false)
+const refreshing = ref(false)
+
+async function refreshOrders(): Promise<void> {
+  refreshing.value = true
+  try {
+    await Promise.all([
+      store.fetchOrders({ page: 1, size: 100, all: true }),
+      store.fetchDemands({ page: 1, size: 100, all: true, includeOwn: true })
+    ])
+  } finally {
+    refreshing.value = false
+  }
+}
 
 type PublishedOrderItem = OrderRecord & {
   demandStatus?: never
@@ -159,6 +172,9 @@ onMounted(() => {
           <h1 class="page-title">订单列表</h1>
           <p class="page-summary">查看我发布和我接下的订单，按状态执行操作。</p>
         </div>
+        <button type="button" class="button primary" :disabled="refreshing" @click="refreshOrders">
+          {{ refreshing ? '刷新中...' : '↻ 刷新' }}
+        </button>
       </div>
 
       <div class="segment-row">

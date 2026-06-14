@@ -298,7 +298,7 @@ watch(
 
         <div v-if="isRecommendSort() && recommendedItems.find((item) => item.demand.id === demand.id)" class="status-row" style="margin-top: 8px;">
           <span class="chip is-success">推荐第 {{ recommendedItems.find((item) => item.demand.id === demand.id)?.rank }} 名</span>
-          <span class="chip">推荐分 {{ formatScore(recommendedItems.find((item) => item.demand.id === demand.id)?.score ?? 0) }}</span>
+          <span class="chip">推荐指数 {{ Math.round((recommendedItems.find((item) => item.demand.id === demand.id)?.score ?? 0) * 100) }}%</span>
         </div>
 
         <div v-if="isRecommendSort() && recommendedItems.find((item) => item.demand.id === demand.id)?.reasonTags?.length" class="tag-row">

@@ -267,6 +267,7 @@ async function checkRewardBalance(): Promise<void> {
             <h2 class="page-title">发布需求</h2>
             <p class="page-summary">管理员账号无法发布需求</p>
           </div>
+          <button type="button" class="button primary" @click="router.back()">← 返回</button>
         </div>
         <div style="padding:24px">
           <p class="hero-badge">管理员账号不能发布需求。如需执行管理操作，请前往管理后台。</p>
@@ -278,6 +279,7 @@ async function checkRewardBalance(): Promise<void> {
             <h2 class="page-title">发布需求</h2>
             <p class="page-summary">发布成功，等待审核</p>
           </div>
+          <button type="button" class="button primary" @click="router.push('/demands')">← 返回列表</button>
         </div>
         <div style="padding: 24px;">
           <p class="hero-badge">发布成功，等待审核</p>
@@ -289,6 +291,7 @@ async function checkRewardBalance(): Promise<void> {
             <h2 class="page-title">发布需求</h2>
             <p class="page-summary">填写标题、地点和时间后即可发布，让同学更快看到你的需求。</p>
           </div>
+          <button type="button" class="button primary" @click="router.back()">← 返回</button>
         </div>
 
         <div class="form-grid two-column">
