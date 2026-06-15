@@ -1,0 +1,2 @@
+# 强制 shell 脚本永远使用 LF 换行符，避免 Windows checkout 后报 $'\r' 错误
+*.sh text eol=lf
