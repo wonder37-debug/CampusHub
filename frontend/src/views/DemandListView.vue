@@ -145,6 +145,10 @@ function goPublish(): void {
 
 
 
+function scrollToTop(): void {
+  window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
 async function syncRecommendations(): Promise<void> {
   if (!store.currentUser) {
     recommendedItems.value = []
@@ -249,7 +253,12 @@ watch(
             </div>
           </div>
 
-          <div class="sort-section sort-center"></div>
+          <div class="sort-section sort-center">
+            <button type="button" class="publish-button" @click="goPublish">
+              <span class="publish-icon">+</span>
+              发布需求
+            </button>
+          </div>
 
           <div class="sort-section sort-right">
             <button type="button" class="button secondary refresh-button" @click="refreshList">
@@ -350,10 +359,7 @@ watch(
   </div>
 
   <Teleport to="body">
-    <button class="fab" @click="goPublish">
-      <span class="fab-icon">+</span>
-      发布需求
-    </button>
+    <button class="fab back-to-top" @click="scrollToTop">↑ 回到顶部</button>
   </Teleport>
   </div>
 </template>

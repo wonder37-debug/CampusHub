@@ -970,6 +970,22 @@ td .avatar-row strong {
   line-height: 1;
 }
 
+button.back-to-top {
+  min-width: 130px;
+  height: 48px;
+  font-size: 14px;
+  padding: 10px 18px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--text-strong);
+  border: 1px solid var(--panel-border);
+  box-shadow: 0 12px 30px rgba(58, 39, 21, 0.14);
+}
+
+button.back-to-top:hover {
+  background: #fff;
+  box-shadow: 0 18px 38px rgba(22, 60, 53, 0.20);
+}
+
 @media (max-width: 780px) {
   .fab {
     right: 16px;
