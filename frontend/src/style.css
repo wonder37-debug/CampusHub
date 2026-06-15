@@ -964,6 +964,12 @@ td .avatar-row strong {
   box-shadow: 0 26px 60px rgba(22, 60, 53, 0.28) !important;
 }
 
+.fab-icon {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+}
+
 @media (max-width: 780px) {
   .fab {
     right: 16px;

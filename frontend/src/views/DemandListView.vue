@@ -68,20 +68,20 @@ function filteredDemandItems(source: DemandRecord[]): DemandRecord[] {
 }
 
 const visibleDemands = computed(() => {
-  // 始终使用完整需求列表作为数据源，推荐排序仅影响排序顺序
+  // Always use full demand list as source; recommendation only affects order
   const source = [...store.demands]
   const filtered = filteredDemandItems(source)
 
   if (isRecommendSort() && recommendedItems.value.length) {
-    // 推荐排序：推荐需求优先，其余按时间排序
-    const recIds = new Set(recommendedItems.value.map((item) => item.demand.id))
-    const sorted = [...filtered].sort((a: DemandRecord, b: DemandRecord) => {
-      const aRec = recIds.has(a.id) ? 1 : 0
-      const bRec = recIds.has(b.id) ? 1 : 0
-      if (aRec !== bRec) return bRec - aRec
-      return b.createdAt.localeCompare(a.createdAt)
-    })
-    return sorted.slice(0, filters.page * filters.size)
+    // Recommendation: fully trust backend order, no front-end sorting
+    const recOrder = recommendedItems.value.map((item) => item.demand.id)
+    const recSet = new Set(recOrder)
+    const recItems = recOrder.map((id) => filtered.find((d) => d.id === id)).filter(Boolean) as DemandRecord[]
+    const otherItems = filtered.filter((d) => !recSet.has(d.id)).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    if (filters.sortDirection === 'asc') {
+      return [...recItems.reverse(), ...otherItems].slice(0, filters.page * filters.size)
+    }
+    return [...recItems, ...otherItems].slice(0, filters.page * filters.size)
   }
 
   const sorted = filtered.sort((left: DemandRecord, right: DemandRecord) => {
@@ -104,6 +104,10 @@ const totalCount = computed(() => {
 })
 const hasMore = computed(() => visibleDemands.value.length < totalCount.value)
 const allLoaded = computed(() => !hasMore.value && totalCount.value > 0)
+
+async function loadMore(): Promise<void> {
+  filters.page++
+}
 
 async function refreshList(): Promise<void> {
   refreshing.value = true
@@ -181,7 +185,8 @@ watch(
 </script>
 
 <template>
-  <div class="page-grid">
+  <div>
+    <div class="page-grid">
     <section class="panel">
       <div class="page-head">
         <div>
@@ -244,12 +249,7 @@ watch(
             </div>
           </div>
 
-          <div class="sort-section sort-center">
-            <button type="button" class="publish-button" @click="goPublish">
-              <span class="publish-icon">+</span>
-              发布需求
-            </button>
-          </div>
+          <div class="sort-section sort-center"></div>
 
           <div class="sort-section sort-right">
             <button type="button" class="button secondary refresh-button" @click="refreshList">
@@ -296,20 +296,22 @@ watch(
           <strong>{{ formatMoney(demand.reward) }}</strong>
         </div>
 
-        <div v-if="isRecommendSort() && recommendedItems.find((item) => item.demand.id === demand.id)" class="status-row" style="margin-top: 8px;">
-          <span class="chip is-success">推荐第 {{ recommendedItems.find((item) => item.demand.id === demand.id)?.rank }} 名</span>
-          <span class="chip">推荐指数 {{ Math.round((recommendedItems.find((item) => item.demand.id === demand.id)?.score ?? 0) * 100) }}%</span>
-        </div>
+        <template v-if="isRecommendSort()">
+          <div v-if="recommendedItems.find((item) => item.demand.id === demand.id)" class="status-row" style="margin-top: 8px;">
+            <span class="chip is-success">推荐第 {{ recommendedItems.find((item) => item.demand.id === demand.id)!.rank }} 名</span>
+            <span class="chip">推荐指数 {{ Math.round((recommendedItems.find((item) => item.demand.id === demand.id)!.score) * 100) }}%</span>
+          </div>
 
-        <div v-if="isRecommendSort() && recommendedItems.find((item) => item.demand.id === demand.id)?.reasonTags?.length" class="tag-row">
-          <span
-            v-for="tag in recommendedItems.find((item) => item.demand.id === demand.id)?.reasonTags || []"
-            :key="tag"
-            class="badge is-neutral"
-          >
-            {{ tag }}
-          </span>
-        </div>
+          <div v-if="recommendedItems.find((item) => item.demand.id === demand.id)?.reasonTags?.length" class="tag-row">
+            <span
+              v-for="tag in recommendedItems.find((item) => item.demand.id === demand.id)!.reasonTags || []"
+              :key="tag"
+              class="badge is-neutral"
+            >
+              {{ tag }}
+            </span>
+          </div>
+        </template>
 
         <div class="meta">地点：{{ demand.location || '无' }}</div>
 
@@ -339,10 +341,20 @@ watch(
         <div class="meta">{{ formatRelativeTime(demand.createdAt) }}</div>
       </article>
 
-      <div v-if="allLoaded" class="empty-state subtle" style="background: transparent; box-shadow: none; border: 0;">
-        已展示全部 {{ totalCount }} 条需求
+      <div v-if="hasMore" class="list-card load-more-panel" @click="loadMore">
+        <h3>加载更多需求</h3>
+        <p class="subtle">当前显示 {{ visibleDemands.length }} / {{ totalCount }} 条</p>
       </div>
+      <div v-if="allLoaded" class="load-more-done">📋 已展示全部 {{ totalCount }} 条需求</div>
     </section>
+  </div>
+
+  <Teleport to="body">
+    <button class="fab" @click="goPublish">
+      <span class="fab-icon">+</span>
+      发布需求
+    </button>
+  </Teleport>
   </div>
 </template>
 
@@ -438,5 +450,32 @@ watch(
 
 .refresh-button:hover {
   background: rgba(31, 95, 83, 0.08) !important;
+}
+
+/* 加载更多 */
+.load-more-panel {
+  cursor: pointer;
+  align-items: center;
+  text-align: center;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.load-more-panel:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow);
+}
+.load-more-done {
+  text-align: center;
+  padding: 14px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.demand-card {
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.demand-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow);
 }
 </style>
