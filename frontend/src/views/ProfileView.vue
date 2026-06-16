@@ -1,12 +1,20 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { useCampusHubStore } from '@/stores/campusHub'
 import { formatMoney, formatRelativeTime, formatScore, formatUserRole, formatUserStatus } from '@/utils/format'
+import { handleError } from '@/utils/errorHandler'
 
 const store = useCampusHubStore()
 const router = useRouter()
+
+const showChangePassword = ref(false)
+const oldPassword = ref('')
+const newPassword = ref('')
+const changePasswordMessage = ref('')
+const changePasswordError = ref('')
+const changing = ref(false)
 
 const creditLevel = computed(() => {
   const score = store.currentUser?.creditScore ?? 0
@@ -44,6 +52,41 @@ function openEditPage(): void {
   router.push('/profile/edit')
 }
 
+function openChangePassword(): void {
+  showChangePassword.value = true
+  oldPassword.value = ''
+  newPassword.value = ''
+  changePasswordMessage.value = ''
+  changePasswordError.value = ''
+}
+
+function closeChangePassword(): void {
+  showChangePassword.value = false
+}
+
+async function submitChangePassword(): Promise<void> {
+  changePasswordMessage.value = ''
+  changePasswordError.value = ''
+  if (!oldPassword.value || !newPassword.value) {
+    changePasswordError.value = '请填写当前密码和新密码'
+    return
+  }
+  if (newPassword.value.length < 6) {
+    changePasswordError.value = '新密码至少需要 6 个字符'
+    return
+  }
+  changing.value = true
+  try {
+    await store.changePassword(oldPassword.value, newPassword.value)
+    changePasswordMessage.value = '密码已修改成功'
+    setTimeout(closeChangePassword, 1200)
+  } catch (e) {
+    changePasswordError.value = handleError(e, '修改密码失败')
+  } finally {
+    changing.value = false
+  }
+}
+
 function logout(): void {
   store.logout()
   router.push('/auth')
@@ -69,6 +112,7 @@ onMounted(() => {
               <h1 class="page-title">{{ store.currentUser.nickname }}</h1>
             </div>
             <button type="button" class="button primary profile-edit-btn" @click="openEditPage">修改个人信息</button>
+            <button type="button" class="button secondary profile-edit-btn" @click="openChangePassword">修改密码</button>
           </div>
           <p class="page-summary">学号：{{ store.currentUser.studentId }}</p>
           <div class="stats-row" style="gap:12px;">
@@ -164,5 +208,31 @@ onMounted(() => {
     <p>前往认证页后再查看个人中心。</p>
     <button type="button" class="button primary" @click="router.push('/auth')">去认证页</button>
   </div>
+
+  <!-- 修改密码弹窗 -->
+  <Teleport to="body">
+    <div v-if="showChangePassword" class="modal-backdrop" @click.self="closeChangePassword">
+      <div class="modal-card panel">
+        <div class="modal-head">
+          <h3 class="section-title">修改密码</h3>
+          <button type="button" class="button secondary" @click="closeChangePassword">关闭</button>
+        </div>
+        <div class="field">
+          <label>当前密码</label>
+          <input v-model="oldPassword" type="password" placeholder="请输入当前密码" />
+        </div>
+        <div class="field">
+          <label>新密码</label>
+          <input v-model="newPassword" type="password" placeholder="至少 6 个字符" />
+        </div>
+        <p v-if="changePasswordMessage" class="hero-badge">{{ changePasswordMessage }}</p>
+        <p v-if="changePasswordError" class="hero-badge" style="background: rgba(181,71,71,0.14);color:var(--danger)">{{ changePasswordError }}</p>
+        <div class="card-actions" style="justify-content:flex-end">
+          <button type="button" class="button secondary" @click="closeChangePassword">取消</button>
+          <button type="button" class="button primary" :disabled="changing" @click="submitChangePassword">确认修改</button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
   </div>
 </template>

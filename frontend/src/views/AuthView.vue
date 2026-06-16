@@ -16,6 +16,7 @@ const emailDomainOptions = [
 ]
 
 const activeTab = ref<'login' | 'register'>('login')
+const showForgotPassword = ref(false)
 const message = ref('')
 const error = ref('')
 const verificationCodeHint = ref('')
@@ -184,7 +185,8 @@ async function submitRegister(): Promise<void> {
 </script>
 
 <template>
-  <div class="page-grid two-column">
+  <div>
+    <div class="page-grid two-column">
     <section class="form-panel">
       <div class="segment-row">
         <button
@@ -220,6 +222,9 @@ async function submitRegister(): Promise<void> {
             </button>
           </div>
         </div>
+        <p style="text-align:right; margin:-4px 0 8px 0;">
+          <a href="#" @click.prevent="showForgotPassword = true" style="color:var(--muted);font-size:13px;">忘记密码？</a>
+        </p>
         <button type="submit" class="button primary">登录到平台</button>
       </form>
 
@@ -337,5 +342,17 @@ async function submitRegister(): Promise<void> {
         </div>
       </div>
     </section>
+  </div>
+
+  <!-- 忘记密码提示 -->
+  <Teleport to="body">
+    <div v-if="showForgotPassword" class="modal-backdrop" @click.self="showForgotPassword = false">
+      <div class="modal-card panel" style="text-align:center">
+        <p class="eyebrow">忘记密码</p>
+        <p class="page-summary">请联系管理员处理。</p>
+        <button type="button" class="button secondary" @click="showForgotPassword = false">关闭</button>
+      </div>
+    </div>
+  </Teleport>
   </div>
 </template>

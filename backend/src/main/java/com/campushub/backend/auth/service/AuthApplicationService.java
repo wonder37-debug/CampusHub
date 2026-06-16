@@ -18,4 +18,6 @@ public interface AuthApplicationService {
     UserProfileResponse getProfile(Long userId);
 
     UserProfileResponse updateProfile(Long operatorId, Long targetUserId, UpdateProfileCommand command);
+
+    void changePassword(Long userId, String oldPassword, String newPassword);
 }

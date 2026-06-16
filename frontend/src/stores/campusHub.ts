@@ -493,6 +493,13 @@ export const useCampusHubStore = defineStore('campusHub', {
       return mapped
     },
 
+    async changePassword(oldPassword: string, newPassword: string): Promise<void> {
+      await requestJson<void>('/auth/change-password', {
+        method: 'POST',
+        body: JSON.stringify({ oldPassword, newPassword })
+      }, this.token)
+    },
+
     async createDemand(form: DemandFormInput): Promise<DemandRecord> {
       if (!this.currentUserId) {
         throw new Error('请先登录后再发布需求')

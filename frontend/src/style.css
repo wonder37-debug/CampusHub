@@ -986,6 +986,30 @@ button.back-to-top:hover {
   box-shadow: 0 18px 38px rgba(22, 60, 53, 0.20);
 }
 
+/* 全局弹窗样式 */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(31, 26, 23, 0.46);
+  backdrop-filter: blur(6px);
+}
+
+.modal-card {
+  width: min(640px, 100%);
+  padding: 22px;
+}
+
+.modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 @media (max-width: 780px) {
   .fab {
     right: 16px;

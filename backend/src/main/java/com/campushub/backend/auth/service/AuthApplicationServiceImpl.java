@@ -9,6 +9,7 @@ import com.campushub.backend.auth.dto.LoginResult;
 import com.campushub.backend.auth.dto.RegisterCommand;
 import com.campushub.backend.auth.dto.UpdateProfileCommand;
 import com.campushub.backend.auth.dto.UserProfileResponse;
+import com.campushub.backend.auth.dto.ChangePasswordCommand;
 import com.campushub.backend.auth.repository.UserRepository;
 import com.campushub.backend.common.exception.BusinessException;
 import com.campushub.backend.common.exception.ErrorCode;
@@ -144,6 +145,28 @@ public class AuthApplicationServiceImpl implements AuthApplicationService {
         user.setAvatarUrl(emptyToNull(command.avatarUrl()));
         user.setUpdatedAt(LocalDateTime.now());
         return UserProfileResponse.from(userRepository.save(user));
+    }
+
+    @Override
+    public void changePassword(Long userId, String oldPassword, String newPassword) {
+        if (userId == null) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "userId must not be null");
+        }
+        if (oldPassword == null || oldPassword.isBlank()) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "oldPassword must not be blank");
+        }
+        if (newPassword == null || newPassword.isBlank()) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "newPassword must not be blank");
+        }
+        if (newPassword.length() < 6) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "newPassword must be at least 6 characters");
+        }
+        User user = findUserById(userId);
+        if (!passwordEncoder.matches(oldPassword, user.getPasswordHash())) {
+            throw new BusinessException(ErrorCode.PERMISSION_DENIED, "当前密码不正确");
+        }
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
     }
 
     private User findUserById(Long userId) {

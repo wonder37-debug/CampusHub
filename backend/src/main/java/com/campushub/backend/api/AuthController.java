@@ -5,8 +5,11 @@ import com.campushub.backend.auth.dto.EmailVerificationIssue;
 import com.campushub.backend.auth.dto.LoginCommand;
 import com.campushub.backend.auth.dto.LoginResult;
 import com.campushub.backend.auth.dto.RegisterCommand;
+import com.campushub.backend.auth.dto.ChangePasswordCommand;
 import com.campushub.backend.auth.service.AuthApplicationService;
 import com.campushub.backend.common.api.ApiResponse;
+import com.campushub.backend.common.security.RequestUserExtractor;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -17,9 +20,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
 
     private final AuthApplicationService authApplicationService;
+    private final RequestUserExtractor requestUserExtractor;
 
-    public AuthController(AuthApplicationService authApplicationService) {
+    public AuthController(AuthApplicationService authApplicationService, RequestUserExtractor requestUserExtractor) {
         this.authApplicationService = authApplicationService;
+        this.requestUserExtractor = requestUserExtractor;
     }
 
     @PostMapping("/email-code")
@@ -41,6 +46,13 @@ public class AuthController {
             result.expiresIn(),
             UserSummaryView.from(result.user())
         ));
+    }
+
+    @PostMapping("/change-password")
+    public ApiResponse<Void> changePassword(@RequestBody ChangePasswordCommand command, HttpServletRequest request) {
+        Long userId = requestUserExtractor.requireCurrentUser(request).userId();
+        authApplicationService.changePassword(userId, command.oldPassword(), command.newPassword());
+        return ApiResponse.success(null);
     }
 
     public record LoginResultView(String token, long expiresIn, UserSummaryView user) {
