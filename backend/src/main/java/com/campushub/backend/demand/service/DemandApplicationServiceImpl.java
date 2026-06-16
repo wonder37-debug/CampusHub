@@ -228,6 +228,35 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
         unfreezeBalance(publisher, reward);
     }
 
+    @Override
+    public DemandDetailResponse withdraw(Long operatorId, Long demandId) {
+        Demand demand = demandRepository.findById(demandId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "demand not found"));
+        if (!demand.getPublisherId().equals(operatorId)) {
+            throw new BusinessException(ErrorCode.PERMISSION_DENIED, "only the publisher can withdraw this demand");
+        }
+        if (demand.getStatus() != DemandStatus.REVIEWING && demand.getStatus() != DemandStatus.PENDING) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "only reviewing or open demands can be withdrawn");
+        }
+        demand.setStatus(DemandStatus.CANCELLED);
+        demand.setUpdatedAt(LocalDateTime.now());
+        unfreezeBalanceForDemand(demand);
+        demandRepository.save(demand);
+        return DemandDetailResponse.from(demand);
+    }
+
+    private void unfreezeBalanceForDemand(Demand demand) {
+        if (demand.getReward() == null || demand.getReward().compareTo(BigDecimal.ZERO) <= 0 || demand.getPublisherId() == null) {
+            return;
+        }
+        User publisher = userRepository.findById(demand.getPublisherId()).orElse(null);
+        if (publisher != null) {
+            BigDecimal frozen = publisher.getFrozenBalance() == null ? BigDecimal.ZERO : publisher.getFrozenBalance();
+            publisher.setFrozenBalance(frozen.subtract(demand.getReward()).max(BigDecimal.ZERO));
+            userRepository.save(publisher);
+        }
+    }
+
     private User findActivePublisher(Long publisherId) {
         if (publisherId == null) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "publisherId must not be null");

@@ -500,6 +500,14 @@ export const useCampusHubStore = defineStore('campusHub', {
       }, this.token)
     },
 
+    async withdrawDemand(demandId: string): Promise<void> {
+      await requestJson<void>(`/demands/${encodeURIComponent(demandId)}/withdraw`, {
+        method: 'POST'
+      }, this.token)
+      await this.fetchDemandDetail(demandId)
+      await this.fetchDemands()
+    },
+
     async createDemand(form: DemandFormInput): Promise<DemandRecord> {
       if (!this.currentUserId) {
         throw new Error('请先登录后再发布需求')

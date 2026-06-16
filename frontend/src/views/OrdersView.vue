@@ -34,6 +34,7 @@ type PublishedOrderItem = OrderRecord & {
 type DemandPlaceholderOrder = Omit<OrderRecord, 'status'> & {
   status: DemandStatus
   demandStatus: DemandStatus
+  demandReviewReason?: string | null
   isPlaceholder: true
 }
 
@@ -65,6 +66,7 @@ function createDemandPlaceholder(demand: DemandRecord): DemandPlaceholderOrder {
     demandEndTime: demand.endTime,
     demandReward: demand.reward,
     demandLocation: demand.location,
+    demandReviewReason: demand.reviewReason,
     completedAt: '',
     timeline: [],
     isPlaceholder: true
@@ -119,7 +121,8 @@ function otherPartyName(order: OrderListItem): string {
   if (activeTab.value === 'published') {
     if (isDemandPlaceholder(order)) {
       if (order.demandStatus === 'REVIEWING') return '待管理员审核'
-      if (order.demandStatus === 'CANCELLED') return '审核未通过'
+      if (order.demandStatus === 'CANCELLED' && order.demandReviewReason) return '审核未通过'
+      if (order.demandStatus === 'CANCELLED') return '已撤回'
       return '未被接单'
     }
     return order.serviceProviderName

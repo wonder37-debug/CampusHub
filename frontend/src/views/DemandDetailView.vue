@@ -141,6 +141,25 @@ async function acceptCurrentDemand(): Promise<void> {
   }
 }
 
+async function withdrawDemand(): Promise<void> {
+  if (!demand.value) return
+  const confirmed = await useConfirm(
+    '撤回需求',
+    `确认撤回需求“${demand.value.title}”？此操作不可撤销。`,
+    { danger: true, confirmText: '确认撤回' }
+  )
+  if (!confirmed) return
+  error.value = ''
+  message.value = ''
+  try {
+    await store.withdrawDemand(demand.value.id)
+    message.value = '需求已撤回'
+    setTimeout(() => router.push('/'), 800)
+  } catch (e) {
+    error.value = handleError(e, '撤回失败')
+  }
+}
+
 async function startOrder(): Promise<void> {
   if (!relatedOrder.value) {
     return
@@ -259,8 +278,7 @@ onMounted(() => {
         <div>
           <strong>{{ demand.anonymous ? demand.anonymousCode ?? '匿名发布' : (demand.publisher?.nickname ?? demand.publisherName) }}</strong>
           <p class="subtle">信用分：{{ demand.publisher ? formatScore(demand.publisher.creditScore) : '未知' }}</p>
-          <p class="meta">发布者学号：{{ demand.publisherIdentityVisible === false ? (demand.publisherStudentIdMasked || '已隐藏') : (demand.anonymous ? (demand.publisher?.studentId ? String(demand.publisher.studentId).slice(0,3) + '***' + String(demand.publisher.studentId).slice(-2) : '匿名') : (demand.publisher?.studentId ?? '未知')) }}</p>
-          <p class="meta">发布于 {{ formatDateTime(demand.createdAt) }}</p>
+          <p class="meta" v-if="!demand.anonymous && demand.publisher?.studentId">发布者学号：{{ demand.publisherIdentityVisible === false ? (demand.publisherStudentIdMasked || '已隐藏') : demand.publisher.studentId }}</p>          <p class="meta">发布于 {{ formatDateTime(demand.createdAt) }}</p>
         </div>
       </div>
 
@@ -272,6 +290,14 @@ onMounted(() => {
       <div v-if="demand.status === 'CANCELLED' && demand.reviewReason" class="list-card" style="margin-top: 16px;">
         <strong>审核原因</strong>
         <p style="margin-top: 8px; color: var(--danger);">{{ demand.reviewReason }}</p>
+      </div>
+
+      <div v-if="demand.publisherId === store.currentUser?.id && (demand.status === 'REVIEWING' || demand.status === 'PENDING')" class="list-card" style="margin-top: 16px;">
+        <strong>管理你的需求</strong>
+        <p class="meta">{{ demand.status === 'REVIEWING' ? '该需求仍在审核中。' : '该需求已开放接单。' }}</p>
+        <div class="card-actions">
+          <button type="button" class="button danger" @click="withdrawDemand">撤回需求</button>
+        </div>
       </div>
 
       <div class="list-card">

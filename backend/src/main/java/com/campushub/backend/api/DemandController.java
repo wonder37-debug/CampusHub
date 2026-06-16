@@ -188,6 +188,17 @@ public class DemandController {
         );
     }
 
+    @PostMapping("/{demandId}/withdraw")
+    public ApiResponse<DemandView> withdraw(HttpServletRequest request, @PathVariable Long demandId) {
+        CurrentUser currentUser = requestUserExtractor.requireCurrentUser(request);
+        demandApplicationService.withdraw(currentUser.userId(), demandId);
+        return ApiResponse.success(
+            demandRepository.findById(demandId)
+                .map(demand -> apiViewMapper.toDemandView(demand, currentUser))
+                .orElseThrow()
+        );
+    }
+
     @PostMapping("/{demandId}/accept")
     public ApiResponse<OrderView> accept(
         HttpServletRequest request,
