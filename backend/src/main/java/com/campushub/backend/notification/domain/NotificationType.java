@@ -6,5 +6,6 @@ public enum NotificationType {
     REVIEW_RECEIVED,
     REVIEW_REQUEST,
     DEMAND_REJECTED,
-    DEMAND_APPROVED
+    DEMAND_APPROVED,
+    PENDING_REVIEW
 }
