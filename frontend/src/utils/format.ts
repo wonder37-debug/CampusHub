@@ -186,6 +186,8 @@ export function formatNotificationType(type: NotificationType): string {
       return '需求驳回'
     case 'DEMAND_APPROVED':
       return '审核通过'
+    case 'PENDING_REVIEW':
+      return '待评价提醒'
     default:
       return String(type)
   }

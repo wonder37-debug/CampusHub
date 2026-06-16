@@ -14,6 +14,7 @@ import com.campushub.backend.demand.repository.DemandRepository;
 import com.campushub.backend.notification.service.NotificationApplicationService;
 import com.campushub.backend.order.domain.Order;
 import com.campushub.backend.order.domain.OrderStatus;
+import com.campushub.backend.order.domain.OrderStatusHistoryEntry;
 import com.campushub.backend.order.dto.AcceptOrderCommand;
 import com.campushub.backend.order.dto.OrderDetailResponse;
 import com.campushub.backend.order.dto.OrderHistoryQuery;
@@ -365,5 +366,53 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
 
     private boolean isDemandExpired(Demand demand, LocalDateTime now) {
         return demand.getEndTime() != null && demand.getEndTime().isBefore(now);
+    }
+
+    /**
+     * 自动完成接单方已确认超过 48 小时但需求方未确认的订单。
+     */
+    public void autoCompleteOverdueOrders(Long userId) {
+        List<Order> orders = orderRepository.findByParticipant(userId);
+        LocalDateTime now = LocalDateTime.now();
+        for (Order order : orders) {
+            if (order.getStatus() != OrderStatus.IN_PROGRESS) {
+                continue;
+            }
+            if (!userId.equals(order.getPublisherId())) {
+                continue;
+            }
+            boolean providerConfirmed = hasCompletionConfirmation(order, order.getAccepterId());
+            if (!providerConfirmed) {
+                continue;
+            }
+            // 查找接单方确认时间
+            LocalDateTime providerConfirmTime = order.getStatusHistory().stream()
+                .filter(e -> e.operatorId() != null && e.operatorId().equals(order.getAccepterId())
+                    && e.fromStatus() == OrderStatus.IN_PROGRESS
+                    && e.toStatus() == OrderStatus.IN_PROGRESS
+                    && PROVIDER_CONFIRMED_NOTE.equals(e.note()))
+                .map(OrderStatusHistoryEntry::changedAt)
+                .findFirst()
+                .orElse(null);
+            if (providerConfirmTime == null) {
+                continue;
+            }
+            if (providerConfirmTime.plusHours(48).isAfter(now)) {
+                continue;
+            }
+            // 超时，自动确认完成
+            Demand demand = findDemand(order.getDemandId());
+            order.setStatus(OrderStatus.COMPLETED);
+            order.setCompletedAt(now);
+            order.setUpdatedAt(now);
+            order.addHistory(OrderStatus.IN_PROGRESS, OrderStatus.COMPLETED, userId, "需求方超时未确认，系统自动完成", now);
+            demand.setStatus(DemandStatus.COMPLETED);
+            demand.setUpdatedAt(now);
+            orderRepository.save(order);
+            demandRepository.save(demand);
+            transferReward(demand, order);
+            notificationApplicationService.notifyOrderStatusChanged(order.getPublisherId(), order.getId(), OrderStatus.COMPLETED, true);
+            notificationApplicationService.notifyOrderStatusChanged(order.getAccepterId(), order.getId(), OrderStatus.COMPLETED, false);
+        }
     }
 }

@@ -23,6 +23,8 @@ public interface NotificationApplicationService {
 
     void notifyDemandApproved(Long receiverId, Long demandId);
 
+    void notifyPendingReviewReminder(Long receiverId, Long orderId);
+
     PageResponse<NotificationResponse> list(Long userId, NotificationQuery query);
 
     void markAsRead(Long userId, Long notificationId);

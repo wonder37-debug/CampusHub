@@ -16,4 +16,6 @@ public interface OrderApplicationService {
     OrderDetailResponse getDetail(Long operatorId, Long orderId);
 
     PageResponse<OrderSummaryResponse> listHistory(Long operatorId, OrderHistoryQuery query);
+
+    void autoCompleteOverdueOrders(Long userId);
 }

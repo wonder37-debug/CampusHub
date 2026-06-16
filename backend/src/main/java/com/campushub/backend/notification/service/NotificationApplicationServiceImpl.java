@@ -81,6 +81,11 @@ public class NotificationApplicationServiceImpl implements NotificationApplicati
     }
 
     @Override
+    public void notifyPendingReviewReminder(Long receiverId, Long orderId) {
+        createNotification(receiverId, buildPendingReviewReminder(orderId));
+    }
+
+    @Override
     public PageResponse<NotificationResponse> list(Long userId, NotificationQuery query) {
         if (userId == null) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "userId must not be null");
@@ -241,6 +246,16 @@ public class NotificationApplicationServiceImpl implements NotificationApplicati
         );
     }
 
+    private NotificationDraft buildPendingReviewReminder(Long orderId) {
+        String demandTitle = resolveOrderDemandTitle(orderId);
+        return new NotificationDraft(
+            NotificationType.PENDING_REVIEW,
+            "请您及时完成评价",
+            "您有已完成订单《" + demandTitle + "》尚未评价，请尽快评价以维护您的信用记录。",
+            orderId
+        );
+    }
+
     private NotificationResponse toNotificationResponse(Notification notification) {
         String targetType = resolveTargetType(notification);
         Long targetId = notification.getRelatedId();
@@ -254,7 +269,7 @@ public class NotificationApplicationServiceImpl implements NotificationApplicati
             return null;
         }
         return switch (notification.getType()) {
-            case ORDER_ACCEPTED, STATUS_CHANGED, REVIEW_RECEIVED -> "ORDER";
+            case ORDER_ACCEPTED, STATUS_CHANGED, REVIEW_RECEIVED, PENDING_REVIEW -> "ORDER";
             case REVIEW_REQUEST, DEMAND_REJECTED, DEMAND_APPROVED -> "DEMAND";
         };
     }
@@ -285,6 +300,7 @@ public class NotificationApplicationServiceImpl implements NotificationApplicati
             case REVIEW_REQUEST -> "REVIEW_DEMAND";
             case DEMAND_REJECTED, DEMAND_APPROVED -> "VIEW_DEMAND";
             case REVIEW_RECEIVED -> "VIEW_ORDER_REVIEWS";
+            case PENDING_REVIEW -> "VIEW_ORDER_REVIEWS";
             case ORDER_ACCEPTED, STATUS_CHANGED -> "ORDER".equals(targetType) ? "VIEW_ORDER" : "VIEW_DEMAND";
         };
     }
