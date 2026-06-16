@@ -48,8 +48,12 @@ const hasSubmittedReview = computed(() => {
 const completionHint = computed(() => order.value?.completionHint ?? '')
 const pendingReviewTarget = computed(() => order.value?.pendingReviewTarget ?? '')
 const pendingReviewTargetLabel = computed(() => {
-  if (!pendingReviewTarget.value) return ''
-  return store.getUserById(String(pendingReviewTarget.value))?.nickname ?? String(pendingReviewTarget.value)
+  const targetId = pendingReviewTarget.value
+  if (!targetId || !order.value) return ''
+  // Use order's own participant names rather than an unreliable user lookup
+  if (String(targetId) === String(order.value.serviceProviderId)) return order.value.serviceProviderName || '接单方'
+  if (String(targetId) === String(order.value.requesterId)) return order.value.requesterName || '需求方'
+  return ''
 })
 
 const formattedCampusZone = computed(() => {

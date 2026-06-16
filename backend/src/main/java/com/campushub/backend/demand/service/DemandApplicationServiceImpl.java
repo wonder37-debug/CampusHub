@@ -19,6 +19,10 @@ import com.campushub.backend.demand.dto.PublishDemandCommand;
 import com.campushub.backend.demand.dto.UpdateDemandCommand;
 import com.campushub.backend.demand.repository.DemandRepository;
 import com.campushub.backend.notification.service.NotificationApplicationService;
+import com.campushub.backend.order.domain.OrderStatus;
+import com.campushub.backend.order.repository.OrderRepository;
+import com.campushub.backend.order.service.OrderApplicationService;
+import com.campushub.backend.review.repository.ReviewRepository;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Comparator;
@@ -36,13 +40,16 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
     private final UserRepository userRepository;
     private final SensitiveWordChecker sensitiveWordChecker;
     private final NotificationApplicationService notificationApplicationService;
+    private final OrderApplicationService orderApplicationService;
+    private final ReviewRepository reviewRepository;
+    private final OrderRepository orderRepository;
 
     public DemandApplicationServiceImpl(
         DemandRepository demandRepository,
         UserRepository userRepository,
         SensitiveWordChecker sensitiveWordChecker
     ) {
-        this(demandRepository, userRepository, sensitiveWordChecker, null);
+        this(demandRepository, userRepository, sensitiveWordChecker, null, null, null, null);
     }
 
     @Autowired
@@ -50,12 +57,18 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
         DemandRepository demandRepository,
         UserRepository userRepository,
         SensitiveWordChecker sensitiveWordChecker,
-        @Autowired(required = false) NotificationApplicationService notificationApplicationService
+        @Autowired(required = false) NotificationApplicationService notificationApplicationService,
+        @Autowired(required = false) OrderApplicationService orderApplicationService,
+        @Autowired(required = false) ReviewRepository reviewRepository,
+        @Autowired(required = false) OrderRepository orderRepository
     ) {
         this.demandRepository = demandRepository;
         this.userRepository = userRepository;
         this.sensitiveWordChecker = sensitiveWordChecker;
         this.notificationApplicationService = notificationApplicationService;
+        this.orderApplicationService = orderApplicationService;
+        this.reviewRepository = reviewRepository;
+        this.orderRepository = orderRepository;
     }
 
     @Override
@@ -68,6 +81,9 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
 
         BigDecimal reward = normalizeReward(command.reward());
         freezeBalance(publisher, reward);
+
+        // 自动完成超时订单 + 检查未评价订单并提醒
+        checkPendingReviewsAndAutoComplete(publisherId);
 
         LocalDateTime now = LocalDateTime.now();
         Demand demand = new Demand(
@@ -418,6 +434,27 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
                 continue;
             }
             notificationApplicationService.notifyDemandReviewRequested(admin.getId(), demand.getId());
+        }
+    }
+
+    private void checkPendingReviewsAndAutoComplete(Long publisherId) {
+        // 先执行超时订单自动完成
+        if (orderApplicationService != null) {
+            orderApplicationService.autoCompleteOverdueOrders(publisherId);
+        }
+
+        // 检查该用户是否有已完成但未评价的订单，如果有则发送提醒
+        if (notificationApplicationService != null && reviewRepository != null && orderRepository != null) {
+            java.util.List<com.campushub.backend.order.domain.Order> allOrders = orderRepository.findByParticipant(publisherId);
+            for (com.campushub.backend.order.domain.Order order : allOrders) {
+                if (order.getStatus() != OrderStatus.COMPLETED) {
+                    continue;
+                }
+                if (reviewRepository.findByOrderIdAndAuthorId(order.getId(), publisherId).isPresent()) {
+                    continue;
+                }
+                notificationApplicationService.notifyPendingReviewReminder(publisherId, order.getId());
+            }
         }
     }
 }
