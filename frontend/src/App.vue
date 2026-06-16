@@ -125,6 +125,28 @@ function onStatusClick(): void {
       </RouterView>
     </main>
 
+    <footer class="site-footer">
+      <div class="footer-grid">
+        <div class="footer-col">
+          <strong>关于 CampusHub</strong>
+          <p>南京大学校园互助平台，连接每一个需要帮助的同学。</p>
+        </div>
+        <div class="footer-col">
+          <strong>联系方式</strong>
+          <p>📧 campus-hub@nju.edu.cn</p>
+          <p>📍 南京大学信息化建设管理中心</p>
+        </div>
+        <div class="footer-col">
+          <strong>支持</strong>
+          <p>🔗 帮助中心</p>
+          <p>🛡 用户协议 &amp; 隐私政策</p>
+        </div>
+      </div>
+      <div class="footer-copyright">
+        © 2026 CampusHub · 南京大学 · 课程项目
+      </div>
+    </footer>
+
     <!-- 全局确认/提示弹窗 -->
     <ConfirmDialog />
   </div>

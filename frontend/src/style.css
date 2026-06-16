@@ -1012,6 +1012,43 @@ button.back-to-top:hover {
   text-align: center;
 }
 
+.site-footer {
+  margin-top: 20px;
+  padding: 24px 18px;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(249, 241, 231, 0.9));
+  box-shadow: var(--shadow-soft);
+}
+
+.footer-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 20px;
+}
+
+.footer-col strong {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 15px;
+  color: var(--text-strong);
+}
+
+.footer-col p {
+  margin: 4px 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.footer-copyright {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--panel-border);
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+
 .toolbar {
   justify-content: space-between;
   align-items: center;
