@@ -21,7 +21,7 @@ const filters = reactive({
   sortField: 'recommend' as DemandSortField,
   sortDirection: 'desc' as DemandSortDirection,
   page: 1,
-  size: 6
+  size: 7
 })
 
 const refreshing = ref(false)
