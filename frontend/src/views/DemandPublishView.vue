@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, reactive, ref, onMounted, onBeforeUnmount, watch } from 'vue'
+import { useRouter, onBeforeRouteLeave } from 'vue-router'
 
 import { DEMAND_CATEGORY_OPTIONS, type CampusZone } from '@/types/campushub'
 import { useCampusHubStore } from '@/stores/campusHub'
 import { campusZoneOptions, formatCampusZone, formatDemandCategory, formatMoney, formatDateTime } from '@/utils/format'
 import { handleError } from '@/utils/errorHandler'
 import { useConfirm } from '@/composables/useDialog'
+import { loadDemandDraft, saveDemandDraft, clearDemandDraft } from '@/utils/demandDraft'
 
 const router = useRouter()
 const store = useCampusHubStore()
@@ -15,6 +16,8 @@ const error = ref('')
 const rewardError = ref('')
 const submitting = ref(false)
 const published = ref(false)
+
+const draftDiscarded = ref(false)
 
 const errors = reactive({
   title: '',
@@ -151,6 +154,59 @@ function runValidations(): void {
   }
 }
 
+// 草稿自动保存：任一字段变化时写入 localStorage
+const hasFormContent = computed(() =>
+  form.title.trim() || form.description.trim() || form.location.trim() ||
+  form.category || form.campusZone || form.startDateTime || form.endDateTime ||
+  (String(form.reward ?? '').trim() && String(form.reward ?? '').trim() !== '10') ||
+  form.tags.trim()
+)
+
+watch(form, () => {
+  if (hasFormContent.value && !published.value) {
+    saveDemandDraft({ ...form })
+  }
+}, { deep: true })
+
+// 路由离开前询问是否保留草稿
+onBeforeRouteLeave(async (_to, _from, next) => {
+  if (!hasFormContent.value || published.value || draftDiscarded.value) {
+    clearDemandDraft()
+    next()
+    return
+  }
+  const keep = await useConfirm('保留草稿', '你填写的内容尚未发布，是否保留为草稿？离开后可以恢复已填写的内容。', { confirmText: '保留草稿', cancelText: '不保留' })
+  if (!keep) {
+    draftDiscarded.value = true
+    clearDemandDraft()
+  }
+  next()
+})
+
+// 页面关闭 / 刷新时自动保留草稿（仅当用户未明确丢弃草稿时）
+onBeforeUnmount(() => {
+  if (hasFormContent.value && !published.value && !draftDiscarded.value) {
+    saveDemandDraft({ ...form })
+  }
+})
+
+// 恢复草稿
+onMounted(() => {
+  const draft = loadDemandDraft()
+  if (draft) {
+    form.title = draft.title ?? ''
+    form.description = draft.description ?? ''
+    form.category = (draft.category || '') as typeof form.category
+    form.campusZone = (draft.campusZone || '') as typeof form.campusZone
+    form.location = draft.location ?? ''
+    form.startDateTime = draft.startDateTime ?? ''
+    form.endDateTime = draft.endDateTime ?? ''
+    form.reward = draft.reward ?? '10'
+    form.tags = draft.tags ?? ''
+    form.anonymous = draft.anonymous ?? false
+  }
+})
+
 async function submitDemand(): Promise<void> {
   error.value = ''
   message.value = ''
@@ -177,6 +233,7 @@ async function submitDemand(): Promise<void> {
       endTime: form.endDateTime
     }
     await store.createDemand(submitData)
+    clearDemandDraft()
     message.value = '发布成功，等待审核'
     published.value = true
     setTimeout(() => {
