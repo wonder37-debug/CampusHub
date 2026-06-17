@@ -4,6 +4,7 @@ import com.campushub.backend.admin.dto.AdminCategoryStatResponse;
 import com.campushub.backend.admin.dto.AdminDashboardResponse;
 import com.campushub.backend.admin.dto.AdminDemandQuery;
 import com.campushub.backend.admin.dto.AdminDemandReviewCommand;
+import com.campushub.backend.admin.dto.AdminOrderArbitrationCommand;
 import com.campushub.backend.admin.dto.AdminUserQuery;
 import com.campushub.backend.auth.domain.User;
 import com.campushub.backend.auth.domain.UserRole;
@@ -22,11 +23,13 @@ import com.campushub.backend.demand.service.DemandApplicationService;
 import com.campushub.backend.notification.service.NotificationApplicationService;
 import com.campushub.backend.order.domain.Order;
 import com.campushub.backend.order.domain.OrderStatus;
+import com.campushub.backend.order.dto.OrderDetailResponse;
 import com.campushub.backend.order.repository.OrderRepository;
 import com.campushub.backend.recommendation.domain.UserActionLog;
 import com.campushub.backend.recommendation.repository.UserActionLogRepository;
 import com.campushub.backend.review.domain.Review;
 import com.campushub.backend.review.repository.ReviewRepository;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Comparator;
@@ -190,21 +193,14 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
             demand.setStatus(DemandStatus.PENDING);
             demand.setIsApproved(true);
             demand.setReviewReason(null);
-            notificationApplicationService.notifyDemandApproved(
-                demand.getPublisherId(),
-                demand.getId()
-            );
+            notificationApplicationService.notifyDemandApproved(demand.getPublisherId(), demand.getId());
         } else if ("reject".equals(action)) {
             String reviewReason = normalizeRejectReason(command.reason());
             demand.setStatus(DemandStatus.CANCELLED);
             demand.setIsApproved(false);
             demand.setReviewReason(reviewReason);
             demandApplicationService.unfreezePublisherBalance(demandId);
-            notificationApplicationService.notifyDemandRejected(
-                demand.getPublisherId(),
-                demand.getId(),
-                "您的需求《" + demand.getTitle() + "》审核未通过，原因：" + reviewReason
-            );
+            notificationApplicationService.notifyDemandRejected(demand.getPublisherId(), demand.getId(), reviewReason);
         } else {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "unsupported review action: " + command.action());
         }
@@ -212,6 +208,69 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
         demand.setReviewedAt(now);
         demand.setUpdatedAt(now);
         return DemandDetailResponse.from(demandRepository.save(demand));
+    }
+
+    @Override
+    public void deleteOrder(Long operatorId, Long orderId, String reason) {
+        requireAdmin(operatorId);
+        validateReason(reason);
+        Order order = findOrder(orderId);
+        Demand demand = demandRepository.findById(order.getDemandId()).orElse(null);
+        if (demand != null && order.getStatus() != OrderStatus.COMPLETED) {
+            demand.setStatus(DemandStatus.CANCELLED);
+            demand.setUpdatedAt(LocalDateTime.now());
+            demandRepository.save(demand);
+            demandApplicationService.unfreezePublisherBalance(demand.getId());
+        }
+        orderRepository.deleteById(orderId);
+    }
+
+    @Override
+    public OrderDetailResponse resolveOrderArbitration(Long operatorId, Long orderId, AdminOrderArbitrationCommand command) {
+        requireAdmin(operatorId);
+        if (command == null || command.outcome() == null || command.outcome().isBlank()) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "arbitration outcome must not be blank");
+        }
+        String reason = normalizeRejectReason(command.reason());
+        Order order = findOrder(orderId);
+        if (order.getStatus() != OrderStatus.IN_ARBITRATION) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "order is not in arbitration");
+        }
+        Demand demand = demandRepository.findById(order.getDemandId())
+            .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "demand not found"));
+
+        String outcome = command.outcome().trim().toLowerCase(Locale.ROOT);
+        LocalDateTime now = LocalDateTime.now();
+        if ("complete".equals(outcome)) {
+            order.setStatus(OrderStatus.COMPLETED);
+            order.setCompletedAt(now);
+            demand.setStatus(DemandStatus.COMPLETED);
+            transferReward(demand, order);
+        } else if ("cancel".equals(outcome)) {
+            order.setStatus(OrderStatus.CANCELLED);
+            demand.setStatus(DemandStatus.CANCELLED);
+            demandApplicationService.unfreezePublisherBalance(demand.getId());
+        } else {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "unsupported arbitration outcome: " + command.outcome());
+        }
+
+        order.setUpdatedAt(now);
+        order.addHistory(OrderStatus.IN_ARBITRATION, order.getStatus(), operatorId, "ARBITRATION_RESOLVED: " + reason, now);
+        demand.setUpdatedAt(now);
+        orderRepository.save(order);
+        demandRepository.save(demand);
+
+        if (order.getStatus() == OrderStatus.COMPLETED) {
+            notificationApplicationService.notifyOrderStatusChanged(order.getPublisherId(), order.getId(), OrderStatus.COMPLETED, true);
+            notificationApplicationService.notifyOrderStatusChanged(order.getAccepterId(), order.getId(), OrderStatus.COMPLETED, false);
+        } else {
+            notificationApplicationService.notifyOrderStatusChanged(order.getPublisherId(), order.getId(), OrderStatus.CANCELLED, true);
+            notificationApplicationService.notifyOrderStatusChanged(order.getAccepterId(), order.getId(), OrderStatus.CANCELLED, false);
+        }
+        notificationApplicationService.notifyOrderArbitrationResolved(order.getPublisherId(), order.getId(), command.outcome(), reason);
+        notificationApplicationService.notifyOrderArbitrationResolved(order.getAccepterId(), order.getId(), command.outcome(), reason);
+
+        return OrderDetailResponse.from(order, DemandDetailResponse.from(demand));
     }
 
     @Override
@@ -225,9 +284,7 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
 
         long dailyActiveUsers = countDailyActiveUsers(demands, orders, today);
         long pendingReviewDemands = demandRepository.findByStatus(DemandStatus.REVIEWING).size();
-        long completedOrders = orders.stream()
-            .filter(order -> order.getStatus() == OrderStatus.COMPLETED)
-            .count();
+        long completedOrders = orders.stream().filter(order -> order.getStatus() == OrderStatus.COMPLETED).count();
         Map<String, Long> categoryDistribution = demands.stream()
             .collect(Collectors.groupingBy(demand -> demand.getCategory().name(), Collectors.counting()));
 
@@ -261,6 +318,14 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
         }
         return userRepository.findById(userId)
             .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "user not found"));
+    }
+
+    private Order findOrder(Long orderId) {
+        if (orderId == null) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "orderId must not be null");
+        }
+        return orderRepository.findById(orderId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "order not found"));
     }
 
     private boolean matchesUserKeyword(User user, String keyword, String searchField) {
@@ -320,8 +385,7 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
     }
 
     private Comparator<User> resolveUserComparator(String sortBy, String sortDirection) {
-        boolean descending = sortDirection == null || sortDirection.isBlank()
-            || !"asc".equalsIgnoreCase(sortDirection.trim());
+        boolean descending = sortDirection == null || sortDirection.isBlank() || !"asc".equalsIgnoreCase(sortDirection.trim());
         Comparator<User> comparator = switch (sortBy == null ? "" : sortBy.trim().toLowerCase(Locale.ROOT)) {
             case "creditscore", "credit_score" ->
                 Comparator.comparing(User::getCreditScore, Comparator.nullsLast(Integer::compareTo));
@@ -338,12 +402,10 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
 
     private long countDailyActiveUsers(List<Demand> demands, List<Order> orders, LocalDate today) {
         Set<Long> activeUserIds = new HashSet<>();
-
         collectDemandActivity(activeUserIds, demands, today);
         collectOrderActivity(activeUserIds, orders, today);
         collectReviewActivity(activeUserIds, today);
         collectRecommendationActivity(activeUserIds, today);
-
         activeUserIds.remove(null);
         return activeUserIds.size();
     }
@@ -412,9 +474,31 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
 
     private String normalizeRejectReason(String reason) {
         if (reason == null || reason.isBlank()) {
-            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "reject reason must not be blank");
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "reason must not be blank");
         }
         validateReason(reason);
         return reason.trim();
+    }
+
+    private void transferReward(Demand demand, Order order) {
+        BigDecimal reward = demand.getReward() == null ? BigDecimal.ZERO : demand.getReward();
+        if (reward.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+
+        User publisher = userRepository.findById(order.getPublisherId()).orElse(null);
+        User accepter = userRepository.findById(order.getAccepterId()).orElse(null);
+        if (publisher != null) {
+            BigDecimal publisherBalance = publisher.getBalance() == null ? BigDecimal.ZERO : publisher.getBalance();
+            BigDecimal publisherFrozen = publisher.getFrozenBalance() == null ? BigDecimal.ZERO : publisher.getFrozenBalance();
+            publisher.setBalance(publisherBalance.subtract(reward).max(BigDecimal.ZERO));
+            publisher.setFrozenBalance(publisherFrozen.subtract(reward).max(BigDecimal.ZERO));
+            userRepository.save(publisher);
+        }
+        if (accepter != null) {
+            BigDecimal accepterBalance = accepter.getBalance() == null ? BigDecimal.ZERO : accepter.getBalance();
+            accepter.setBalance(accepterBalance.add(reward));
+            userRepository.save(accepter);
+        }
     }
 }

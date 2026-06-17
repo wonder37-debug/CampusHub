@@ -1,26 +1,19 @@
 package com.campushub.backend.notification.repository;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.baomidou.mybatisplus.test.autoconfigure.MybatisPlusTest;
 import com.campushub.backend.notification.domain.Notification;
 import com.campushub.backend.notification.domain.NotificationType;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.jdbc.Sql;
 
-import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Optional;
-
-import static org.assertj.core.api.Assertions.assertThat;
-
-/**
- * {@link MyBatisNotificationRepository} 的切片测试。
- *
- * <p>使用 H2 内存库，通过 {@code @Sql} 单独加载 sys_notification 建表脚本，
- * 严格覆盖 INSERT / UPDATE / 主键查询 / 用户查询 / 空值防御等关键路径。</p>
- */
 @MybatisPlusTest
 @ActiveProfiles("local")
 @Import(MyBatisNotificationRepository.class)
@@ -48,14 +41,11 @@ class MyBatisNotificationRepositoryTest {
     @Test
     void save_update_when_id_present_marks_as_read() {
         Notification notification = repository.save(newNotification(10L, NotificationType.STATUS_CHANGED));
-
-        // 模拟 markAsRead 业务操作后 UPDATE
         notification.setRead(true);
         repository.save(notification);
 
         Notification reloaded = repository.findById(notification.getId()).orElseThrow();
         assertThat(reloaded.isRead()).isTrue();
-        // UPDATE 不新增记录
         assertThat(repository.findByUserId(10L)).hasSize(1);
     }
 
@@ -67,9 +57,9 @@ class MyBatisNotificationRepositoryTest {
 
     @Test
     void findByUserId_returns_all_notifications_for_a_user() {
-        repository.save(newNotification(10L, NotificationType.ORDER_ACCEPTED)); // userId=10
-        repository.save(newNotification(10L, NotificationType.REVIEW_RECEIVED)); // userId=10
-        repository.save(newNotification(20L, NotificationType.STATUS_CHANGED)); // userId=20（无关）
+        repository.save(newNotification(10L, NotificationType.ORDER_ACCEPTED));
+        repository.save(newNotification(10L, NotificationType.REVIEW_RECEIVED));
+        repository.save(newNotification(20L, NotificationType.STATUS_CHANGED));
 
         List<Notification> forUser10 = repository.findByUserId(10L);
         assertThat(forUser10).hasSize(2);
@@ -106,10 +96,6 @@ class MyBatisNotificationRepositoryTest {
         assertThat(reloaded.getContent()).isEqualTo("状态已变更");
     }
 
-    /**
-     * 工厂方法：为所有 NOT NULL 列（user_id / type / title / content / is_read / created_at）
-     * 提供默认值，避免 H2 抛出 NULL not allowed 异常。
-     */
     private static Notification newNotification(Long userId, NotificationType type) {
         Notification notification = new Notification();
         notification.setUserId(userId);
@@ -120,8 +106,10 @@ class MyBatisNotificationRepositoryTest {
             case REVIEW_RECEIVED -> "收到新评价";
             case REVIEW_REQUEST -> "需求待审核";
             case DEMAND_REJECTED -> "需求审核未通过";
-            case DEMAND_APPROVED -> "需求审核通过";
+            case DEMAND_APPROVED -> "需求审核已通过";
             case PENDING_REVIEW -> "待评价提醒";
+            case ORDER_ARBITRATION_REQUESTED -> "订单申请仲裁";
+            case ORDER_ARBITRATION_RESOLVED -> "订单仲裁已处理";
         });
         notification.setContent(switch (type) {
             case ORDER_ACCEPTED -> "接单成功";
@@ -129,8 +117,10 @@ class MyBatisNotificationRepositoryTest {
             case REVIEW_RECEIVED -> "有人评价了你";
             case REVIEW_REQUEST -> "有新的需求等待审核";
             case DEMAND_REJECTED -> "需求审核未通过";
-            case DEMAND_APPROVED -> "需求审核通过";
+            case DEMAND_APPROVED -> "需求审核已通过";
             case PENDING_REVIEW -> "您有未评价的订单";
+            case ORDER_ARBITRATION_REQUESTED -> "有订单发起了仲裁";
+            case ORDER_ARBITRATION_RESOLVED -> "订单仲裁结果已发布";
         });
         notification.setRead(false);
         notification.setCreatedAt(LocalDateTime.now());

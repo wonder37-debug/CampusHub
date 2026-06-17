@@ -25,6 +25,8 @@ function iconFor(type: string): string {
   if (type === 'REVIEW_RECEIVED') return '⭐'
   if (type === 'REVIEW_REQUEST' || type === 'DEMAND_REJECTED') return '📣'
   if (type === 'DEMAND_APPROVED') return '✅'
+  if (type === 'ORDER_ARBITRATION_REQUESTED') return '⚖️'
+  if (type === 'ORDER_ARBITRATION_RESOLVED') return '📘'
   return '🔔'
 }
 

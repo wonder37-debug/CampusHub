@@ -322,7 +322,9 @@ export const useCampusHubStore = defineStore('campusHub', {
 
       return {
         openDemands: state.demands.filter((demand) => demand.status === 'PENDING').length,
-        activeOrders: state.orders.filter((order) => order.status === 'IN_PROGRESS' || order.status === 'ACCEPTED').length,
+        activeOrders: state.orders.filter((order) =>
+          order.status === 'IN_PROGRESS' || order.status === 'ACCEPTED' || order.status === 'IN_ARBITRATION'
+        ).length,
         unreadNotifications: state.notifications.filter((notification) => notification.receiverId === state.currentUserId && !notification.isRead).length,
         pendingApprovals: state.demands.filter((demand) => demand.status === 'REVIEWING').length,
         averageCredit
@@ -498,6 +500,34 @@ export const useCampusHubStore = defineStore('campusHub', {
         method: 'POST',
         body: JSON.stringify({ oldPassword, newPassword })
       }, this.token)
+    },
+
+    async sendPasswordResetCode(email: string): Promise<void> {
+      const normalizedEmail = normalizeEmail(email)
+      if (!normalizedEmail || !normalizedEmail.includes('@')) {
+        throw new Error('请输入有效的邮箱地址')
+      }
+
+      await requestJson<void>('/auth/password-reset/code', {
+        method: 'POST',
+        body: JSON.stringify({ email: normalizedEmail })
+      })
+    },
+
+    async resetPassword(email: string, verificationCode: string, newPassword: string): Promise<void> {
+      const normalizedEmail = normalizeEmail(email)
+      if (!normalizedEmail || !normalizedEmail.includes('@')) {
+        throw new Error('请输入有效的邮箱地址')
+      }
+
+      await requestJson<void>('/auth/password-reset', {
+        method: 'POST',
+        body: JSON.stringify({
+          email: normalizedEmail,
+          verificationCode: verificationCode.trim(),
+          newPassword
+        })
+      })
     },
 
     async withdrawDemand(demandId: string): Promise<void> {
@@ -691,6 +721,19 @@ export const useCampusHubStore = defineStore('campusHub', {
       return mapped
     },
 
+    async requestOrderArbitration(orderId: string, reason: string): Promise<OrderRecord> {
+      const order = await requestJson<any>(`/orders/${encodeURIComponent(orderId)}/arbitration`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: reason.trim() })
+      }, this.token)
+
+      const mapped = mapOrderRecord(order)
+      await this.fetchDemandDetail(String(mapped.demandId ?? ''))
+      await this.fetchOrders()
+      await this.fetchNotifications()
+      return mapped
+    },
+
     async cancelOrder(orderId: string): Promise<OrderRecord> {
       const order = await requestJson<any>(`/orders/${encodeURIComponent(orderId)}`, {
         method: 'PUT',
@@ -701,6 +744,47 @@ export const useCampusHubStore = defineStore('campusHub', {
       await this.fetchDemandDetail(String(mapped.demandId ?? ''))
       await this.fetchOrders()
       await this.fetchNotifications()
+      return mapped
+    },
+
+    async deleteOrderByAdmin(orderId: string, reason = ''): Promise<void> {
+      await requestJson<void>(`/admin/orders/${encodeURIComponent(orderId)}`, {
+        method: 'DELETE',
+        body: JSON.stringify(reason.trim() ? { reason: reason.trim() } : {})
+      }, this.token)
+
+      this.orders = this.orders.filter((item) => item.id !== orderId)
+      await this.fetchDemands({ page: 1, size: 100, all: true, includeOwn: true })
+      await this.fetchNotifications()
+      await this.fetchAdminDashboard()
+    },
+
+    async resolveOrderArbitrationByAdmin(orderId: string, outcome: 'COMPLETED' | 'CANCELLED', reason: string): Promise<OrderRecord | null> {
+      const order = await requestJson<any>(`/admin/orders/${encodeURIComponent(orderId)}/arbitration/resolve`, {
+        method: 'POST',
+        body: JSON.stringify({
+          outcome,
+          reason: reason.trim()
+        })
+      }, this.token)
+
+      if (!order) {
+        await this.fetchNotifications()
+        await this.fetchAdminDashboard()
+        return null
+      }
+
+      const mapped = mapOrderRecord(order)
+      const existingIndex = this.orders.findIndex((item) => item.id === mapped.id)
+      if (existingIndex >= 0) {
+        this.orders.splice(existingIndex, 1, mapped)
+      } else {
+        this.orders.unshift(mapped)
+      }
+
+      await this.fetchDemandDetail(String(mapped.demandId ?? ''))
+      await this.fetchNotifications()
+      await this.fetchAdminDashboard()
       return mapped
     },
 

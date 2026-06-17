@@ -15,15 +15,9 @@ import {
 } from '@/types/campushub'
 
 export function formatDateTime(value: string): string {
-  if (!value) {
-    return '未填写'
-  }
-
+  if (!value) return '未填写'
   const date = new Date(value)
-  if (Number.isNaN(date.getTime())) {
-    return value
-  }
-
+  if (Number.isNaN(date.getTime())) return value
   return new Intl.DateTimeFormat('zh-CN', {
     month: '2-digit',
     day: '2-digit',
@@ -33,15 +27,9 @@ export function formatDateTime(value: string): string {
 }
 
 export function formatDate(value: string): string {
-  if (!value) {
-    return '未填写'
-  }
-
+  if (!value) return '未填写'
   const date = new Date(value)
-  if (Number.isNaN(date.getTime())) {
-    return value
-  }
-
+  if (Number.isNaN(date.getTime())) return value
   return new Intl.DateTimeFormat('zh-CN', {
     year: 'numeric',
     month: '2-digit',
@@ -59,24 +47,15 @@ export function formatScore(value: number): string {
 
 export function statusToneClass(value: string): string {
   const normalized = value.toUpperCase()
-
-  if (
-    normalized.includes('PENDING') ||
-    normalized.includes('REVIEWING') ||
-    normalized.includes('IN_PROGRESS') ||
-    normalized.includes('ACTIVE')
-  ) {
+  if (normalized.includes('PENDING') || normalized.includes('REVIEWING') || normalized.includes('IN_PROGRESS') || normalized.includes('ACTIVE') || normalized.includes('ARBITRATION')) {
     return 'is-warning'
   }
-
   if (normalized.includes('COMPLETED') || normalized.includes('APPROVED')) {
     return 'is-success'
   }
-
   if (normalized.includes('CANCELLED') || normalized.includes('BANNED') || normalized.includes('REJECT') || normalized.includes('EXPIRED')) {
     return 'is-danger'
   }
-
   return 'is-neutral'
 }
 
@@ -131,6 +110,8 @@ export function formatOrderStatus(status: OrderStatus): string {
       return '已接单'
     case 'IN_PROGRESS':
       return '进行中'
+    case 'IN_ARBITRATION':
+      return '仲裁中'
     case 'COMPLETED':
       return '已完成'
     case 'CANCELLED':
@@ -140,7 +121,6 @@ export function formatOrderStatus(status: OrderStatus): string {
 
 export function formatAcceptDisabledReason(reason: string): string {
   const normalized = String(reason || '').trim().toUpperCase()
-
   const reasonMap: Record<string, string> = {
     LOGIN_REQUIRED: '请先登录后再接单',
     ADMIN_FORBIDDEN: '管理员不能接单',
@@ -148,9 +128,9 @@ export function formatAcceptDisabledReason(reason: string): string {
     DEMAND_EXPIRED: '该需求已过期，无法接单',
     DEMAND_NOT_PENDING: '该需求当前不处于待接单状态',
     DEMAND_ALREADY_ACCEPTED: '该需求已被其他同学接单',
-    DEMAND_ORDER_CLOSED: '该需求关联订单已关闭，无法接单'
+    DEMAND_ORDER_CLOSED: '该需求关联订单已关闭，无法接单',
+    DEMAND_ORDER_IN_ARBITRATION: '该订单正在仲裁中，无法继续接单'
   }
-
   return reasonMap[normalized] ?? reason
 }
 
@@ -188,66 +168,51 @@ export function formatNotificationType(type: NotificationType): string {
       return '审核通过'
     case 'PENDING_REVIEW':
       return '待评价提醒'
-    default:
-      return String(type)
+    case 'ORDER_ARBITRATION_REQUESTED':
+      return '申请仲裁'
+    case 'ORDER_ARBITRATION_RESOLVED':
+      return '仲裁结果'
   }
 }
 
-export function categoryOptions(): Array<{ value: DemandCategory; label: string }> {
+export function categoryOptions() {
   return DEMAND_CATEGORY_OPTIONS.map((value) => ({ value, label: formatDemandCategory(value) }))
 }
 
-export function campusZoneOptions(): Array<{ value: CampusZone; label: string }> {
+export function campusZoneOptions() {
   return CAMPUS_ZONE_OPTIONS.map((value) => ({ value, label: formatCampusZone(value) }))
 }
 
-export function roleOptions(): Array<{ value: UserRole; label: string }> {
+export function roleOptions() {
   return USER_ROLE_OPTIONS.map((value) => ({ value, label: formatUserRole(value) }))
 }
 
-export function statusOptions(): Array<{ value: UserStatus; label: string }> {
+export function statusOptions() {
   return USER_STATUS_OPTIONS.map((value) => ({ value, label: formatUserStatus(value) }))
 }
 
-export function orderStatusOptions(): Array<{ value: OrderStatus; label: string }> {
+export function orderStatusOptions() {
   return ORDER_STATUS_OPTIONS.map((value) => ({ value, label: formatOrderStatus(value) }))
 }
 
-export function notificationTypeOptions(): Array<{ value: NotificationType; label: string }> {
+export function notificationTypeOptions() {
   return NOTIFICATION_TYPE_OPTIONS.map((value) => ({ value, label: formatNotificationType(value) }))
 }
 
 export function truncateText(value: string, length: number): string {
-  if (value.length <= length) {
-    return value
-  }
-
+  if (value.length <= length) return value
   return `${value.slice(0, length)}…`
 }
 
 export function formatRelativeTime(value: string): string {
-  if (!value) {
-    return '刚刚'
-  }
-
+  if (!value) return '刚刚'
   const timestamp = new Date(value).getTime()
-  if (Number.isNaN(timestamp)) {
-    return value
-  }
-
+  if (Number.isNaN(timestamp)) return value
   const diffMinutes = Math.floor((Date.now() - timestamp) / 60000)
-  if (diffMinutes < 1) {
-    return '刚刚'
-  }
-  if (diffMinutes < 60) {
-    return `${diffMinutes}分钟前`
-  }
-
+  if (diffMinutes < 1) return '刚刚'
+  if (diffMinutes < 60) return `${diffMinutes}分钟前`
   const diffHours = Math.floor(diffMinutes / 60)
-  if (diffHours < 24) {
-    return `${diffHours}小时前`
-  }
-
+  if (diffHours < 24) return `${diffHours}小时前`
   const diffDays = Math.floor(diffHours / 24)
   return `${diffDays}天前`
 }

@@ -1,11 +1,12 @@
 package com.campushub.backend.api;
 
 import com.campushub.backend.api.view.UserSummaryView;
+import com.campushub.backend.auth.dto.ChangePasswordCommand;
 import com.campushub.backend.auth.dto.EmailVerificationIssue;
 import com.campushub.backend.auth.dto.LoginCommand;
 import com.campushub.backend.auth.dto.LoginResult;
+import com.campushub.backend.auth.dto.PasswordResetCommand;
 import com.campushub.backend.auth.dto.RegisterCommand;
-import com.campushub.backend.auth.dto.ChangePasswordCommand;
 import com.campushub.backend.auth.service.AuthApplicationService;
 import com.campushub.backend.common.api.ApiResponse;
 import com.campushub.backend.common.security.RequestUserExtractor;
@@ -33,6 +34,12 @@ public class AuthController {
         return ApiResponse.success(new EmailCodeResponse(issue.expiresInSeconds()));
     }
 
+    @PostMapping("/password-reset/code")
+    public ApiResponse<EmailCodeResponse> sendPasswordResetCode(@RequestBody PasswordResetCodeRequest body) {
+        EmailVerificationIssue issue = authApplicationService.sendPasswordResetCode(body.email());
+        return ApiResponse.success(new EmailCodeResponse(issue.expiresInSeconds()));
+    }
+
     @PostMapping("/register")
     public ApiResponse<UserSummaryView> register(@RequestBody RegisterCommand command) {
         return ApiResponse.success(UserSummaryView.from(authApplicationService.register(command)));
@@ -55,10 +62,19 @@ public class AuthController {
         return ApiResponse.success(null);
     }
 
+    @PostMapping("/password-reset")
+    public ApiResponse<Void> resetPassword(@RequestBody PasswordResetCommand command) {
+        authApplicationService.resetPassword(command);
+        return ApiResponse.success(null);
+    }
+
     public record LoginResultView(String token, long expiresIn, UserSummaryView user) {
     }
 
     public record EmailCodeRequest(String email, String studentId) {
+    }
+
+    public record PasswordResetCodeRequest(String email) {
     }
 
     public record EmailCodeResponse(long expiresIn) {

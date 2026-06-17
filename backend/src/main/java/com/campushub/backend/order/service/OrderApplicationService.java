@@ -5,6 +5,7 @@ import com.campushub.backend.order.dto.AcceptOrderCommand;
 import com.campushub.backend.order.dto.OrderDetailResponse;
 import com.campushub.backend.order.dto.OrderHistoryQuery;
 import com.campushub.backend.order.dto.OrderSummaryResponse;
+import com.campushub.backend.order.dto.RequestOrderArbitrationCommand;
 import com.campushub.backend.order.dto.UpdateOrderStatusCommand;
 
 public interface OrderApplicationService {
@@ -18,4 +19,6 @@ public interface OrderApplicationService {
     PageResponse<OrderSummaryResponse> listHistory(Long operatorId, OrderHistoryQuery query);
 
     void autoCompleteOverdueOrders(Long userId);
+
+    OrderDetailResponse requestArbitration(Long operatorId, Long orderId, RequestOrderArbitrationCommand command);
 }

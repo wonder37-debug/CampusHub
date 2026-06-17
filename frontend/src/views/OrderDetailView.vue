@@ -22,6 +22,8 @@ const reviewRating = ref('5')
 const reviewComment = ref('')
 const loadingOrder = ref(false)
 const refreshing = ref(false)
+const arbitrationDialogOpen = ref(false)
+const arbitrationReason = ref('')
 
 async function refreshOrder(): Promise<void> {
   refreshing.value = true
@@ -116,6 +118,12 @@ const hasAvailableActions = computed(() => {
   return false
 })
 
+const canRequestArbitration = computed(() => {
+  if (!order.value) return false
+  if (!isProvider.value && !isRequester.value) return false
+  return order.value.status === 'ACCEPTED' || order.value.status === 'IN_PROGRESS'
+})
+
 const providerConfirmed = computed(() => {
   if (!order.value) return false
   return order.value.timeline.some(
@@ -180,6 +188,34 @@ async function cancelOrder(): Promise<void> {
     message.value = '订单已取消。'
   } catch (cancelError) {
     error.value = handleError(cancelError, '取消失败')
+  }
+}
+
+function openArbitrationDialog(): void {
+  arbitrationReason.value = ''
+  arbitrationDialogOpen.value = true
+}
+
+function closeArbitrationDialog(): void {
+  arbitrationDialogOpen.value = false
+  arbitrationReason.value = ''
+}
+
+async function submitArbitration(): Promise<void> {
+  if (!order.value) return
+  if (!arbitrationReason.value.trim()) {
+    error.value = '请填写仲裁原因'
+    return
+  }
+
+  message.value = ''
+  error.value = ''
+  try {
+    await store.requestOrderArbitration(order.value.id, arbitrationReason.value)
+    message.value = '已提交仲裁申请，等待管理员处理。'
+    closeArbitrationDialog()
+  } catch (arbitrationError) {
+    error.value = handleError(arbitrationError, '发起仲裁失败')
   }
 }
 
@@ -348,6 +384,7 @@ onMounted(() => {
           class="chip is-warning"
         >{{ completionHint || '等待接单方确认完成' }}</span>
         <button v-if="order.status === 'ACCEPTED' && isRequester" type="button" class="button danger" @click="cancelOrder">取消订单</button>
+        <button v-if="canRequestArbitration" type="button" class="button secondary" @click="openArbitrationDialog">发起仲裁</button>
       </div>
     </section>
   </div>
@@ -355,5 +392,60 @@ onMounted(() => {
   <div v-else class="empty-state">
     <strong>未找到订单</strong>
   </div>
+
+  <teleport to="body">
+    <div v-if="arbitrationDialogOpen" class="modal-backdrop" @click.self="closeArbitrationDialog">
+      <div class="modal-card panel">
+        <div class="modal-head">
+          <div>
+            <p class="eyebrow">订单仲裁</p>
+            <h3 class="section-title">提交争议说明</h3>
+          </div>
+          <button type="button" class="button secondary" @click="closeArbitrationDialog">关闭</button>
+        </div>
+
+        <p class="page-summary" style="margin-top: 0;">提交后订单会进入仲裁中状态，双方暂时无法继续推进订单，管理员会根据说明做出处理。</p>
+        <div class="field">
+          <label for="arbitration-reason">仲裁原因</label>
+          <textarea id="arbitration-reason" v-model="arbitrationReason" rows="5" placeholder="请简要说明争议点、当前情况和希望管理员关注的信息"></textarea>
+        </div>
+
+        <div class="card-actions" style="justify-content: flex-end;">
+          <button type="button" class="button secondary" @click="closeArbitrationDialog">取消</button>
+          <button type="button" class="button primary" :disabled="!arbitrationReason.trim()" @click="submitArbitration">提交仲裁</button>
+        </div>
+      </div>
+    </div>
+  </teleport>
   </div>
 </template>
+
+<style scoped>
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(31, 26, 23, 0.46);
+  backdrop-filter: blur(6px);
+}
+
+.modal-card {
+  width: min(640px, 100%);
+  padding: 22px;
+}
+
+.modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.modal-card textarea {
+  min-height: 140px;
+  resize: vertical;
+}
+</style>

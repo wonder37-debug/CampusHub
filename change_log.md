@@ -198,6 +198,7 @@
   - 订单完成时将冻结金额转账给接单方
   - 订单取消或需求撤回时自动解冻金额
 
+
 ## 2026-06-13
 
 - `feat(notification)` 添加需求审核通过通知功能，审核通过时向发布方发送系统消息。
@@ -234,6 +235,23 @@
   - 发布成功后自动清除草稿
   - 再次进入发布页面时自动恢复未发布内容
 - `fix(frontend)` 草稿保留逻辑增加 `draftDiscarded` 标记，确保用户选择"不保留"后草稿不会被重新写入。
+
+## 2026-06-17
+
+- `feat(auth)` 新增找回密码闭环：
+  - 新增 `POST /api/v1/auth/password-reset/code`，向账号邮箱发送验证码
+  - 新增 `POST /api/v1/auth/password-reset`，使用验证码与新密码完成重置
+- `feat(order)` 新增订单仲裁流程：
+  - 订单状态新增 `IN_ARBITRATION`
+  - 新增 `POST /api/v1/orders/{orderId}/arbitration`，订单参与方可发起仲裁
+  - 新增管理员裁决接口，支持按 `complete/cancel` 决定订单结果并通知双方
+- `feat(admin)` 管理员新增订单管理能力：
+  - 新增 `DELETE /api/v1/admin/orders/{orderId}` 删除订单
+  - 新增 `POST /api/v1/admin/orders/{orderId}/arbitration/resolve` 处理仲裁
+- `feat(notification)` 扩展通知类型，补齐仲裁申请与仲裁结果通知模板。
+- `test(backend)` 补充找回密码、订单仲裁、管理员裁决与删单单测；在 `backend` 目录执行 `mvn test`，结果为 `112 tests, 0 failures`。
+- `docs(sync)` 更新 `P4-前后端对接修订规范.md`，同步密码找回、仲裁与管理员订单接口口径。
+
 
 ## 补充说明
 

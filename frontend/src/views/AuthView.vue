@@ -24,6 +24,10 @@ const codeCountdown = ref(0)
 const codeSent = ref(false)
 const codeSending = ref(false)
 let countdownTimer: number | undefined
+const forgotCodeCountdown = ref(0)
+const forgotCodeSending = ref(false)
+const forgotPasswordSubmitting = ref(false)
+let forgotCountdownTimer: number | undefined
 
 const loginForm = reactive({
   studentId: '',
@@ -41,6 +45,12 @@ const registerForm = reactive({
   avatarUrl: ''
 })
 const showRegisterPassword = ref(false)
+const forgotPasswordForm = reactive({
+  email: '',
+  verificationCode: '',
+  newPassword: ''
+})
+const showForgotPasswordValue = ref(false)
 
 const currentUser = computed(() => store.currentUser)
 
@@ -180,6 +190,86 @@ async function submitRegister(): Promise<void> {
     }
   } catch (registerError) {
       error.value = handleError(registerError, '注册失败')
+  }
+}
+
+async function sendForgotPasswordCode(): Promise<void> {
+  error.value = ''
+  message.value = ''
+
+  if (forgotCodeSending.value || forgotCodeCountdown.value > 0) {
+    return
+  }
+
+  if (!forgotPasswordForm.email.trim()) {
+    error.value = '请输入注册邮箱'
+    return
+  }
+
+  try {
+    forgotCodeSending.value = true
+    await store.sendPasswordResetCode(forgotPasswordForm.email)
+    forgotCodeCountdown.value = 60
+    message.value = `验证码已发送到 ${forgotPasswordForm.email.trim()}，请前往邮箱查收。`
+
+    if (forgotCountdownTimer) {
+      window.clearInterval(forgotCountdownTimer)
+    }
+
+    forgotCountdownTimer = window.setInterval(() => {
+      if (forgotCodeCountdown.value <= 1) {
+        forgotCodeCountdown.value = 0
+        if (forgotCountdownTimer) {
+          window.clearInterval(forgotCountdownTimer)
+          forgotCountdownTimer = undefined
+        }
+        return
+      }
+
+      forgotCodeCountdown.value -= 1
+    }, 1000)
+  } catch (sendError) {
+    error.value = handleError(sendError, '验证码发送失败')
+  } finally {
+    forgotCodeSending.value = false
+  }
+}
+
+async function submitForgotPassword(): Promise<void> {
+  error.value = ''
+  message.value = ''
+
+  if (!forgotPasswordForm.email.trim()) {
+    error.value = '请输入注册邮箱'
+    return
+  }
+
+  if (!forgotPasswordForm.verificationCode.trim()) {
+    error.value = '请输入邮箱验证码'
+    return
+  }
+
+  if (!forgotPasswordForm.newPassword.trim()) {
+    error.value = '请输入新密码'
+    return
+  }
+
+  try {
+    forgotPasswordSubmitting.value = true
+    await store.resetPassword(
+      forgotPasswordForm.email,
+      forgotPasswordForm.verificationCode,
+      forgotPasswordForm.newPassword
+    )
+    message.value = '密码已重置，请使用新密码登录。'
+    showForgotPassword.value = false
+    forgotPasswordForm.verificationCode = ''
+    forgotPasswordForm.newPassword = ''
+    activeTab.value = 'login'
+  } catch (resetError) {
+    error.value = handleError(resetError, '密码重置失败')
+  } finally {
+    forgotPasswordSubmitting.value = false
   }
 }
 </script>
@@ -347,10 +437,62 @@ async function submitRegister(): Promise<void> {
   <!-- 忘记密码提示 -->
   <Teleport to="body">
     <div v-if="showForgotPassword" class="modal-backdrop" @click.self="showForgotPassword = false">
-      <div class="modal-card panel" style="text-align:center">
-        <p class="eyebrow">忘记密码</p>
-        <p class="page-summary">请联系管理员处理。</p>
-        <button type="button" class="button secondary" @click="showForgotPassword = false">关闭</button>
+      <div class="modal-card panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">找回密码</p>
+            <h3 class="section-title">邮箱验证码重置</h3>
+          </div>
+          <button type="button" class="button secondary" @click="showForgotPassword = false">关闭</button>
+        </div>
+
+        <form class="field-grid" @submit.prevent="submitForgotPassword">
+          <div class="field">
+            <label for="forgot-email">注册邮箱</label>
+            <input id="forgot-email" v-model="forgotPasswordForm.email" placeholder="请输入账号绑定邮箱" />
+          </div>
+          <div class="field">
+            <label for="forgot-code">邮箱验证码</label>
+            <div class="inline-actions" style="align-items: stretch;">
+              <input id="forgot-code" v-model="forgotPasswordForm.verificationCode" placeholder="输入验证码" style="flex: 1 1 220px;" />
+              <button
+                type="button"
+                class="button secondary"
+                :disabled="forgotCodeSending || forgotCodeCountdown > 0"
+                @click="sendForgotPasswordCode"
+              >
+                {{ forgotCodeSending ? '发送中...' : forgotCodeCountdown > 0 ? `${forgotCodeCountdown}s 后重发` : '发送验证码' }}
+              </button>
+            </div>
+          </div>
+          <div class="field">
+            <label for="forgot-password">新密码</label>
+            <div class="password-wrapper">
+              <input
+                :type="showForgotPasswordValue ? 'text' : 'password'"
+                id="forgot-password"
+                v-model="forgotPasswordForm.newPassword"
+                placeholder="请输入新密码"
+              />
+              <button
+                type="button"
+                class="password-toggle"
+                :aria-label="showForgotPasswordValue ? '隐藏密码' : '显示密码'"
+                @click="showForgotPasswordValue = !showForgotPasswordValue"
+              >
+                <svg v-if="showForgotPasswordValue" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+          </div>
+          <p class="input-help">系统会向账号绑定邮箱发送验证码，验证通过后可直接设置新密码。</p>
+          <div class="card-actions" style="justify-content: flex-end;">
+            <button type="button" class="button secondary" @click="showForgotPassword = false">取消</button>
+            <button type="submit" class="button primary" :disabled="forgotPasswordSubmitting">
+              {{ forgotPasswordSubmitting ? '提交中...' : '确认重置密码' }}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   </Teleport>

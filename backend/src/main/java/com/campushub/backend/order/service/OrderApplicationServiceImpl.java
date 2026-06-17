@@ -19,6 +19,7 @@ import com.campushub.backend.order.dto.AcceptOrderCommand;
 import com.campushub.backend.order.dto.OrderDetailResponse;
 import com.campushub.backend.order.dto.OrderHistoryQuery;
 import com.campushub.backend.order.dto.OrderSummaryResponse;
+import com.campushub.backend.order.dto.RequestOrderArbitrationCommand;
 import com.campushub.backend.order.dto.UpdateOrderStatusCommand;
 import com.campushub.backend.order.repository.OrderRepository;
 import java.math.BigDecimal;
@@ -31,9 +32,10 @@ import org.springframework.stereotype.Service;
 @Service
 public class OrderApplicationServiceImpl implements OrderApplicationService {
 
-    private static final String PROVIDER_CONFIRMED_NOTE = "接单方确认完成，等待需求方确认";
-    private static final String REQUESTER_CONFIRMED_NOTE = "需求方确认完成，等待接单方确认";
-    private static final String COMPLETION_FINAL_NOTE = "双方已确认完成";
+    private static final String PROVIDER_CONFIRMED_NOTE = "PROVIDER_CONFIRMED_COMPLETION";
+    private static final String REQUESTER_CONFIRMED_NOTE = "REQUESTER_CONFIRMED_COMPLETION";
+    private static final String COMPLETION_FINAL_NOTE = "ORDER_COMPLETED";
+    private static final int MAX_ARBITRATION_REASON_LENGTH = 500;
 
     private final OrderRepository orderRepository;
     private final DemandRepository demandRepository;
@@ -60,10 +62,7 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         }
 
         Demand demand = findDemand(demandId);
-        if (isDemandExpired(demand, LocalDateTime.now())) {
-            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "demand has expired");
-        }
-        if (demand.getStatus() == DemandStatus.EXPIRED) {
+        if (isDemandExpired(demand, LocalDateTime.now()) || demand.getStatus() == DemandStatus.EXPIRED) {
             throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "demand has expired");
         }
         if (demand.getPublisherId().equals(accepter.getId())) {
@@ -101,7 +100,6 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
 
         notificationApplicationService.notifyOrderAcceptedForPublisher(demand.getPublisherId(), order.getId());
         notificationApplicationService.notifyOrderAcceptedForAccepter(accepter.getId(), order.getId());
-
         return OrderDetailResponse.from(order, DemandDetailResponse.from(demand));
     }
 
@@ -120,8 +118,8 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         if (targetStatus == OrderStatus.COMPLETED) {
             return confirmCompletion(operatorId, order, demand, command);
         }
-        validateTransition(order, operatorId, targetStatus, command.proofImageCount());
 
+        validateTransition(order, operatorId, targetStatus, command.proofImageCount());
         OrderStatus fromStatus = order.getStatus();
         LocalDateTime now = LocalDateTime.now();
         order.setStatus(targetStatus);
@@ -129,8 +127,7 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
 
         if (targetStatus == OrderStatus.IN_PROGRESS) {
             demand.setStatus(DemandStatus.IN_PROGRESS);
-        }
-        if (targetStatus == OrderStatus.CANCELLED) {
+        } else if (targetStatus == OrderStatus.CANCELLED) {
             demand.setStatus(DemandStatus.CANCELLED);
             unfreezePublisherBalance(demand);
         }
@@ -145,60 +142,30 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         return OrderDetailResponse.from(order, DemandDetailResponse.from(demand));
     }
 
-    private OrderDetailResponse confirmCompletion(Long operatorId, Order order, Demand demand, UpdateOrderStatusCommand command) {
-        if (order.getStatus() != OrderStatus.IN_PROGRESS) {
-            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "only in progress orders can be completed");
+    @Override
+    public OrderDetailResponse requestArbitration(Long operatorId, Long orderId, RequestOrderArbitrationCommand command) {
+        Order order = findOrder(orderId);
+        if (!order.isParticipant(operatorId)) {
+            throw new BusinessException(ErrorCode.PERMISSION_DENIED, "only order participants can request arbitration");
+        }
+        if (order.getStatus() != OrderStatus.ACCEPTED && order.getStatus() != OrderStatus.IN_PROGRESS) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "only active orders can request arbitration");
         }
 
-        Long counterpartId = getCounterpartId(order, operatorId);
-        if (counterpartId == null) {
-            throw new BusinessException(ErrorCode.PERMISSION_DENIED, "only participants can complete order");
-        }
-
-        if (hasCompletionConfirmation(order, operatorId)) {
-            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "completion already confirmed by this user");
-        }
-
-        // 接单方必须首先确认完成
-        boolean isOperatorProvider = operatorId.equals(order.getAccepterId());
-        boolean isOperatorRequester = operatorId.equals(order.getPublisherId());
-        boolean providerConfirmed = hasCompletionConfirmation(order, order.getAccepterId());
-
-        if (isOperatorRequester && !providerConfirmed) {
-            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "接单方需要先确认完成");
-        }
-
+        String reason = normalizeArbitrationReason(command == null ? null : command.reason());
+        Demand demand = findDemand(order.getDemandId());
         LocalDateTime now = LocalDateTime.now();
-        if (!hasCompletionConfirmation(order, counterpartId)) {
-            if (command != null && command.proofImageCount() != null) {
-                order.setProofSubmitted(true);
-                order.setProofImageCount(command.proofImageCount());
-            }
-            String pendingNote = isOperatorProvider ? PROVIDER_CONFIRMED_NOTE : REQUESTER_CONFIRMED_NOTE;
-            order.addHistory(OrderStatus.IN_PROGRESS, OrderStatus.IN_PROGRESS, operatorId, pendingNote, now);
-            order.setUpdatedAt(now);
-            orderRepository.save(order);
-            notificationApplicationService.notifyOrderCompletionPending(counterpartId, order.getId());
-            return OrderDetailResponse.from(order, DemandDetailResponse.from(demand));
-        }
-
-        order.setStatus(OrderStatus.COMPLETED);
-        order.setCompletedAt(now);
+        OrderStatus fromStatus = order.getStatus();
+        order.setStatus(OrderStatus.IN_ARBITRATION);
         order.setUpdatedAt(now);
-        if (command != null && command.proofImageCount() != null && !order.isProofSubmitted()) {
-            order.setProofSubmitted(true);
-            order.setProofImageCount(command.proofImageCount());
-        }
-        order.addHistory(OrderStatus.IN_PROGRESS, OrderStatus.COMPLETED, operatorId, COMPLETION_FINAL_NOTE, now);
-        demand.setStatus(DemandStatus.COMPLETED);
-        demand.setUpdatedAt(now);
+        order.addHistory(fromStatus, OrderStatus.IN_ARBITRATION, operatorId, "ARBITRATION_REQUESTED: " + reason, now);
         orderRepository.save(order);
-        demandRepository.save(demand);
 
-        transferReward(demand, order);
-
-        notificationApplicationService.notifyOrderStatusChanged(order.getPublisherId(), order.getId(), OrderStatus.COMPLETED, true);
-        notificationApplicationService.notifyOrderStatusChanged(order.getAccepterId(), order.getId(), OrderStatus.COMPLETED, false);
+        notificationApplicationService.notifyOrderStatusChanged(order.getPublisherId(), order.getId(), OrderStatus.IN_ARBITRATION, true);
+        notificationApplicationService.notifyOrderStatusChanged(order.getAccepterId(), order.getId(), OrderStatus.IN_ARBITRATION, false);
+        for (User admin : userRepository.findByRole(UserRole.ADMIN)) {
+            notificationApplicationService.notifyOrderArbitrationRequested(admin.getId(), order.getId(), operatorId, reason);
+        }
         return OrderDetailResponse.from(order, DemandDetailResponse.from(demand));
     }
 
@@ -232,8 +199,98 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         return new PageResponse<>(items, page, size, sorted.size());
     }
 
+    @Override
+    public void autoCompleteOverdueOrders(Long userId) {
+        List<Order> orders = orderRepository.findByParticipant(userId);
+        LocalDateTime now = LocalDateTime.now();
+        for (Order order : orders) {
+            if (order.getStatus() != OrderStatus.IN_PROGRESS || !userId.equals(order.getPublisherId())) {
+                continue;
+            }
+            if (!hasCompletionConfirmation(order, order.getAccepterId())) {
+                continue;
+            }
+            LocalDateTime providerConfirmTime = order.getStatusHistory().stream()
+                .filter(entry -> entry.operatorId() != null
+                    && entry.operatorId().equals(order.getAccepterId())
+                    && entry.fromStatus() == OrderStatus.IN_PROGRESS
+                    && entry.toStatus() == OrderStatus.IN_PROGRESS
+                    && PROVIDER_CONFIRMED_NOTE.equals(entry.note()))
+                .map(OrderStatusHistoryEntry::changedAt)
+                .findFirst()
+                .orElse(null);
+            if (providerConfirmTime == null || providerConfirmTime.plusHours(48).isAfter(now)) {
+                continue;
+            }
+
+            Demand demand = findDemand(order.getDemandId());
+            order.setStatus(OrderStatus.COMPLETED);
+            order.setCompletedAt(now);
+            order.setUpdatedAt(now);
+            order.addHistory(OrderStatus.IN_PROGRESS, OrderStatus.COMPLETED, userId, "SYSTEM_AUTO_COMPLETED", now);
+            demand.setStatus(DemandStatus.COMPLETED);
+            demand.setUpdatedAt(now);
+            orderRepository.save(order);
+            demandRepository.save(demand);
+            transferReward(demand, order);
+            notificationApplicationService.notifyOrderStatusChanged(order.getPublisherId(), order.getId(), OrderStatus.COMPLETED, true);
+            notificationApplicationService.notifyOrderStatusChanged(order.getAccepterId(), order.getId(), OrderStatus.COMPLETED, false);
+        }
+    }
+
+    private OrderDetailResponse confirmCompletion(Long operatorId, Order order, Demand demand, UpdateOrderStatusCommand command) {
+        if (order.getStatus() != OrderStatus.IN_PROGRESS) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "only in progress orders can be completed");
+        }
+        Long counterpartId = getCounterpartId(order, operatorId);
+        if (counterpartId == null) {
+            throw new BusinessException(ErrorCode.PERMISSION_DENIED, "only participants can complete order");
+        }
+        if (hasCompletionConfirmation(order, operatorId)) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "completion already confirmed by this user");
+        }
+        if (operatorId.equals(order.getPublisherId()) && !hasCompletionConfirmation(order, order.getAccepterId())) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "provider must confirm completion first");
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        if (!hasCompletionConfirmation(order, counterpartId)) {
+            if (command != null && command.proofImageCount() != null) {
+                order.setProofSubmitted(true);
+                order.setProofImageCount(command.proofImageCount());
+            }
+            String pendingNote = operatorId.equals(order.getAccepterId()) ? PROVIDER_CONFIRMED_NOTE : REQUESTER_CONFIRMED_NOTE;
+            order.addHistory(OrderStatus.IN_PROGRESS, OrderStatus.IN_PROGRESS, operatorId, pendingNote, now);
+            order.setUpdatedAt(now);
+            orderRepository.save(order);
+            notificationApplicationService.notifyOrderCompletionPending(counterpartId, order.getId());
+            return OrderDetailResponse.from(order, DemandDetailResponse.from(demand));
+        }
+
+        order.setStatus(OrderStatus.COMPLETED);
+        order.setCompletedAt(now);
+        order.setUpdatedAt(now);
+        if (command != null && command.proofImageCount() != null && !order.isProofSubmitted()) {
+            order.setProofSubmitted(true);
+            order.setProofImageCount(command.proofImageCount());
+        }
+        order.addHistory(OrderStatus.IN_PROGRESS, OrderStatus.COMPLETED, operatorId, COMPLETION_FINAL_NOTE, now);
+        demand.setStatus(DemandStatus.COMPLETED);
+        demand.setUpdatedAt(now);
+        orderRepository.save(order);
+        demandRepository.save(demand);
+        transferReward(demand, order);
+
+        notificationApplicationService.notifyOrderStatusChanged(order.getPublisherId(), order.getId(), OrderStatus.COMPLETED, true);
+        notificationApplicationService.notifyOrderStatusChanged(order.getAccepterId(), order.getId(), OrderStatus.COMPLETED, false);
+        return OrderDetailResponse.from(order, DemandDetailResponse.from(demand));
+    }
+
     private void validateTransition(Order order, Long operatorId, OrderStatus targetStatus, Integer proofImageCount) {
         OrderStatus currentStatus = order.getStatus();
+        if (currentStatus == OrderStatus.IN_ARBITRATION) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "order is waiting for admin arbitration");
+        }
         if (currentStatus == targetStatus) {
             throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "order is already in target status");
         }
@@ -266,18 +323,18 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
                     throw new BusinessException(ErrorCode.PERMISSION_DENIED, "only participants can cancel order");
                 }
             }
-            case ACCEPTED -> throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "cannot transition back to accepted");
+            case ACCEPTED, IN_ARBITRATION ->
+                throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "unsupported order status transition");
         }
     }
 
     private boolean hasCompletionConfirmation(Order order, Long userId) {
-        return order.getStatusHistory().stream()
+        return userId != null && order.getStatusHistory().stream()
             .anyMatch(entry -> entry.operatorId() != null
                 && entry.operatorId().equals(userId)
                 && entry.fromStatus() == OrderStatus.IN_PROGRESS
                 && entry.toStatus() == OrderStatus.IN_PROGRESS
-                && (PROVIDER_CONFIRMED_NOTE.equals(entry.note())
-                    || REQUESTER_CONFIRMED_NOTE.equals(entry.note())));
+                && (PROVIDER_CONFIRMED_NOTE.equals(entry.note()) || REQUESTER_CONFIRMED_NOTE.equals(entry.note())));
     }
 
     private Long getCounterpartId(Order order, Long operatorId) {
@@ -323,6 +380,20 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         return user;
     }
 
+    private String normalizeArbitrationReason(String reason) {
+        if (reason == null || reason.isBlank()) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "arbitration reason must not be blank");
+        }
+        String normalized = reason.trim();
+        if (normalized.length() > MAX_ARBITRATION_REASON_LENGTH) {
+            throw new BusinessException(
+                ErrorCode.VALIDATION_FAILED,
+                "arbitration reason length must not exceed " + MAX_ARBITRATION_REASON_LENGTH
+            );
+        }
+        return normalized;
+    }
+
     private String trimToNull(String value) {
         return value == null || value.isBlank() ? null : value.trim();
     }
@@ -335,7 +406,6 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
 
         User publisher = userRepository.findById(order.getPublisherId()).orElse(null);
         User accepter = userRepository.findById(order.getAccepterId()).orElse(null);
-
         if (publisher != null) {
             BigDecimal publisherBalance = publisher.getBalance() == null ? BigDecimal.ZERO : publisher.getBalance();
             BigDecimal publisherFrozen = publisher.getFrozenBalance() == null ? BigDecimal.ZERO : publisher.getFrozenBalance();
@@ -343,7 +413,6 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
             publisher.setFrozenBalance(publisherFrozen.subtract(reward).max(BigDecimal.ZERO));
             userRepository.save(publisher);
         }
-
         if (accepter != null) {
             BigDecimal accepterBalance = accepter.getBalance() == null ? BigDecimal.ZERO : accepter.getBalance();
             accepter.setBalance(accepterBalance.add(reward));
@@ -366,53 +435,5 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
 
     private boolean isDemandExpired(Demand demand, LocalDateTime now) {
         return demand.getEndTime() != null && demand.getEndTime().isBefore(now);
-    }
-
-    /**
-     * 自动完成接单方已确认超过 48 小时但需求方未确认的订单。
-     */
-    public void autoCompleteOverdueOrders(Long userId) {
-        List<Order> orders = orderRepository.findByParticipant(userId);
-        LocalDateTime now = LocalDateTime.now();
-        for (Order order : orders) {
-            if (order.getStatus() != OrderStatus.IN_PROGRESS) {
-                continue;
-            }
-            if (!userId.equals(order.getPublisherId())) {
-                continue;
-            }
-            boolean providerConfirmed = hasCompletionConfirmation(order, order.getAccepterId());
-            if (!providerConfirmed) {
-                continue;
-            }
-            // 查找接单方确认时间
-            LocalDateTime providerConfirmTime = order.getStatusHistory().stream()
-                .filter(e -> e.operatorId() != null && e.operatorId().equals(order.getAccepterId())
-                    && e.fromStatus() == OrderStatus.IN_PROGRESS
-                    && e.toStatus() == OrderStatus.IN_PROGRESS
-                    && PROVIDER_CONFIRMED_NOTE.equals(e.note()))
-                .map(OrderStatusHistoryEntry::changedAt)
-                .findFirst()
-                .orElse(null);
-            if (providerConfirmTime == null) {
-                continue;
-            }
-            if (providerConfirmTime.plusHours(48).isAfter(now)) {
-                continue;
-            }
-            // 超时，自动确认完成
-            Demand demand = findDemand(order.getDemandId());
-            order.setStatus(OrderStatus.COMPLETED);
-            order.setCompletedAt(now);
-            order.setUpdatedAt(now);
-            order.addHistory(OrderStatus.IN_PROGRESS, OrderStatus.COMPLETED, userId, "需求方超时未确认，系统自动完成", now);
-            demand.setStatus(DemandStatus.COMPLETED);
-            demand.setUpdatedAt(now);
-            orderRepository.save(order);
-            demandRepository.save(demand);
-            transferReward(demand, order);
-            notificationApplicationService.notifyOrderStatusChanged(order.getPublisherId(), order.getId(), OrderStatus.COMPLETED, true);
-            notificationApplicationService.notifyOrderStatusChanged(order.getAccepterId(), order.getId(), OrderStatus.COMPLETED, false);
-        }
     }
 }

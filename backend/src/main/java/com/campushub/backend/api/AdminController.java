@@ -1,5 +1,12 @@
 package com.campushub.backend.api;
 
+import com.campushub.backend.admin.dto.AdminDashboardResponse;
+import com.campushub.backend.admin.dto.AdminDemandQuery;
+import com.campushub.backend.admin.dto.AdminDemandReviewCommand;
+import com.campushub.backend.admin.dto.AdminOrderArbitrationCommand;
+import com.campushub.backend.admin.dto.AdminUserQuery;
+import com.campushub.backend.admin.service.AdminApplicationService;
+import com.campushub.backend.api.view.OrderView;
 import com.campushub.backend.api.view.UserSummaryView;
 import com.campushub.backend.common.api.ApiResponse;
 import com.campushub.backend.common.api.PageResponse;
@@ -7,13 +14,10 @@ import com.campushub.backend.common.model.PageQuery;
 import com.campushub.backend.common.security.CurrentUser;
 import com.campushub.backend.common.security.RequestUserExtractor;
 import com.campushub.backend.demand.dto.DemandSummaryResponse;
-import com.campushub.backend.admin.dto.AdminDashboardResponse;
-import com.campushub.backend.admin.dto.AdminDemandQuery;
-import com.campushub.backend.admin.dto.AdminDemandReviewCommand;
-import com.campushub.backend.admin.dto.AdminUserQuery;
-import com.campushub.backend.admin.service.AdminApplicationService;
+import com.campushub.backend.order.repository.OrderRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.Map;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -28,10 +32,19 @@ public class AdminController {
 
     private final AdminApplicationService adminApplicationService;
     private final RequestUserExtractor requestUserExtractor;
+    private final OrderRepository orderRepository;
+    private final ApiViewMapper apiViewMapper;
 
-    public AdminController(AdminApplicationService adminApplicationService, RequestUserExtractor requestUserExtractor) {
+    public AdminController(
+        AdminApplicationService adminApplicationService,
+        RequestUserExtractor requestUserExtractor,
+        OrderRepository orderRepository,
+        ApiViewMapper apiViewMapper
+    ) {
         this.adminApplicationService = adminApplicationService;
         this.requestUserExtractor = requestUserExtractor;
+        this.orderRepository = orderRepository;
+        this.apiViewMapper = apiViewMapper;
     }
 
     @GetMapping("/users")
@@ -117,6 +130,32 @@ public class AdminController {
     ) {
         CurrentUser currentUser = requestUserExtractor.requireCurrentUser(request);
         return ApiResponse.success(adminApplicationService.reviewDemand(currentUser.userId(), demandId, command));
+    }
+
+    @DeleteMapping("/orders/{orderId}")
+    public ApiResponse<Void> deleteOrder(
+        HttpServletRequest request,
+        @PathVariable Long orderId,
+        @RequestBody(required = false) Map<String, String> body
+    ) {
+        CurrentUser currentUser = requestUserExtractor.requireCurrentUser(request);
+        adminApplicationService.deleteOrder(currentUser.userId(), orderId, body == null ? null : body.get("reason"));
+        return ApiResponse.success(null);
+    }
+
+    @PostMapping("/orders/{orderId}/arbitration/resolve")
+    public ApiResponse<OrderView> resolveOrderArbitration(
+        HttpServletRequest request,
+        @PathVariable Long orderId,
+        @RequestBody AdminOrderArbitrationCommand command
+    ) {
+        CurrentUser currentUser = requestUserExtractor.requireCurrentUser(request);
+        adminApplicationService.resolveOrderArbitration(currentUser.userId(), orderId, command);
+        return ApiResponse.success(
+            orderRepository.findById(orderId)
+                .map(order -> apiViewMapper.toOrderView(order, currentUser))
+                .orElse(null)
+        );
     }
 
     @GetMapping("/dashboard")

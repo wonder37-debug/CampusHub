@@ -95,6 +95,16 @@ function displayStatusTone(order: OrderListItem): string {
   return statusToneClass(isDemandPlaceholder(order) ? order.demandStatus : order.status)
 }
 
+function orderHint(order: OrderListItem): string {
+  if (isDemandPlaceholder(order)) {
+    return ''
+  }
+  if (order.status === 'IN_ARBITRATION') {
+    return order.completionHint || '当前订单正在等待管理员仲裁处理。'
+  }
+  return order.completionHint || ''
+}
+
 const visibleOrders = computed<OrderListItem[]>(() => {
   const currentUserId = store.currentUser?.id
   if (!currentUserId) return []
@@ -221,6 +231,9 @@ onMounted(() => {
         </div>
 
         <div class="meta">对方：{{ otherPartyName(order) }}</div>
+        <div v-if="orderHint(order)" class="meta" style="margin-top: 8px;">
+          <span class="chip is-warning">{{ orderHint(order) }}</span>
+        </div>
 
         <div class="card-actions">
           <button

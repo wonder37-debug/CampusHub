@@ -28,6 +28,7 @@ import com.campushub.backend.order.dto.AcceptOrderCommand;
 import com.campushub.backend.order.dto.OrderDetailResponse;
 import com.campushub.backend.order.dto.OrderHistoryQuery;
 import com.campushub.backend.order.dto.OrderSummaryResponse;
+import com.campushub.backend.order.dto.RequestOrderArbitrationCommand;
 import com.campushub.backend.order.dto.UpdateOrderStatusCommand;
 import com.campushub.backend.order.repository.InMemoryOrderRepository;
 import com.campushub.backend.order.repository.OrderRepository;
@@ -242,6 +243,21 @@ class OrderApplicationServiceImplTest {
 
         assertEquals(2, history.total());
         assertEquals(2, history.items().size());
+    }
+
+    @Test
+    void shouldRequestArbitrationForActiveOrder() {
+        DemandDetailResponse demand = createDemand();
+        OrderDetailResponse accepted = orderApplicationService.accept(accepterId, demand.id(), new AcceptOrderCommand("我来"));
+
+        OrderDetailResponse arbitration = orderApplicationService.requestArbitration(
+            publisherId,
+            accepted.orderId(),
+            new RequestOrderArbitrationCommand("对履约细节有争议")
+        );
+
+        assertEquals("IN_ARBITRATION", arbitration.status());
+        assertTrue(arbitration.statusHistory().stream().anyMatch(item -> "IN_ARBITRATION".equals(item.toStatus())));
     }
 
     private DemandDetailResponse createDemand() {

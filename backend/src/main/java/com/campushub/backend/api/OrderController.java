@@ -2,15 +2,15 @@ package com.campushub.backend.api;
 
 import com.campushub.backend.api.view.OrderView;
 import com.campushub.backend.api.view.ReviewView;
-import com.campushub.backend.api.view.UserSummaryView;
+import com.campushub.backend.auth.repository.UserRepository;
 import com.campushub.backend.common.api.ApiResponse;
 import com.campushub.backend.common.api.PageResponse;
 import com.campushub.backend.common.model.PageQuery;
 import com.campushub.backend.common.security.CurrentUser;
 import com.campushub.backend.common.security.RequestUserExtractor;
-import com.campushub.backend.auth.repository.UserRepository;
 import com.campushub.backend.order.dto.OrderHistoryQuery;
 import com.campushub.backend.order.dto.OrderSummaryResponse;
+import com.campushub.backend.order.dto.RequestOrderArbitrationCommand;
 import com.campushub.backend.order.dto.UpdateOrderStatusCommand;
 import com.campushub.backend.order.repository.OrderRepository;
 import com.campushub.backend.order.service.OrderApplicationService;
@@ -101,6 +101,21 @@ public class OrderController {
     ) {
         CurrentUser currentUser = requestUserExtractor.requireCurrentUser(request);
         orderApplicationService.updateStatus(currentUser.userId(), orderId, command);
+        return ApiResponse.success(
+            orderRepository.findById(orderId)
+                .map(order -> apiViewMapper.toOrderView(order, currentUser))
+                .orElseThrow()
+        );
+    }
+
+    @PostMapping("/{orderId}/arbitration")
+    public ApiResponse<OrderView> requestArbitration(
+        HttpServletRequest request,
+        @PathVariable Long orderId,
+        @RequestBody RequestOrderArbitrationCommand command
+    ) {
+        CurrentUser currentUser = requestUserExtractor.requireCurrentUser(request);
+        orderApplicationService.requestArbitration(currentUser.userId(), orderId, command);
         return ApiResponse.success(
             orderRepository.findById(orderId)
                 .map(order -> apiViewMapper.toOrderView(order, currentUser))

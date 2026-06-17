@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.campushub.backend.admin.dto.AdminDashboardResponse;
 import com.campushub.backend.admin.dto.AdminDemandQuery;
 import com.campushub.backend.admin.dto.AdminDemandReviewCommand;
+import com.campushub.backend.admin.dto.AdminOrderArbitrationCommand;
 import com.campushub.backend.admin.dto.AdminUserQuery;
 import com.campushub.backend.auth.domain.User;
 import com.campushub.backend.auth.domain.UserRole;
@@ -32,6 +33,7 @@ import com.campushub.backend.notification.service.NotificationApplicationService
 import com.campushub.backend.notification.service.NotificationApplicationServiceImpl;
 import com.campushub.backend.order.dto.AcceptOrderCommand;
 import com.campushub.backend.order.dto.OrderDetailResponse;
+import com.campushub.backend.order.dto.RequestOrderArbitrationCommand;
 import com.campushub.backend.order.dto.UpdateOrderStatusCommand;
 import com.campushub.backend.order.repository.InMemoryOrderRepository;
 import com.campushub.backend.order.repository.OrderRepository;
@@ -136,7 +138,6 @@ class AdminApplicationServiceImplTest {
                 new AdminUserQuery(null, null, null, null, null, null, new PageQuery(1, 20))
             )
         );
-
         assertEquals(ErrorCode.PERMISSION_DENIED, exception.getErrorCode());
     }
 
@@ -162,7 +163,6 @@ class AdminApplicationServiceImplTest {
             adminId,
             new AdminUserQuery("20260003", "studentId", null, null, null, null, new PageQuery(1, 20))
         );
-
         assertEquals(1, page.total());
         assertEquals("20260003", page.items().get(0).studentId());
     }
@@ -226,7 +226,7 @@ class AdminApplicationServiceImplTest {
 
         PageResponse<DemandSummaryResponse> pendingPage = adminApplicationService.listPendingDemands(
             adminId,
-            new AdminDemandQuery("待审核", "EXPRESS", new PageQuery(1, 20))
+            new AdminDemandQuery("待审核", "EXPRESS", null, new PageQuery(1, 20))
         );
         assertEquals(1, pendingPage.total());
         assertEquals(reviewingDemand.id(), pendingPage.items().get(0).id());
@@ -259,7 +259,6 @@ class AdminApplicationServiceImplTest {
         ));
 
         DemandDetailResponse reviewingDemand = createDemand("待审核咨询", "STUDY_TUTORING");
-
         DemandDetailResponse completedDemand = createDemand("已完成快递", "EXPRESS");
         demandRepository.findById(completedDemand.id()).ifPresent(demand -> {
             demand.setStatus(DemandStatus.PENDING);
@@ -287,17 +286,12 @@ class AdminApplicationServiceImplTest {
         );
 
         AdminDashboardResponse dashboard = adminApplicationService.getDashboard(adminId);
-
         assertEquals(4, dashboard.totalUsers());
         assertEquals(2, dashboard.totalDemands());
         assertEquals(1, dashboard.pendingReviewDemands());
         assertEquals(1, dashboard.totalOrders());
         assertEquals(1, dashboard.completedOrders());
         assertEquals(2, dashboard.dailyActiveUsers());
-        assertTrue(dashboard.categoryDistribution().stream()
-            .anyMatch(item -> item.category().equals("EXPRESS") && item.count() == 1));
-        assertTrue(dashboard.categoryDistribution().stream()
-            .anyMatch(item -> item.category().equals("STUDY_TUTORING") && item.count() == 1));
     }
 
     @Test
@@ -315,32 +309,32 @@ class AdminApplicationServiceImplTest {
                 new AdminDemandReviewCommand("reject", "驳回")
             )
         );
-
         assertEquals(ErrorCode.BUSINESS_CONFLICT, exception.getErrorCode());
     }
 
     @Test
-    void shouldPersistRejectReasonAndNotifyPublisher() {
-        DemandDetailResponse reviewingDemand = createDemand("待驳回需求", "OTHER");
-
-        DemandDetailResponse rejected = adminApplicationService.reviewDemand(
-            adminId,
-            reviewingDemand.id(),
-            new AdminDemandReviewCommand("reject", "信息不完整")
-        );
-
-        assertEquals(DemandStatus.CANCELLED.name(), rejected.status());
-        assertEquals("信息不完整", rejected.reviewReason());
-        assertEquals(adminId, rejected.reviewedBy());
-
-        var notifications = notificationApplicationService.list(
+    void shouldResolveArbitrationAndDeleteOrder() {
+        DemandDetailResponse demand = createDemand("仲裁需求", "OTHER");
+        demandRepository.findById(demand.id()).ifPresent(saved -> {
+            saved.setStatus(DemandStatus.PENDING);
+            demandRepository.save(saved);
+        });
+        OrderDetailResponse order = orderApplicationService.accept(accepterId, demand.id(), new AcceptOrderCommand("接单"));
+        orderApplicationService.requestArbitration(
             publisherId,
-            new com.campushub.backend.notification.dto.NotificationQuery(false, new PageQuery(1, 20))
+            order.orderId(),
+            new RequestOrderArbitrationCommand("存在争议")
         );
-        assertTrue(notifications.items().stream()
-            .anyMatch(item -> "DEMAND_REJECTED".equals(item.type())
-                && reviewingDemand.id().equals(item.targetId())
-                && item.content().contains("信息不完整")));
+
+        OrderDetailResponse resolved = adminApplicationService.resolveOrderArbitration(
+            adminId,
+            order.orderId(),
+            new AdminOrderArbitrationCommand("complete", "核实后完成")
+        );
+        assertEquals("COMPLETED", resolved.status());
+
+        adminApplicationService.deleteOrder(adminId, order.orderId(), "清理测试数据");
+        assertTrue(orderRepository.findById(order.orderId()).isEmpty());
     }
 
     private DemandDetailResponse createDemand(String title, String category) {

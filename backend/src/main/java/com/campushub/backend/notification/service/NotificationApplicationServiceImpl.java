@@ -86,6 +86,16 @@ public class NotificationApplicationServiceImpl implements NotificationApplicati
     }
 
     @Override
+    public void notifyOrderArbitrationRequested(Long receiverId, Long orderId, Long requesterId, String reason) {
+        createNotification(receiverId, buildOrderArbitrationRequested(orderId, requesterId, reason));
+    }
+
+    @Override
+    public void notifyOrderArbitrationResolved(Long receiverId, Long orderId, String outcome, String reason) {
+        createNotification(receiverId, buildOrderArbitrationResolved(orderId, outcome, reason));
+    }
+
+    @Override
     public PageResponse<NotificationResponse> list(Long userId, NotificationQuery query) {
         if (userId == null) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "userId must not be null");
@@ -144,7 +154,7 @@ public class NotificationApplicationServiceImpl implements NotificationApplicati
         String demandTitle = resolveOrderDemandTitle(orderId);
         return new NotificationDraft(
             NotificationType.ORDER_ACCEPTED,
-            "订单已接单",
+            "订单已被接单",
             "您的需求《" + demandTitle + "》已有同学接单，请尽快沟通细节。",
             orderId
         );
@@ -171,6 +181,10 @@ public class NotificationApplicationServiceImpl implements NotificationApplicati
                     ? "接单方已开始处理您的需求《" + demandTitle + "》。"
                     : "您已开始处理《" + demandTitle + "》，请按约定完成。";
             }
+            case IN_ARBITRATION -> {
+                title = "订单进入仲裁";
+                content = "订单《" + demandTitle + "》已进入管理员仲裁，请等待处理结果。";
+            }
             case COMPLETED -> {
                 title = "订单已完成";
                 content = isPublisher
@@ -184,16 +198,11 @@ public class NotificationApplicationServiceImpl implements NotificationApplicati
                     : "订单《" + demandTitle + "》已被取消。";
             }
             default -> {
-                title = "订单状态更新";
-                content = "订单《" + demandTitle + "》当前状态已更新为" + formatOrderStatus(status) + "。";
+                title = "订单状态已更新";
+                content = "订单《" + demandTitle + "》当前状态已更新为 " + formatOrderStatus(status) + "。";
             }
         }
-        return new NotificationDraft(
-            NotificationType.STATUS_CHANGED,
-            title,
-            content,
-            orderId
-        );
+        return new NotificationDraft(NotificationType.STATUS_CHANGED, title, content, orderId);
     }
 
     private NotificationDraft buildOrderCompletionPending(Long orderId) {
@@ -256,6 +265,27 @@ public class NotificationApplicationServiceImpl implements NotificationApplicati
         );
     }
 
+    private NotificationDraft buildOrderArbitrationRequested(Long orderId, Long requesterId, String reason) {
+        String demandTitle = resolveOrderDemandTitle(orderId);
+        String requesterText = requesterId == null ? "有用户" : "用户#" + requesterId;
+        return new NotificationDraft(
+            NotificationType.ORDER_ARBITRATION_REQUESTED,
+            "有订单申请仲裁",
+            requesterText + " 针对订单《" + demandTitle + "》发起了仲裁。原因：" + normalizeReviewReason(reason),
+            orderId
+        );
+    }
+
+    private NotificationDraft buildOrderArbitrationResolved(Long orderId, String outcome, String reason) {
+        String demandTitle = resolveOrderDemandTitle(orderId);
+        return new NotificationDraft(
+            NotificationType.ORDER_ARBITRATION_RESOLVED,
+            "订单仲裁已处理",
+            "订单《" + demandTitle + "》仲裁结果为 " + outcome + "。说明：" + normalizeReviewReason(reason),
+            orderId
+        );
+    }
+
     private NotificationResponse toNotificationResponse(Notification notification) {
         String targetType = resolveTargetType(notification);
         Long targetId = notification.getRelatedId();
@@ -269,7 +299,8 @@ public class NotificationApplicationServiceImpl implements NotificationApplicati
             return null;
         }
         return switch (notification.getType()) {
-            case ORDER_ACCEPTED, STATUS_CHANGED, REVIEW_RECEIVED, PENDING_REVIEW -> "ORDER";
+            case ORDER_ACCEPTED, STATUS_CHANGED, REVIEW_RECEIVED, PENDING_REVIEW,
+                ORDER_ARBITRATION_REQUESTED, ORDER_ARBITRATION_RESOLVED -> "ORDER";
             case REVIEW_REQUEST, DEMAND_REJECTED, DEMAND_APPROVED -> "DEMAND";
         };
     }
@@ -299,9 +330,9 @@ public class NotificationApplicationServiceImpl implements NotificationApplicati
         return switch (type) {
             case REVIEW_REQUEST -> "REVIEW_DEMAND";
             case DEMAND_REJECTED, DEMAND_APPROVED -> "VIEW_DEMAND";
-            case REVIEW_RECEIVED -> "VIEW_ORDER_REVIEWS";
-            case PENDING_REVIEW -> "VIEW_ORDER_REVIEWS";
-            case ORDER_ACCEPTED, STATUS_CHANGED -> "ORDER".equals(targetType) ? "VIEW_ORDER" : "VIEW_DEMAND";
+            case REVIEW_RECEIVED, PENDING_REVIEW, ORDER_ACCEPTED, STATUS_CHANGED,
+                ORDER_ARBITRATION_REQUESTED, ORDER_ARBITRATION_RESOLVED ->
+                "ORDER".equals(targetType) ? "VIEW_ORDER" : "VIEW_DEMAND";
         };
     }
 
@@ -328,7 +359,7 @@ public class NotificationApplicationServiceImpl implements NotificationApplicati
 
     private String normalizeReviewReason(String reviewReason) {
         if (reviewReason == null || reviewReason.isBlank()) {
-            return "请查看审核说明";
+            return "请查看详情";
         }
         String normalized = reviewReason.trim();
         int fullWidthMarker = normalized.lastIndexOf("原因：");
@@ -349,6 +380,7 @@ public class NotificationApplicationServiceImpl implements NotificationApplicati
         return switch (status) {
             case ACCEPTED -> "已接单";
             case IN_PROGRESS -> "进行中";
+            case IN_ARBITRATION -> "仲裁中";
             case COMPLETED -> "已完成";
             case CANCELLED -> "已取消";
         };

@@ -25,6 +25,10 @@ public interface NotificationApplicationService {
 
     void notifyPendingReviewReminder(Long receiverId, Long orderId);
 
+    void notifyOrderArbitrationRequested(Long receiverId, Long orderId, Long requesterId, String reason);
+
+    void notifyOrderArbitrationResolved(Long receiverId, Long orderId, String outcome, String reason);
+
     PageResponse<NotificationResponse> list(Long userId, NotificationQuery query);
 
     void markAsRead(Long userId, Long notificationId);
