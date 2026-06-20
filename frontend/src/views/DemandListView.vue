@@ -458,24 +458,6 @@ watch(
   background: rgba(31, 95, 83, 0.08) !important;
 }
 
-/* 加载更多 */
-.load-more-panel {
-  cursor: pointer;
-  align-items: center;
-  text-align: center;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-}
-.load-more-panel:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow);
-}
-.load-more-done {
-  text-align: center;
-  padding: 14px;
-  color: var(--muted);
-  font-size: 13px;
-}
-
 .demand-card {
   cursor: pointer;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
