@@ -1111,12 +1111,16 @@ button.back-to-top:hover {
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.78);
   border: 1px solid rgba(0, 0, 0, 0.06);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
 }
 
 .mini-stat strong {
   display: block;
-  margin-top: 10px;
-  font-size: 30px;
+  margin-top: 8px;
+  font-size: 28px;
+  line-height: 1.2;
   color: var(--text-strong);
 }
 
