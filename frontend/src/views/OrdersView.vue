@@ -14,6 +14,15 @@ const activeTab = ref<'published' | 'accepted'>('published')
 const loadingOrders = ref(false)
 const refreshing = ref(false)
 
+const PAGE_SIZE = 10
+const page = ref(1)
+
+// reset page when switching tabs
+function switchTab(tab: 'published' | 'accepted'): void {
+  page.value = 1
+  activeTab.value = tab
+}
+
 async function refreshOrders(): Promise<void> {
   refreshing.value = true
   try {
@@ -127,6 +136,14 @@ const visibleOrders = computed<OrderListItem[]>(() => {
   return [...publishedOrders, ...placeholders].sort(compareOrderItems)
 })
 
+const slicedOrders = computed(() => visibleOrders.value.slice(0, page.value * PAGE_SIZE))
+const hasMore = computed(() => slicedOrders.value.length < visibleOrders.value.length)
+const allLoaded = computed(() => !hasMore.value && visibleOrders.value.length > 0)
+
+function loadMore(): void {
+  page.value++
+}
+
 function otherPartyName(order: OrderListItem): string {
   if (activeTab.value === 'published') {
     if (isDemandPlaceholder(order)) {
@@ -191,8 +208,8 @@ onMounted(() => {
       </div>
 
       <div class="segment-row">
-        <button type="button" class="button" :class="activeTab === 'published' ? 'primary' : 'secondary'" @click="activeTab = 'published'">我发布的订单</button>
-        <button type="button" class="button" :class="activeTab === 'accepted' ? 'primary' : 'secondary'" @click="activeTab = 'accepted'">我接的订单</button>
+        <button type="button" class="button" :class="activeTab === 'published' ? 'primary' : 'secondary'" @click="switchTab('published')">我发布的订单</button>
+        <button type="button" class="button" :class="activeTab === 'accepted' ? 'primary' : 'secondary'" @click="switchTab('accepted')">我接的订单</button>
       </div>
     </section>
 
@@ -211,7 +228,7 @@ onMounted(() => {
         <p>发布需求并等同学接单后，订单会出现在这里。</p>
       </div>
 
-      <article v-for="order in visibleOrders" :key="order.id" class="list-card order-card" @click="openOrder(order)">
+      <article v-for="order in slicedOrders" :key="order.id" class="list-card order-card" @click="openOrder(order)">
         <div class="status-row">
           <span class="chip" :class="displayStatusTone(order)">{{ displayStatusLabel(order) }}</span>
           <span class="chip">{{ activeTab === 'published' ? '发布单' : '接单单' }}</span>
@@ -270,6 +287,12 @@ onMounted(() => {
           </button>
         </div>
       </article>
+
+      <div v-if="hasMore" class="list-card load-more-panel" @click="loadMore">
+        <h3>加载更多订单</h3>
+        <p class="subtle">当前显示 {{ slicedOrders.length }} / {{ visibleOrders.length }} 条</p>
+      </div>
+      <div v-if="allLoaded" class="load-more-done">📋 已展示全部 {{ visibleOrders.length }} 条订单</div>
     </section>
   </div>
 </template>

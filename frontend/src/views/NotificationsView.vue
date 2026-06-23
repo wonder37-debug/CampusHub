@@ -8,11 +8,22 @@ import { formatNotificationType, formatRelativeTime } from '@/utils/format'
 const store = useCampusHubStore()
 const router = useRouter()
 
-const notifications = computed(() => store.currentUserNotifications)
+const PAGE_SIZE = 10
+const page = ref(1)
+
+const allNotifications = computed(() => store.currentUserNotifications)
+const visibleNotifications = computed(() => allNotifications.value.slice(0, page.value * PAGE_SIZE))
+const hasMore = computed(() => visibleNotifications.value.length < allNotifications.value.length)
+const allLoaded = computed(() => !hasMore.value && allNotifications.value.length > 0)
 const refreshing = ref(false)
+
+function loadMore(): void {
+  page.value++
+}
 
 async function refreshNotifications(): Promise<void> {
   refreshing.value = true
+  page.value = 1
   try {
     await store.fetchNotifications()
   } finally {
@@ -109,13 +120,13 @@ onMounted(() => {
         <p><a href="/auth" @click.prevent="router.push('/auth')" style="text-decoration: underline; cursor: pointer; color: var(--primary);">点击这里登录</a></p>
       </div>
 
-      <div v-else-if="!notifications.length" class="empty-state" style="--empty-icon:'🔔'">
+      <div v-else-if="!allNotifications.length" class="empty-state" style="--empty-icon:'🔔'">
         <strong>暂无消息</strong>
         <p>接单、评价和订单状态会在这里通知你。</p>
       </div>
 
       <article
-        v-for="notification in notifications"
+        v-for="notification in visibleNotifications"
         :key="notification.id"
         class="list-card notification-card"
         :class="notification.isRead ? 'is-read' : 'is-unread'"
@@ -155,6 +166,12 @@ onMounted(() => {
           <span v-else>点击可查看相关订单或需求详情</span>
         </div>
       </article>
+
+      <div v-if="hasMore" class="list-card load-more-panel" @click="loadMore">
+        <h3>加载更多消息</h3>
+        <p class="subtle">当前显示 {{ visibleNotifications.length }} / {{ allNotifications.length }} 条</p>
+      </div>
+      <div v-if="allLoaded" class="load-more-done">📋 已展示全部 {{ allNotifications.length }} 条消息</div>
     </section>
   </div>
 </template>
