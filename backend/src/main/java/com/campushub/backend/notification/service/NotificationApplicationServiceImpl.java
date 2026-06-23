@@ -281,7 +281,7 @@ public class NotificationApplicationServiceImpl implements NotificationApplicati
         return new NotificationDraft(
             NotificationType.ORDER_ARBITRATION_RESOLVED,
             "订单仲裁已处理",
-            "订单《" + demandTitle + "》仲裁结果为 " + outcome + "。说明：" + normalizeReviewReason(reason),
+            "订单《" + demandTitle + "》仲裁结果为 " + formatArbitrationOutcome(outcome) + "。说明：" + normalizeReviewReason(reason),
             orderId
         );
     }
@@ -384,6 +384,20 @@ public class NotificationApplicationServiceImpl implements NotificationApplicati
             case COMPLETED -> "已完成";
             case CANCELLED -> "已取消";
         };
+    }
+
+    private String formatArbitrationOutcome(String outcome) {
+        if (outcome == null || outcome.isBlank()) {
+            return "未知结果";
+        }
+        String normalized = outcome.trim().toLowerCase();
+        if ("complete".equals(normalized) || "completed".equals(normalized)) {
+            return "完成订单";
+        }
+        if ("cancel".equals(normalized) || "cancelled".equals(normalized)) {
+            return "取消订单";
+        }
+        return outcome;
     }
 
     private record NotificationDraft(NotificationType type, String title, String content, Long relatedId) {

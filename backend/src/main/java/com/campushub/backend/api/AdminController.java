@@ -14,6 +14,7 @@ import com.campushub.backend.common.model.PageQuery;
 import com.campushub.backend.common.security.CurrentUser;
 import com.campushub.backend.common.security.RequestUserExtractor;
 import com.campushub.backend.demand.dto.DemandSummaryResponse;
+import com.campushub.backend.order.dto.OrderSummaryResponse;
 import com.campushub.backend.order.repository.OrderRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.Map;
@@ -120,6 +121,25 @@ public class AdminController {
                 new AdminDemandQuery(q, category, campusZone, new PageQuery(page, size))
             )
         );
+    }
+
+    @GetMapping("/orders/arbitration")
+    public ApiResponse<PageResponse<OrderView>> listArbitrationOrders(
+        HttpServletRequest request,
+        @RequestParam(defaultValue = "1") int page,
+        @RequestParam(defaultValue = "20") int size
+    ) {
+        CurrentUser currentUser = requestUserExtractor.requireCurrentUser(request);
+        PageResponse<OrderSummaryResponse> rawPage = adminApplicationService.listArbitrationOrders(currentUser.userId(), page, size);
+        return ApiResponse.success(new PageResponse<>(
+            rawPage.items().stream()
+                .map(item -> orderRepository.findById(item.orderId()).orElseThrow())
+                .map(order -> apiViewMapper.toOrderView(order, currentUser))
+                .toList(),
+            rawPage.page(),
+            rawPage.size(),
+            rawPage.total()
+        ));
     }
 
     @PostMapping("/demands/{demandId}/review")

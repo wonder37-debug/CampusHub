@@ -242,6 +242,8 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         if (order.getStatus() != OrderStatus.IN_PROGRESS) {
             throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "only in progress orders can be completed");
         }
+        boolean operatorIsPublisher = operatorId.equals(order.getPublisherId());
+        boolean operatorIsAccepter = operatorId.equals(order.getAccepterId());
         Long counterpartId = getCounterpartId(order, operatorId);
         if (counterpartId == null) {
             throw new BusinessException(ErrorCode.PERMISSION_DENIED, "only participants can complete order");
@@ -249,17 +251,17 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         if (hasCompletionConfirmation(order, operatorId)) {
             throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "completion already confirmed by this user");
         }
-        if (operatorId.equals(order.getPublisherId()) && !hasCompletionConfirmation(order, order.getAccepterId())) {
-            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "provider must confirm completion first");
+        if (operatorIsAccepter) {
+            validateProviderProof(command.proofImageCount());
         }
 
         LocalDateTime now = LocalDateTime.now();
         if (!hasCompletionConfirmation(order, counterpartId)) {
-            if (command != null && command.proofImageCount() != null) {
+            if (operatorIsAccepter) {
                 order.setProofSubmitted(true);
                 order.setProofImageCount(command.proofImageCount());
             }
-            String pendingNote = operatorId.equals(order.getAccepterId()) ? PROVIDER_CONFIRMED_NOTE : REQUESTER_CONFIRMED_NOTE;
+            String pendingNote = operatorIsAccepter ? PROVIDER_CONFIRMED_NOTE : REQUESTER_CONFIRMED_NOTE;
             order.addHistory(OrderStatus.IN_PROGRESS, OrderStatus.IN_PROGRESS, operatorId, pendingNote, now);
             order.setUpdatedAt(now);
             orderRepository.save(order);
@@ -270,7 +272,7 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         order.setStatus(OrderStatus.COMPLETED);
         order.setCompletedAt(now);
         order.setUpdatedAt(now);
-        if (command != null && command.proofImageCount() != null && !order.isProofSubmitted()) {
+        if (operatorIsAccepter && !order.isProofSubmitted()) {
             order.setProofSubmitted(true);
             order.setProofImageCount(command.proofImageCount());
         }
@@ -284,6 +286,12 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         notificationApplicationService.notifyOrderStatusChanged(order.getPublisherId(), order.getId(), OrderStatus.COMPLETED, true);
         notificationApplicationService.notifyOrderStatusChanged(order.getAccepterId(), order.getId(), OrderStatus.COMPLETED, false);
         return OrderDetailResponse.from(order, DemandDetailResponse.from(demand));
+    }
+
+    private void validateProviderProof(Integer proofImageCount) {
+        if (proofImageCount == null || proofImageCount < 1 || proofImageCount > 3) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "proofImageCount must be between 1 and 3");
+        }
     }
 
     private void validateTransition(Order order, Long operatorId, OrderStatus targetStatus, Integer proofImageCount) {

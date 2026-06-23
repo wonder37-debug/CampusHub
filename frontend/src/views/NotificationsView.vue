@@ -136,7 +136,14 @@ onMounted(() => {
           <span class="meta">{{ formatRelativeTime(notification.createdAt) }}</span>
         </div>
 
-        <p v-if="notification.type === 'DEMAND_REJECTED' || notification.type === 'DEMAND_APPROVED'" class="subtle" style="margin-top: 8px; white-space: pre-wrap;">
+        <p
+          v-if="notification.type === 'DEMAND_REJECTED'
+            || notification.type === 'DEMAND_APPROVED'
+            || notification.type === 'ORDER_ARBITRATION_REQUESTED'
+            || notification.type === 'ORDER_ARBITRATION_RESOLVED'"
+          class="subtle"
+          style="margin-top: 8px; white-space: pre-wrap;"
+        >
           {{ notification.content }}
         </p>
         <p v-else-if="notification.targetTitle || notification.relatedName" class="subtle" style="margin-top: 6px;">

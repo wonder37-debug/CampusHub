@@ -33,6 +33,7 @@ import com.campushub.backend.notification.service.NotificationApplicationService
 import com.campushub.backend.notification.service.NotificationApplicationServiceImpl;
 import com.campushub.backend.order.dto.AcceptOrderCommand;
 import com.campushub.backend.order.dto.OrderDetailResponse;
+import com.campushub.backend.order.dto.OrderSummaryResponse;
 import com.campushub.backend.order.dto.RequestOrderArbitrationCommand;
 import com.campushub.backend.order.dto.UpdateOrderStatusCommand;
 import com.campushub.backend.order.repository.InMemoryOrderRepository;
@@ -335,6 +336,28 @@ class AdminApplicationServiceImplTest {
 
         adminApplicationService.deleteOrder(adminId, order.orderId(), "清理测试数据");
         assertTrue(orderRepository.findById(order.orderId()).isEmpty());
+    }
+
+    @Test
+    void shouldListArbitrationOrdersByActualStatus() {
+        DemandDetailResponse demand = createDemand("仲裁列表需求", "OTHER");
+        demandRepository.findById(demand.id()).ifPresent(saved -> {
+            saved.setStatus(DemandStatus.PENDING);
+            demandRepository.save(saved);
+        });
+
+        OrderDetailResponse order = orderApplicationService.accept(accepterId, demand.id(), new AcceptOrderCommand("接单"));
+        orderApplicationService.requestArbitration(
+            publisherId,
+            order.orderId(),
+            new RequestOrderArbitrationCommand("存在争议")
+        );
+
+        PageResponse<OrderSummaryResponse> page = adminApplicationService.listArbitrationOrders(adminId, 1, 20);
+
+        assertEquals(1, page.total());
+        assertEquals(order.orderId(), page.items().get(0).orderId());
+        assertEquals("IN_ARBITRATION", page.items().get(0).status());
     }
 
     private DemandDetailResponse createDemand(String title, String category) {

@@ -124,11 +124,24 @@ const canRequestArbitration = computed(() => {
   return order.value.status === 'ACCEPTED' || order.value.status === 'IN_PROGRESS'
 })
 
+const currentUserConfirmedCompletion = computed(() => {
+  if (!order.value || !store.currentUser) return false
+  return order.value.timeline.some(
+    (t) => t.operatorId === store.currentUser!.id
+      && (
+        t.label.includes('接单方确认完成')
+        || t.label.includes('需求方确认完成')
+        || t.label.includes('已确认完成，等待需求方确认')
+        || t.label.includes('已确认完成，等待接单方确认')
+      )
+  )
+})
+
 const providerConfirmed = computed(() => {
   if (!order.value) return false
   return order.value.timeline.some(
-    (t) => t.label.includes('接单方确认完成')
-      || (t.label === '已确认完成，等待对方确认' && t.operatorId === order.value!.serviceProviderId)
+    (t) => t.operatorId === order.value!.serviceProviderId
+      && (t.label.includes('接单方确认完成') || t.label.includes('已确认完成，等待需求方确认'))
   )
 })
 
@@ -364,7 +377,7 @@ onMounted(() => {
       <div class="card-actions">
         <button v-if="order.status === 'ACCEPTED' && isProvider" type="button" class="button primary" @click="startOrder">开始执行</button>
         <button
-          v-if="order.status === 'IN_PROGRESS' && isProvider && !completionSubmitted"
+          v-if="order.status === 'IN_PROGRESS' && isProvider && !currentUserConfirmedCompletion"
           type="button"
           class="button primary"
           @click="completeOrder"
@@ -372,7 +385,7 @@ onMounted(() => {
           提交完成确认
         </button>
         <button
-          v-if="order.status === 'IN_PROGRESS' && isRequester && providerConfirmed && !completionSubmitted"
+          v-if="order.status === 'IN_PROGRESS' && isRequester && providerConfirmed && !currentUserConfirmedCompletion"
           type="button"
           class="button primary"
           @click="completeOrder"
@@ -380,7 +393,7 @@ onMounted(() => {
           确认完成
         </button>
         <span
-          v-if="order.status === 'IN_PROGRESS' && ((isProvider && completionSubmitted) || (isRequester && !providerConfirmed) || (!isProvider && !isRequester))"
+          v-if="order.status === 'IN_PROGRESS' && ((isProvider && currentUserConfirmedCompletion) || (isRequester && !providerConfirmed) || (!isProvider && !isRequester) || (isRequester && currentUserConfirmedCompletion))"
           class="chip is-warning"
         >{{ completionHint || '等待接单方确认完成' }}</span>
         <button v-if="order.status === 'ACCEPTED' && isRequester" type="button" class="button danger" @click="cancelOrder">取消订单</button>

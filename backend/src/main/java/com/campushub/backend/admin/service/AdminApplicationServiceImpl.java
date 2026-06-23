@@ -24,6 +24,7 @@ import com.campushub.backend.notification.service.NotificationApplicationService
 import com.campushub.backend.order.domain.Order;
 import com.campushub.backend.order.domain.OrderStatus;
 import com.campushub.backend.order.dto.OrderDetailResponse;
+import com.campushub.backend.order.dto.OrderSummaryResponse;
 import com.campushub.backend.order.repository.OrderRepository;
 import com.campushub.backend.recommendation.domain.UserActionLog;
 import com.campushub.backend.recommendation.repository.UserActionLogRepository;
@@ -174,6 +175,25 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
     }
 
     @Override
+    public PageResponse<OrderSummaryResponse> listArbitrationOrders(Long operatorId, int page, int size) {
+        requireAdmin(operatorId);
+        int resolvedPage = Math.max(page, 1);
+        int resolvedSize = Math.max(size, 1);
+
+        List<Order> filtered = orderRepository.findAll().stream()
+            .filter(order -> order.getStatus() == OrderStatus.IN_ARBITRATION)
+            .sorted(Comparator.comparing(Order::getUpdatedAt, Comparator.nullsLast(LocalDateTime::compareTo)).reversed())
+            .toList();
+
+        int fromIndex = Math.max(0, (resolvedPage - 1) * resolvedSize);
+        int toIndex = Math.min(filtered.size(), fromIndex + resolvedSize);
+        List<OrderSummaryResponse> items = fromIndex >= filtered.size()
+            ? List.of()
+            : filtered.subList(fromIndex, toIndex).stream().map(OrderSummaryResponse::from).toList();
+        return new PageResponse<>(items, resolvedPage, resolvedSize, filtered.size());
+    }
+
+    @Override
     public DemandDetailResponse reviewDemand(Long operatorId, Long demandId, AdminDemandReviewCommand command) {
         requireAdmin(operatorId);
         if (command == null || command.action() == null || command.action().isBlank()) {
@@ -241,12 +261,12 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
 
         String outcome = command.outcome().trim().toLowerCase(Locale.ROOT);
         LocalDateTime now = LocalDateTime.now();
-        if ("complete".equals(outcome)) {
+        if ("complete".equals(outcome) || "completed".equals(outcome)) {
             order.setStatus(OrderStatus.COMPLETED);
             order.setCompletedAt(now);
             demand.setStatus(DemandStatus.COMPLETED);
             transferReward(demand, order);
-        } else if ("cancel".equals(outcome)) {
+        } else if ("cancel".equals(outcome) || "cancelled".equals(outcome)) {
             order.setStatus(OrderStatus.CANCELLED);
             demand.setStatus(DemandStatus.CANCELLED);
             demandApplicationService.unfreezePublisherBalance(demand.getId());

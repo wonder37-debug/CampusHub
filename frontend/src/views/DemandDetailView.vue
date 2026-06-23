@@ -109,12 +109,25 @@ const hasSubmittedReview = computed(() => {
   return relatedReviews.value.some((r) => r.reviewerId === store.currentUser?.id)
 })
 
+const currentUserConfirmedCompletion = computed(() => {
+  if (!relatedOrder.value || !store.currentUser) return false
+  return relatedOrder.value.timeline.some(
+    (t) => t.operatorId === store.currentUser!.id
+      && (
+        t.label.includes('接单方确认完成')
+        || t.label.includes('需求方确认完成')
+        || t.label.includes('已确认完成，等待需求方确认')
+        || t.label.includes('已确认完成，等待接单方确认')
+      )
+  )
+})
+
 // 接单方是否已在时间线中确认完成（需求方需等待接单方先确认）
 const providerConfirmed = computed(() => {
   if (!relatedOrder.value) return false
   return relatedOrder.value.timeline.some(
-    (t) => t.label.includes('接单方确认完成')
-      || (t.label === '已确认完成，等待对方确认' && t.operatorId === relatedOrder.value!.serviceProviderId)
+    (t) => t.operatorId === relatedOrder.value!.serviceProviderId
+      && (t.label.includes('接单方确认完成') || t.label.includes('已确认完成，等待需求方确认'))
   )
 })
 
@@ -320,7 +333,7 @@ onMounted(() => {
 
           <button v-if="canStartExecution" type="button" class="button primary" @click="startOrder">开始执行</button>
           <button
-            v-if="relatedOrder?.status === 'IN_PROGRESS' && store.currentUser?.id === relatedOrder.serviceProviderId && !completionSubmitted"
+            v-if="relatedOrder?.status === 'IN_PROGRESS' && store.currentUser?.id === relatedOrder.serviceProviderId && !currentUserConfirmedCompletion"
             type="button"
             class="button primary"
             @click="completeOrder"
@@ -328,14 +341,14 @@ onMounted(() => {
             提交完成确认
           </button>
           <button
-            v-else-if="relatedOrder?.status === 'IN_PROGRESS' && store.currentUser?.id === relatedOrder.requesterId && providerConfirmed && !completionSubmitted"
+            v-else-if="relatedOrder?.status === 'IN_PROGRESS' && store.currentUser?.id === relatedOrder.requesterId && providerConfirmed && !currentUserConfirmedCompletion"
             type="button"
             class="button primary"
             @click="completeOrder"
           >
             确认完成
           </button>
-          <span v-else-if="relatedOrder?.status === 'IN_PROGRESS' && !completionSubmitted" class="chip is-warning">{{ providerConfirmed ? '等待对方确认完成' : '等待接单方确认完成' }}</span>
+          <span v-else-if="relatedOrder?.status === 'IN_PROGRESS' && !completionSubmitted" class="chip is-warning">{{ currentUserConfirmedCompletion || providerConfirmed ? '等待对方确认完成' : '等待接单方确认完成' }}</span>
         </div>
       </div>
 

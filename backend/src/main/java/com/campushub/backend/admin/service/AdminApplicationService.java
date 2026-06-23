@@ -10,6 +10,7 @@ import com.campushub.backend.common.api.PageResponse;
 import com.campushub.backend.demand.dto.DemandDetailResponse;
 import com.campushub.backend.demand.dto.DemandSummaryResponse;
 import com.campushub.backend.order.dto.OrderDetailResponse;
+import com.campushub.backend.order.dto.OrderSummaryResponse;
 
 public interface AdminApplicationService {
 
@@ -22,6 +23,8 @@ public interface AdminApplicationService {
     UserProfileResponse updateUserRole(Long operatorId, Long userId, String role);
 
     PageResponse<DemandSummaryResponse> listPendingDemands(Long operatorId, AdminDemandQuery query);
+
+    PageResponse<OrderSummaryResponse> listArbitrationOrders(Long operatorId, int page, int size);
 
     DemandDetailResponse reviewDemand(Long operatorId, Long demandId, AdminDemandReviewCommand command);
 

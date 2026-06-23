@@ -26,7 +26,7 @@ const rejectReason = ref('')
 const arbitrationDialogOpen = ref(false)
 const arbitrationOrderId = ref('')
 const arbitrationOrderTitle = ref('')
-const arbitrationOutcome = ref<'COMPLETED' | 'CANCELLED'>('COMPLETED')
+const arbitrationOutcome = ref<'complete' | 'cancel'>('complete')
 const arbitrationReason = ref('')
 const deleteDialogOpen = ref(false)
 const deletingOrderId = ref('')
@@ -36,16 +36,7 @@ const deleteReason = ref('')
 const isAdmin = computed(() => store.currentUser?.role === 'ADMIN')
 const adminDashboard = computed(() => store.adminDashboard)
 const pendingDemands = computed(() => store.adminPendingDemands)
-const arbitrationOrders = computed(() =>
-  store.currentUserNotifications
-    .filter((notification) => notification.type === 'ORDER_ARBITRATION_REQUESTED')
-    .map((notification) => ({
-      id: notification.targetId || notification.relatedId,
-      title: notification.targetTitle || notification.relatedName || notification.title || '订单争议',
-      content: notification.content,
-      createdAt: notification.createdAt
-    }))
-)
+const arbitrationOrders = computed(() => store.adminArbitrationOrders)
 const adminCategoryOptions = DEMAND_CATEGORY_OPTIONS.map((category) => ({
   value: category,
   label: formatDemandCategory(category)
@@ -110,6 +101,7 @@ async function refreshAdminData(): Promise<void> {
       creditSort.value === 'none' ? '' : creditSort.value
     ),
     store.fetchAdminPendingDemands(demandQuery.value, demandCategory.value, demandCampusZone.value),
+    store.fetchAdminArbitrationOrders(),
     store.fetchNotifications()
   ])
 }
@@ -197,10 +189,10 @@ function openDemandDetail(demandId: string): void {
   router.push(`/demands/${demandId}`)
 }
 
-function openArbitrationDialog(order: { id: string; title: string }): void {
+function openArbitrationDialog(order: { id: string; demandTitle?: string; title?: string }): void {
   arbitrationOrderId.value = order.id
-  arbitrationOrderTitle.value = order.title
-  arbitrationOutcome.value = 'COMPLETED'
+  arbitrationOrderTitle.value = order.demandTitle || order.title || ''
+  arbitrationOutcome.value = 'complete'
   arbitrationReason.value = ''
   arbitrationDialogOpen.value = true
 }
@@ -233,9 +225,9 @@ async function submitArbitrationResolution(): Promise<void> {
   }
 }
 
-function openDeleteOrderDialog(order: { id: string; title: string }): void {
+function openDeleteOrderDialog(order: { id: string; demandTitle?: string; title?: string }): void {
   deletingOrderId.value = order.id
-  deletingOrderTitle.value = order.title
+  deletingOrderTitle.value = order.demandTitle || order.title || ''
   deleteReason.value = ''
   deleteDialogOpen.value = true
 }
@@ -414,10 +406,11 @@ async function submitDeleteOrder(): Promise<void> {
               <span class="chip">订单 {{ order.id }}</span>
             </div>
             <div class="card-head">
-              <h3>{{ order.title }}</h3>
+              <h3>{{ order.demandTitle }}</h3>
               <strong>{{ order.createdAt }}</strong>
             </div>
-            <p class="meta" style="white-space: pre-wrap;">{{ order.content }}</p>
+            <p class="meta">需求方：{{ order.requesterName }} ｜ 接单方：{{ order.serviceProviderName }}</p>
+            <p v-if="order.completionHint" class="meta" style="margin-top: 8px; white-space: pre-wrap;">{{ order.completionHint }}</p>
             <div class="card-actions">
               <button type="button" class="button primary" @click="openArbitrationDialog(order)">裁决订单</button>
               <button type="button" class="button secondary" @click="router.push(`/orders/${order.id}`)">查看详情</button>
@@ -496,8 +489,8 @@ async function submitDeleteOrder(): Promise<void> {
         <div class="field">
           <label for="arbitration-outcome">裁决结果</label>
           <select id="arbitration-outcome" v-model="arbitrationOutcome">
-            <option value="COMPLETED">判定完成订单</option>
-            <option value="CANCELLED">判定取消订单</option>
+            <option value="complete">判定完成订单</option>
+            <option value="cancel">判定取消订单</option>
           </select>
         </div>
         <div class="field">

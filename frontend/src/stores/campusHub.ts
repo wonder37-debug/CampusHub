@@ -152,6 +152,35 @@ function mapDemandRecord(raw: any): DemandRecord {
   }
 }
 
+function mapOrderTimelineLabel(entry: any): string {
+  const toStatus = String(entry?.toStatus ?? 'ACCEPTED')
+  const note = entry?.note == null ? '' : String(entry.note)
+
+  if (note === 'PROVIDER_CONFIRMED_COMPLETION') {
+    return '接单方确认完成，等待需求方确认'
+  }
+  if (note === 'REQUESTER_CONFIRMED_COMPLETION') {
+    return '需求方确认完成，等待接单方确认'
+  }
+  if (note === 'ORDER_COMPLETED' || note === 'SYSTEM_AUTO_COMPLETED') {
+    return formatOrderStatus('COMPLETED' as OrderStatus)
+  }
+  if (note.startsWith('ARBITRATION_REQUESTED:')) {
+    return '发起仲裁'
+  }
+  if (note.startsWith('ARBITRATION_RESOLVED:')) {
+    return '仲裁已处理'
+  }
+  if (toStatus === 'ACCEPTED') {
+    return formatOrderStatus('ACCEPTED' as OrderStatus)
+  }
+  if (toStatus === 'IN_PROGRESS' && !note) {
+    return formatOrderStatus('IN_PROGRESS' as OrderStatus)
+  }
+
+  return note || formatOrderStatus(toStatus as OrderStatus)
+}
+
 function mapOrderRecord(raw: any): OrderRecord {
   const demand = raw.demand ?? {}
   const requester = raw.requester ?? {}
@@ -191,13 +220,7 @@ function mapOrderRecord(raw: any): OrderRecord {
       ? raw.statusHistory.map((entry: any) => ({
           at: String(entry.changedAt ?? entry.createdAt ?? now()),
           operatorId: entry.operatorId == null ? undefined : String(entry.operatorId),
-          label: String(
-            entry.toStatus === 'ACCEPTED'
-              ? formatOrderStatus('ACCEPTED' as OrderStatus)
-              : entry.toStatus === 'IN_PROGRESS' && !entry.note
-                ? formatOrderStatus('IN_PROGRESS' as OrderStatus)
-                : (entry.note ?? formatOrderStatus(String(entry.toStatus ?? 'ACCEPTED') as OrderStatus))
-          )
+          label: mapOrderTimelineLabel(entry)
         }))
       : []
   }
@@ -263,6 +286,7 @@ export const useCampusHubStore = defineStore('campusHub', {
     adminUsers: [] as PublicUser[],
     adminDashboard: null as AdminDashboardSummary | null,
     adminPendingDemands: [] as DemandRecord[],
+    adminArbitrationOrders: [] as OrderRecord[],
     verificationCodes: {} as Record<string, EmailVerificationRecord>,
     appMessage: '校园互助平台已加载基础业务数据。'
   }),
@@ -759,7 +783,7 @@ export const useCampusHubStore = defineStore('campusHub', {
       await this.fetchAdminDashboard()
     },
 
-    async resolveOrderArbitrationByAdmin(orderId: string, outcome: 'COMPLETED' | 'CANCELLED', reason: string): Promise<OrderRecord | null> {
+    async resolveOrderArbitrationByAdmin(orderId: string, outcome: 'complete' | 'cancel', reason: string): Promise<OrderRecord | null> {
       const order = await requestJson<any>(`/admin/orders/${encodeURIComponent(orderId)}/arbitration/resolve`, {
         method: 'POST',
         body: JSON.stringify({
@@ -1033,6 +1057,16 @@ export const useCampusHubStore = defineStore('campusHub', {
         this.adminPendingDemands = items.map((item: any) => mapDemandRecord(item))
       } catch {
         this.adminPendingDemands = []
+      }
+    },
+
+    async fetchAdminArbitrationOrders(): Promise<void> {
+      try {
+        const payload = await requestJson<any>('/admin/orders/arbitration?page=1&size=100', {}, this.token)
+        const items = Array.isArray(payload?.items) ? payload.items : Array.isArray(payload) ? payload : payload?.data?.items ?? []
+        this.adminArbitrationOrders = items.map((item: any) => mapOrderRecord(item))
+      } catch {
+        this.adminArbitrationOrders = []
       }
     },
 

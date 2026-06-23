@@ -183,6 +183,90 @@ class OrderApplicationServiceImplTest {
     }
 
     @Test
+    void shouldAllowRequesterToConfirmCompletionBeforeProvider() {
+        DemandDetailResponse demand = createDemand();
+        OrderDetailResponse accepted = orderApplicationService.accept(accepterId, demand.id(), new AcceptOrderCommand("我来"));
+
+        orderApplicationService.updateStatus(
+            accepterId,
+            accepted.orderId(),
+            new UpdateOrderStatusCommand("IN_PROGRESS", "开始处理", null)
+        );
+
+        OrderDetailResponse requesterPending = orderApplicationService.updateStatus(
+            publisherId,
+            accepted.orderId(),
+            new UpdateOrderStatusCommand("COMPLETED", "先确认完成", null)
+        );
+        OrderDetailResponse finalCompleted = orderApplicationService.updateStatus(
+            accepterId,
+            accepted.orderId(),
+            new UpdateOrderStatusCommand("COMPLETED", "补交凭证并完成", 2)
+        );
+
+        assertEquals("IN_PROGRESS", requesterPending.status());
+        assertEquals("COMPLETED", finalCompleted.status());
+        assertTrue(finalCompleted.proofSubmitted());
+        assertEquals(2, finalCompleted.proofImageCount());
+    }
+
+    @Test
+    void shouldRejectRepeatedCompletionConfirmationFromSameUser() {
+        DemandDetailResponse demand = createDemand();
+        OrderDetailResponse accepted = orderApplicationService.accept(accepterId, demand.id(), new AcceptOrderCommand("我来"));
+
+        orderApplicationService.updateStatus(
+            accepterId,
+            accepted.orderId(),
+            new UpdateOrderStatusCommand("IN_PROGRESS", "开始处理", null)
+        );
+        orderApplicationService.updateStatus(
+            accepterId,
+            accepted.orderId(),
+            new UpdateOrderStatusCommand("COMPLETED", "第一次确认完成", 2)
+        );
+
+        BusinessException exception = assertThrows(
+            BusinessException.class,
+            () -> orderApplicationService.updateStatus(
+                accepterId,
+                accepted.orderId(),
+                new UpdateOrderStatusCommand("COMPLETED", "重复确认", 2)
+            )
+        );
+
+        assertEquals(ErrorCode.BUSINESS_CONFLICT, exception.getErrorCode());
+    }
+
+    @Test
+    void shouldRequireProofWhenProviderConfirmsCompletionSecond() {
+        DemandDetailResponse demand = createDemand();
+        OrderDetailResponse accepted = orderApplicationService.accept(accepterId, demand.id(), new AcceptOrderCommand("我来"));
+
+        orderApplicationService.updateStatus(
+            accepterId,
+            accepted.orderId(),
+            new UpdateOrderStatusCommand("IN_PROGRESS", "开始处理", null)
+        );
+        orderApplicationService.updateStatus(
+            publisherId,
+            accepted.orderId(),
+            new UpdateOrderStatusCommand("COMPLETED", "先确认完成", null)
+        );
+
+        BusinessException exception = assertThrows(
+            BusinessException.class,
+            () -> orderApplicationService.updateStatus(
+                accepterId,
+                accepted.orderId(),
+                new UpdateOrderStatusCommand("COMPLETED", "未上传凭证", null)
+            )
+        );
+
+        assertEquals(ErrorCode.VALIDATION_FAILED, exception.getErrorCode());
+    }
+
+    @Test
     void shouldRejectNonParticipantViewingOrder() {
         DemandDetailResponse demand = createDemand();
         OrderDetailResponse accepted = orderApplicationService.accept(accepterId, demand.id(), new AcceptOrderCommand("我来"));
