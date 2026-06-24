@@ -8,6 +8,7 @@ import { campusZoneOptions, formatCampusZone, formatDemandCategory, formatMoney,
 import { handleError } from '@/utils/errorHandler'
 import { useConfirm } from '@/composables/useDialog'
 import { loadDemandDraft, saveDemandDraft, clearDemandDraft } from '@/utils/demandDraft'
+import ImageUploader from '@/components/ImageUploader.vue'
 
 const router = useRouter()
 const store = useCampusHubStore()
@@ -39,6 +40,7 @@ const form = reactive({
   endDateTime: '',
   reward: '10',
   tags: '',
+  images: [] as string[],
   anonymous: false
 })
 
@@ -203,6 +205,7 @@ onMounted(() => {
     form.endDateTime = draft.endDateTime ?? ''
     form.reward = draft.reward ?? '10'
     form.tags = draft.tags ?? ''
+    form.images = draft.images ?? []
     form.anonymous = draft.anonymous ?? false
   }
 })
@@ -230,7 +233,8 @@ async function submitDemand(): Promise<void> {
     const submitData = {
       ...form,
       startTime: form.startDateTime,
-      endTime: form.endDateTime
+      endTime: form.endDateTime,
+      images: form.images
     }
     await store.createDemand(submitData)
     clearDemandDraft()
@@ -408,6 +412,11 @@ async function checkRewardBalance(): Promise<void> {
             <p class="input-help">标签用于表示任务特点，例如：加急、近距离。多个标签用逗号分隔。</p>
           </div>
 
+          <div class="field" style="grid-column: 1 / -1;">
+            <label>上传图片</label>
+            <ImageUploader v-model="form.images" :max-count="6" :max-size-m-b="5" />
+          </div>
+
           <label class="chip" style="grid-column: 1 / -1; width: fit-content;">
             <input v-model="form.anonymous" type="checkbox" style="margin: 0 8px 0 0;" />
             匿名发布
@@ -439,6 +448,11 @@ async function checkRewardBalance(): Promise<void> {
         <div class="meta">地点：{{ form.location || '未填写地点' }}</div>
         <div class="meta" style="margin-top:6px">
           <span v-if="startTime || endTime">时间：{{ formatDateTime(startTime || '') }} - {{ formatDateTime(endTime || '') }}</span>
+        </div>
+        <!-- 图片预览 -->
+        <div v-if="form.images.length > 0" class="card-thumb">
+          <img :src="form.images[0]" alt="首张预览" class="thumb-img" />
+          <span v-if="form.images.length > 1" class="thumb-count">+{{ form.images.length - 1 }}</span>
         </div>
         <div class="tag-row">
           <span class="badge is-neutral">{{ form.campusZone ? formatCampusZone(form.campusZone) : '请选择校区' }}</span>
@@ -491,5 +505,31 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
 
 input[type="datetime-local"]:hover::-webkit-calendar-picker-indicator {
   opacity: 0.8;
+}
+
+.card-thumb {
+  position: relative;
+  width: 100px;
+  height: 100px;
+  overflow: hidden;
+  border-radius: 10px;
+  margin: 8px 0;
+}
+
+.thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.thumb-count {
+  position: absolute;
+  bottom: 6px;
+  right: 6px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 10px;
 }
 </style>

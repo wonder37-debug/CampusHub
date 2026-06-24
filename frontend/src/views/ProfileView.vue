@@ -16,6 +16,46 @@ const changePasswordMessage = ref('')
 const changePasswordError = ref('')
 const changing = ref(false)
 
+// Avatar upload
+const uploadingAvatar = ref(false)
+const fileInput = ref<HTMLInputElement | null>(null)
+
+function triggerAvatarUpload() {
+  fileInput.value?.click()
+}
+
+async function handleAvatarChange(e: Event) {
+  const target = e.target as HTMLInputElement
+  const file = target.files?.[0]
+  if (!file) return
+  target.value = ''
+
+  const allowedExts = ['jpg', 'jpeg', 'png', 'webp']
+  const ext = file.name.split('.').pop()?.toLowerCase()
+  if (!ext || !allowedExts.includes(ext)) {
+    alert('头像仅支持 jpg/png/webp 格式')
+    return
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    alert('头像大小不能超过 5MB')
+    return
+  }
+
+  uploadingAvatar.value = true
+  try {
+    const { useCampusHubStore } = await import('@/stores/campusHub')
+    const store = useCampusHubStore()
+    const urls = await store.uploadImages([file])
+    if (urls.length > 0) {
+      await store.updateProfile({ nickname: store.currentUser?.nickname ?? '', avatarUrl: urls[0] })
+    }
+  } catch (e: any) {
+    alert(e.message || '头像上传失败')
+  } finally {
+    uploadingAvatar.value = false
+  }
+}
+
 const creditLevel = computed(() => {
   const score = store.currentUser?.creditScore ?? 0
   if (score >= 95) return '金牌助教'
@@ -104,7 +144,20 @@ onMounted(() => {
     <div v-if="store.currentUser" class="page-grid">
     <section class="panel">
       <div class="avatar-row">
-        <img :src="store.currentUser.avatarUrl" :alt="store.currentUser.nickname" class="avatar large" />
+        <div class="avatar-upload-wrap" @click="triggerAvatarUpload" title="点击更换头像">
+          <img :src="store.currentUser.avatarUrl" :alt="store.currentUser.nickname" class="avatar large avatar-clickable" />
+          <div class="avatar-overlay">
+            <span v-if="uploadingAvatar">上传中...</span>
+            <span v-else>📷 更换头像</span>
+          </div>
+        </div>
+        <input
+          ref="fileInput"
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          style="display: none"
+          @change="handleAvatarChange"
+        />
         <div class="profile-header">
           <div class="profile-header-top">
             <div>
@@ -236,3 +289,40 @@ onMounted(() => {
   </Teleport>
   </div>
 </template>
+
+<style scoped>
+.avatar-upload-wrap {
+  position: relative;
+  cursor: pointer;
+  border-radius: 50%;
+  overflow: hidden;
+}
+
+.avatar-clickable {
+  transition: filter 0.2s ease;
+}
+
+.avatar-upload-wrap:hover .avatar-clickable {
+  filter: brightness(0.7);
+}
+
+.avatar-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.avatar-upload-wrap:hover .avatar-overlay {
+  opacity: 1;
+}
+</style>

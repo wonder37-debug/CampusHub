@@ -99,6 +99,7 @@ public class ApiViewMapper {
             canStartExecution(relatedOrder, currentUser),
             canViewAcceptNote(relatedOrder, currentUser),
             canSubmitAcceptNote(relatedOrder, currentUser),
+            demand.getImages(),
             demand.getCreatedAt(),
             demand.getUpdatedAt()
         );
@@ -137,7 +138,8 @@ public class ApiViewMapper {
             reviews,
             currentUserReviewed,
             resolvePendingReviewTarget(order, currentUser, currentUserReviewed),
-            resolveCompletionHint(order, currentUser)
+            resolveCompletionHint(order, currentUser),
+            demand == null ? List.of() : demand.getImages()
         );
     }
 

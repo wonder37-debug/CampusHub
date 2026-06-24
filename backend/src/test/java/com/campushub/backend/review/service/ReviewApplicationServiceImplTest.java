@@ -228,6 +228,7 @@ class ReviewApplicationServiceImplTest {
                 LocalDateTime.now().plusHours(2),
                 new BigDecimal("2.00"),
                 List.of("快递"),
+                null,
                 false
             )
         );

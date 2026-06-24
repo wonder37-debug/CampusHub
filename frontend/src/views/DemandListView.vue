@@ -328,6 +328,19 @@ watch(
           <span v-if="demand.startTime || demand.endTime">时间：{{ formatDateTime(demand.startTime || '') }} - {{ formatDateTime(demand.endTime || '') }}</span>
         </div>
 
+        <p>描述：{{ truncateText(demand.description || '无', 86) }}</p>
+
+        <!-- Thumbnail -->
+        <div v-if="demand.images && demand.images.length > 0" class="card-thumb">
+          <img
+            :src="demand.images[0]"
+            alt="需求图片"
+            loading="lazy"
+            class="thumb-img"
+          />
+          <span v-if="demand.images.length > 1" class="thumb-count">+{{ demand.images.length - 1 }}</span>
+        </div>
+
         <div class="tag-row">
           <span class="badge is-neutral">{{ formatCampusZone(demand.campusZone) }}</span>
           <template v-if="demand.tags && demand.tags.length">
@@ -336,8 +349,6 @@ watch(
             </span>
           </template>
         </div>
-
-        <p>描述：{{ truncateText(demand.description || '无', 86) }}</p>
 
         <div class="avatar-row">
           <img :src="demand.publisher?.avatarUrl ?? demand.publisherAvatar" :alt="(demand.anonymous ? demand.anonymousCode : null) ?? demand.publisher?.nickname ?? demand.publisherName" class="avatar" />
@@ -465,5 +476,36 @@ watch(
 .demand-card:hover {
   transform: translateY(-2px);
   box-shadow: var(--shadow);
+}
+
+.card-thumb {
+  position: relative;
+  width: 100px;
+  height: 100px;
+  overflow: hidden;
+  border-radius: 10px;
+  margin: 8px 0;
+}
+
+.thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.3s ease;
+}
+
+.demand-card:hover .thumb-img {
+  transform: scale(1.03);
+}
+
+.thumb-count {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 8px;
 }
 </style>

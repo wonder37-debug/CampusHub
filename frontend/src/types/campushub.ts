@@ -74,6 +74,7 @@ export interface DemandRecord {
   publisherStudentIdMasked?: string
   publisherIdentityVisible?: boolean
   reviewReason?: string | null
+  images?: string[]
 }
 
 export interface OrderTimelineEntry {
@@ -113,6 +114,7 @@ export interface OrderRecord {
   currentUserReviewed?: boolean
   pendingReviewTarget?: string | null
   completionHint?: string | null
+  demandImages?: string[]
 }
 
 export interface RecommendationRecord {
@@ -177,6 +179,7 @@ export interface DemandFormInput {
   endTime: string
   reward: string
   tags: string
+  images?: string[]
   anonymous: boolean
 }
 

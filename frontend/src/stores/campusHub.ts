@@ -148,7 +148,8 @@ function mapDemandRecord(raw: any): DemandRecord {
     canSubmitAcceptNote: raw.canSubmitAcceptNote == null ? undefined : Boolean(raw.canSubmitAcceptNote),
     publisherStudentIdMasked: raw.publisherStudentIdMasked == null ? undefined : String(raw.publisherStudentIdMasked),
     publisherIdentityVisible: raw.publisherIdentityVisible == null ? undefined : Boolean(raw.publisherIdentityVisible),
-    reviewReason: raw.reviewReason == null ? undefined : String(raw.reviewReason)
+    reviewReason: raw.reviewReason == null ? undefined : String(raw.reviewReason),
+    images: Array.isArray(raw.images) ? raw.images.map((url: any) => String(url)) : undefined
   }
 }
 
@@ -216,6 +217,7 @@ function mapOrderRecord(raw: any): OrderRecord {
     currentUserReviewed: raw.currentUserReviewed == null ? undefined : Boolean(raw.currentUserReviewed),
     pendingReviewTarget: raw.pendingReviewTarget == null ? undefined : String(raw.pendingReviewTarget),
     completionHint: raw.completionHint == null ? undefined : String(raw.completionHint),
+    demandImages: Array.isArray(raw.demandImages) ? raw.demandImages.map((url: any) => String(url)) : undefined,
     timeline: Array.isArray(raw.statusHistory)
       ? raw.statusHistory.map((entry: any) => ({
           at: String(entry.changedAt ?? entry.createdAt ?? now()),
@@ -562,6 +564,25 @@ export const useCampusHubStore = defineStore('campusHub', {
       await this.fetchDemands()
     },
 
+    async uploadImages(files: File[]): Promise<string[]> {
+      const formData = new FormData()
+      for (const file of files) {
+        formData.append('files', file)
+      }
+      const response = await fetch(`${API_BASE}/upload/images`, {
+        method: 'POST',
+        headers: this.token ? { Authorization: `Bearer ${this.token}` } : {},
+        body: formData
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) {
+        const message = translateApiError(payload)
+        throw new Error(message)
+      }
+      const data = unwrapApiPayload<{ urls: string[] }>(payload)
+      return data?.urls ?? []
+    },
+
     async createDemand(form: DemandFormInput): Promise<DemandRecord> {
       if (!this.currentUserId) {
         throw new Error('请先登录后再发布需求')
@@ -582,6 +603,7 @@ export const useCampusHubStore = defineStore('campusHub', {
             .split(/[，,]/)
             .map((tag) => tag.trim())
             .filter(Boolean),
+          images: form.images ?? [],
           anonymous: Boolean(form.anonymous)
         })
       }, this.token)

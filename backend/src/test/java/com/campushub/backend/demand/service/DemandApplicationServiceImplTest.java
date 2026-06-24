@@ -83,6 +83,7 @@ class DemandApplicationServiceImplTest {
                 LocalDateTime.now().plusHours(3),
                 new BigDecimal("2.50"),
                 List.of("快递", "跑腿"),
+                null,
                 true
             )
         );
@@ -110,6 +111,7 @@ class DemandApplicationServiceImplTest {
                     null,
                     BigDecimal.ONE,
                     List.of(),
+                    null,
                     false
                 )
             )
@@ -133,6 +135,7 @@ class DemandApplicationServiceImplTest {
                 null,
                 BigDecimal.ZERO,
                 List.of(),
+                null,
                 false
             )
         );
@@ -149,6 +152,7 @@ class DemandApplicationServiceImplTest {
                 null,
                 BigDecimal.TEN,
                 List.of(),
+                null,
                 false
             )
         );
@@ -187,6 +191,7 @@ class DemandApplicationServiceImplTest {
                 null,
                 BigDecimal.ZERO,
                 List.of(),
+                null,
                 false
             )
         );
@@ -203,6 +208,7 @@ class DemandApplicationServiceImplTest {
                 null,
                 BigDecimal.ZERO,
                 List.of(),
+                null,
                 false
             )
         );
@@ -239,6 +245,7 @@ class DemandApplicationServiceImplTest {
                 null,
                 BigDecimal.ZERO,
                 List.of(),
+                null,
                 true
             )
         );
@@ -264,6 +271,7 @@ class DemandApplicationServiceImplTest {
                 null,
                 BigDecimal.ZERO,
                 List.of(),
+                null,
                 false
             )
         );
@@ -280,6 +288,7 @@ class DemandApplicationServiceImplTest {
                 null,
                 BigDecimal.ZERO,
                 List.of(),
+                null,
                 false
             )
         );
@@ -303,6 +312,7 @@ class DemandApplicationServiceImplTest {
                 null,
                 BigDecimal.ZERO,
                 List.of(),
+                null,
                 false
             )
         );
@@ -334,6 +344,7 @@ class DemandApplicationServiceImplTest {
                 null,
                 BigDecimal.ONE,
                 List.of("a"),
+                null,
                 false
             )
         );
@@ -378,6 +389,7 @@ class DemandApplicationServiceImplTest {
             null,
             null,
             BigDecimal.ZERO,
+            List.of(),
             List.of(),
             DemandStatus.COMPLETED,
             true,

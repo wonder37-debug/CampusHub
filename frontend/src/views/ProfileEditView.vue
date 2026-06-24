@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref, computed } from 'vue'
+import { onMounted, reactive, ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { useCampusHubStore } from '@/stores/campusHub'
 import { validateNickname, validateAvatarUrl } from '@/utils/validators'
 import { handleError } from '@/utils/errorHandler'
 import { useConfirm } from '@/composables/useDialog'
+import ImageUploader from '@/components/ImageUploader.vue'
 
 const store = useCampusHubStore()
 const router = useRouter()
@@ -21,6 +22,17 @@ const profileForm = reactive({
 })
 
 // 本地上传已移除
+
+const avatarImages = ref<string[]>(store.currentUser?.avatarUrl ? [store.currentUser.avatarUrl] : [])
+
+// Watch avatar images and update the avatarUrl field
+watch(avatarImages, (val) => {
+  if (val.length > 0) {
+    profileForm.avatarUrl = val[0]
+  } else {
+    profileForm.avatarUrl = ''
+  }
+})
 
 async function save(): Promise<void> {
   // run local validations
@@ -79,7 +91,11 @@ onMounted(() => {
           <input id="avatar" v-model="profileForm.avatarUrl" @input="fieldErrors.avatarUrl = ''" />
           <p v-if="fieldErrors.avatarUrl" class="input-help" style="color: var(--danger)">{{ fieldErrors.avatarUrl }}</p>
         </div>
-        <!-- 本地上传头像控件已移除 -->
+        <!-- 本地上传头像控件 -->
+        <div class="field" style="grid-column: 1 / -1;">
+          <label>上传新头像</label>
+          <ImageUploader v-model="avatarImages" :max-count="1" :max-size-m-b="5" />
+        </div>
       </div>
 
       <div class="card-actions" style="margin-top: 16px;">

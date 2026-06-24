@@ -252,6 +252,23 @@
 - `test(backend)` 补充找回密码、订单仲裁、管理员裁决与删单单测；在 `backend` 目录执行 `mvn test`，结果为 `112 tests, 0 failures`。
 - `docs(sync)` 更新 `P4-前后端对接修订规范.md`，同步密码找回、仲裁与管理员订单接口口径。
 
+## 2026-06-24
+
+- `feat(image)` 全面新增图片功能，覆盖发布、展示、预览与头像场景：
+  - **数据库**：`ord_demand` 表新增 `images json` 列（JSON 数组存储图片 URL）；`sys_user` 表已有 `avatar_url` 字段，无需改动。
+  - **实体类**：`Demand` 与 `DemandEntity` 新增 `List<String> images` 字段，通过 `JsonStringArrayTypeHandler` 实现 JSON 与集合自动转换；`PublishDemandCommand`、`DemandDetailResponse`、`DemandSummaryResponse`、`DemandView` 同步补全 `images` 字段。
+  - **图片上传 API**：新增 `FileUploadController`（`POST /api/v1/upload/images`），支持单图/多图上传；校验仅限 `jpg/png/webp`、单张 ≤5MB、单次最多 6 张；存储到本地 `uploads/YYYY/MM/` 目录，通过 `GET /api/v1/uploads/{year}/{month}/{filename}` 静态映射访问。
+  - **ImageUploader 组件**：封装通用上传组件，支持点击上传、拖拽上传、上传进度条、预览缩略图网格与移除操作；发布需求页、资料编辑页复用。
+  - **ImageViewer 组件**：封装全屏图片预览组件，支持左右切换与键盘（Esc/←/→）导航。
+  - **发布需求**：表单新增图片上传区域，上传后 URL 存入 `images` 数组随需求提交；预览卡片区域实时展示首张缩略图（`100×100px`），多图时显示 `+N` 角标。
+  - **首页需求卡片**：列表卡片展示首张缩略图（`100×100px`，`loading="lazy"` 懒加载），多图显示 `+N` 角标；调整布局为 时间 → 描述 → 图片 → 标签。
+  - **需求详情**：重构布局为 用户信息 → 状态标签 → 标题报酬 → 时间 → 地点 → 需求详情 → 图片网格 → 标签；点击图片进入全屏预览。
+  - **订单详情**：复用关联需求的 `images` 数据，布局为 需求描述 → 需求图片 → 接单人留言；接单人留言改为独立 `list-card` 长方框展示；点击图片进入全屏预览。
+  - **个人信息头像**：个人中心头像区域改为可点击上传，hover 显示"更换头像"遮罩；上传成功后自动调用 `updateProfile` 刷新本地用户信息，顶部导航栏头像同步更新。
+  - **资料编辑页**：增设图片上传组件，替代原来的手动输入头像链接方式。
+- `fix(test)` 修复 6 个测试文件中因 `PublishDemandCommand` 新增 `images` 参数导致的编译失败，补全 `null` 占位实参。
+- `fix(validators)` 修复头像保存校验：`validateAvatarUrl` 放行 `/` 开头的相对路径（上传返回的相对 URL），不再强制要求 `http://` / `https://` 开头。
+- `fix(order-list)` 修复订单列表页"提交完成确认"按钮逻辑：改为基于时间线判断（`providerConfirmed`/`requesterConfirmed`），接单人确认后按钮立即消失，需求方仅在接单方确认后才显示"确认完成"。
 
 ## 补充说明
 

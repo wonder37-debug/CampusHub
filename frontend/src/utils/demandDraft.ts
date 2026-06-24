@@ -10,6 +10,7 @@ export interface DemandDraft {
   endDateTime: string
   reward: string
   tags: string
+  images: string[]
   anonymous: boolean
 }
 

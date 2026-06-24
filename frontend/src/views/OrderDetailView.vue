@@ -5,6 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import { useCampusHubStore } from '@/stores/campusHub'
 import SkeletonCard from '@/components/SkeletonCard.vue'
+import ImageViewer from '@/components/ImageViewer.vue'
 import { formatOrderStatus, formatRelativeTime, formatScore, formatCampusZone, statusToneClass } from '@/utils/format'
 import { useConfirm } from '@/composables/useDialog'
 
@@ -24,6 +25,15 @@ const loadingOrder = ref(false)
 const refreshing = ref(false)
 const arbitrationDialogOpen = ref(false)
 const arbitrationReason = ref('')
+
+// Image viewer
+const showImageViewer = ref(false)
+const viewerInitialIndex = ref(0)
+
+function openImageViewer(index: number) {
+  viewerInitialIndex.value = index
+  showImageViewer.value = true
+}
 
 async function refreshOrder(): Promise<void> {
   refreshing.value = true
@@ -300,7 +310,6 @@ onMounted(() => {
       <div class="mini-grid">
         <div class="mini-stat"><span class="subtle">需求方</span><strong>{{ order.requesterName }}</strong><div class="meta">信用分 {{ formatScore(order.requesterCreditScore) }}</div></div>
         <div class="mini-stat"><span class="subtle">接单方</span><strong>{{ order.serviceProviderName }}</strong><div class="meta">信用分 {{ formatScore(order.serviceProviderCreditScore) }}</div></div>
-        <div class="mini-stat"><span class="subtle">接单人的留言</span><strong>{{ order.note || '无' }}</strong></div>
       </div>
 
       <div class="mini-grid">
@@ -316,6 +325,27 @@ onMounted(() => {
           <span class="subtle">需求描述</span>
           <strong>{{ order.demandDescription }}</strong>
         </div>
+      </div>
+
+      <!-- 需求关联图片 -->
+      <div v-if="order.demandImages && order.demandImages.length > 0" class="order-images">
+        <p class="eyebrow">需求图片 ({{ order.demandImages.length }})</p>
+        <div class="image-grid">
+          <div
+            v-for="(imgUrl, imgIdx) in order.demandImages"
+            :key="imgUrl"
+            class="image-item"
+            @click="openImageViewer(imgIdx)"
+          >
+            <img :src="imgUrl" :alt="`需求图片 ${imgIdx + 1}`" loading="lazy" class="demand-img" />
+          </div>
+        </div>
+      </div>
+
+      <!-- 接单人留言 -->
+      <div class="list-card" style="margin-top: 12px;">
+        <div class="meta"><strong>💬 接单人留言</strong></div>
+        <p style="margin-top: 4px; white-space: pre-wrap;">{{ order.note || '暂无留言' }}</p>
       </div>
 
       <p v-if="message" class="hero-badge">{{ message }}</p>
@@ -430,10 +460,49 @@ onMounted(() => {
       </div>
     </div>
   </teleport>
+
+  <!-- 全屏图片预览 -->
+  <ImageViewer
+    v-if="showImageViewer && order?.demandImages?.length"
+    :images="order.demandImages"
+    :initial-index="viewerInitialIndex"
+    @close="showImageViewer = false"
+  />
   </div>
 </template>
 
 <style scoped>
+.order-images {
+  margin-top: 16px;
+}
+
+.image-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.image-item {
+  border-radius: 10px;
+  overflow: hidden;
+  aspect-ratio: 1;
+  cursor: pointer;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.image-item:hover {
+  transform: scale(1.03);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+
+.demand-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;

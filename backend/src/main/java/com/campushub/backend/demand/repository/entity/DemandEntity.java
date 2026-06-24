@@ -63,6 +63,9 @@ public class DemandEntity {
     @TableField(value = "tags", typeHandler = CommaSeparatedStringTypeHandler.class)
     private List<String> tags;
 
+    @TableField(value = "images", typeHandler = com.campushub.backend.demand.repository.handler.JsonStringArrayTypeHandler.class)
+    private List<String> images;
+
     @TableField("status")
     private String status;
 
@@ -98,6 +101,7 @@ public class DemandEntity {
 
     public DemandEntity() {
         this.tags = new ArrayList<>();
+        this.images = new ArrayList<>();
     }
 
     /** 领域模型 -> 持久化实体。 */
@@ -119,6 +123,7 @@ public class DemandEntity {
         entity.endTime = demand.getEndTime();
         entity.reward = demand.getReward();
         entity.tags = demand.getTags();
+        entity.images = demand.getImages();
         entity.status = demand.getStatus() == null ? null : demand.getStatus().name();
         entity.isApproved = demand.getIsApproved();
         entity.anonymous = demand.isAnonymous();
@@ -147,6 +152,7 @@ public class DemandEntity {
         demand.setEndTime(this.endTime);
         demand.setReward(this.reward);
         demand.setTags(this.tags == null ? new ArrayList<>() : new ArrayList<>(this.tags));
+        demand.setImages(this.images == null ? new ArrayList<>() : new ArrayList<>(this.images));
         demand.setStatus(this.status == null ? null : DemandStatus.valueOf(this.status));
         demand.setIsApproved(this.isApproved != null && this.isApproved);
         demand.setAnonymous(this.anonymous != null && this.anonymous);
@@ -245,6 +251,14 @@ public class DemandEntity {
 
     public void setTags(List<String> tags) {
         this.tags = tags;
+    }
+
+    public List<String> getImages() {
+        return images;
+    }
+
+    public void setImages(List<String> images) {
+        this.images = images;
     }
 
     public String getStatus() {

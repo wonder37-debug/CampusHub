@@ -100,6 +100,7 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
             command.endTime(),
             normalizeReward(command.reward()),
             command.tags(),
+            command.images(),
             DemandStatus.REVIEWING,
             false,
             command.anonymous(),

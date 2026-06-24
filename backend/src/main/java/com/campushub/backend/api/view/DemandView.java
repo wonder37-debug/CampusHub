@@ -29,6 +29,7 @@ public record DemandView(
     boolean canStartExecution,
     boolean canViewAcceptNote,
     boolean canSubmitAcceptNote,
+    List<String> images,
     LocalDateTime createdAt,
     LocalDateTime updatedAt
 ) {

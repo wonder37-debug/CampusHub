@@ -101,6 +101,7 @@ function onStatusClick(): void {
       <div class="topbar-tools">
         <div class="status-chip" role="button" tabindex="0" @click="onStatusClick" @keydown.enter="onStatusClick" style="cursor: pointer;">
           <template v-if="store.currentUser">
+            <img :src="store.currentUser.avatarUrl" :alt="store.currentUser.nickname" class="topbar-avatar" />
             <span>{{ roleLabel }}</span>
             <strong>{{ store.currentUser.nickname }}</strong>
           </template>
@@ -151,3 +152,14 @@ function onStatusClick(): void {
     <ConfirmDialog />
   </div>
 </template>
+
+<style scoped>
+.topbar-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid rgba(255, 255, 255, 0.6);
+  margin-right: 4px;
+}
+</style>

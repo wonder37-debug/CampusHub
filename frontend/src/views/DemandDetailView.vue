@@ -5,6 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import { useCampusHubStore } from '@/stores/campusHub'
 import SkeletonCard from '@/components/SkeletonCard.vue'
+import ImageViewer from '@/components/ImageViewer.vue'
 import { formatAcceptDisabledReason, formatCampusZone, formatDateTime, formatDemandCategory, formatDemandStatus, formatMoney, formatOrderStatus, formatScore, statusToneClass } from '@/utils/format'
 import { useConfirm } from '@/composables/useDialog'
 
@@ -19,6 +20,15 @@ const error = ref('')
 const completionSubmitted = ref(false)
 const loadingDemand = ref(false)
 const refreshing = ref(false)
+
+// Image viewer
+const showImageViewer = ref(false)
+const viewerInitialIndex = ref(0)
+
+function openImageViewer(index: number) {
+  viewerInitialIndex.value = index
+  showImageViewer.value = true
+}
 
 async function refreshDemand(): Promise<void> {
   refreshing.value = true
@@ -267,7 +277,20 @@ onMounted(() => {
           {{ refreshing ? '刷新中...' : '↻ 刷新' }}
         </button>
       </div>
-      <div class="status-row">
+
+      <!-- 用户信息（最上方） -->
+      <div class="avatar-row">
+        <img :src="demand.publisher?.avatarUrl ?? demand.publisherAvatar" :alt="demand.publisher?.nickname ?? demand.publisherName" class="avatar large" />
+        <div>
+          <strong>{{ demand.anonymous ? demand.anonymousCode ?? '匿名发布' : (demand.publisher?.nickname ?? demand.publisherName) }}</strong>
+          <p class="subtle">信用分：{{ demand.publisher ? formatScore(demand.publisher.creditScore) : '未知' }}</p>
+          <p class="meta" v-if="!demand.anonymous && demand.publisher?.studentId">发布者学号：{{ demand.publisherIdentityVisible === false ? (demand.publisherStudentIdMasked || '已隐藏') : demand.publisher.studentId }}</p>
+          <p class="meta">发布于 {{ formatDateTime(demand.createdAt) }}</p>
+        </div>
+      </div>
+
+      <!-- 状态与标签 -->
+      <div class="status-row" style="margin-top: 12px;">
         <span class="chip" :class="relatedOrder ? statusToneClass(relatedOrder.status) : statusToneClass(demand.status)">
           {{ relatedOrder ? formatOrderStatus(relatedOrder.status) : formatDemandStatus(demand.status) }}
         </span>
@@ -276,26 +299,49 @@ onMounted(() => {
         <span v-if="demand.anonymous" class="chip is-warning">匿名</span>
       </div>
 
-      <div class="page-head">
+      <!-- 标题 + 报酬 -->
+      <div class="page-head" style="margin-top: 8px;">
         <div>
           <h1 class="page-title">{{ demand.title }}</h1>
-          <p class="page-summary">需求详情：{{ demand.description }}</p>
-          <p class="page-meta">时间：{{ formatDateTime(demand.startTime || '') }} - {{ formatDateTime(demand.endTime || '') }}</p>
-          <p class="page-meta">地点：{{ demand.location || '未填写' }}</p>
         </div>
         <strong class="page-title">{{ formatMoney(demand.reward) }}</strong>
       </div>
 
-      <div class="avatar-row">
-        <img :src="demand.publisher?.avatarUrl ?? demand.publisherAvatar" :alt="demand.publisher?.nickname ?? demand.publisherName" class="avatar large" />
-        <div>
-          <strong>{{ demand.anonymous ? demand.anonymousCode ?? '匿名发布' : (demand.publisher?.nickname ?? demand.publisherName) }}</strong>
-          <p class="subtle">信用分：{{ demand.publisher ? formatScore(demand.publisher.creditScore) : '未知' }}</p>
-          <p class="meta" v-if="!demand.anonymous && demand.publisher?.studentId">发布者学号：{{ demand.publisherIdentityVisible === false ? (demand.publisherStudentIdMasked || '已隐藏') : demand.publisher.studentId }}</p>          <p class="meta">发布于 {{ formatDateTime(demand.createdAt) }}</p>
+      <!-- 时间 -->
+      <div class="list-card" style="margin-top: 12px;">
+        <div class="meta"><strong>⏰ 时间</strong></div>
+        <p style="margin-top: 4px;">{{ formatDateTime(demand.startTime || '') }} — {{ formatDateTime(demand.endTime || '') }}</p>
+      </div>
+
+      <!-- 地点 -->
+      <div class="list-card" style="margin-top: 8px;">
+        <div class="meta"><strong>📍 地点</strong></div>
+        <p style="margin-top: 4px;">{{ demand.location || '未填写' }}</p>
+      </div>
+
+      <!-- 需求详情（描述） -->
+      <div class="list-card" style="margin-top: 8px;">
+        <div class="meta"><strong>📋 需求详情</strong></div>
+        <p style="margin-top: 4px; white-space: pre-wrap;">{{ demand.description || '暂无描述' }}</p>
+      </div>
+
+      <!-- 需求图片 -->
+      <div v-if="demand.images && demand.images.length > 0" class="demand-images" style="margin-top: 12px;">
+        <p class="eyebrow">需求图片 ({{ demand.images.length }})</p>
+        <div class="image-grid">
+          <div
+            v-for="(imgUrl, imgIdx) in demand.images"
+            :key="imgUrl"
+            class="image-item"
+            @click="openImageViewer(imgIdx)"
+          >
+            <img :src="imgUrl" :alt="`需求图片 ${imgIdx + 1}`" loading="lazy" class="demand-img" />
+          </div>
         </div>
       </div>
 
-      <div class="tag-row">
+      <!-- 标签 -->
+      <div class="tag-row" style="margin-top: 12px;">
         <span class="badge is-neutral">{{ demand.anonymous ? '匿名发布' : '实名发布' }}</span>
         <span v-for="tag in demand.tags" :key="tag" class="badge is-neutral">{{ tag }}</span>
       </div>
@@ -439,5 +485,46 @@ onMounted(() => {
     <strong>未找到需求</strong>
     <p>请返回需求列表重新选择一个条目。</p>
   </div>
+
+  <!-- 全屏图片预览 -->
+  <ImageViewer
+    v-if="showImageViewer && demand?.images?.length"
+    :images="demand.images"
+    :initial-index="viewerInitialIndex"
+    @close="showImageViewer = false"
+  />
   </div>
 </template>
+
+<style scoped>
+.demand-images {
+  margin-top: 16px;
+}
+
+.image-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.image-item {
+  border-radius: 10px;
+  overflow: hidden;
+  aspect-ratio: 1;
+  cursor: pointer;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.image-item:hover {
+  transform: scale(1.03);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+
+.demand-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+</style>

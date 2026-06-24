@@ -114,6 +114,24 @@ function orderHint(order: OrderListItem): string {
   return order.completionHint || ''
 }
 
+/** 接单方是否已在时间线中确认完成 */
+function providerConfirmed(order: OrderListItem): boolean {
+  if (isDemandPlaceholder(order)) return false
+  return order.timeline.some(
+    (t) => String(t.operatorId) === String(order.serviceProviderId)
+      && (t.label.includes('接单方确认完成') || t.label.includes('已确认完成，等待需求方确认'))
+  )
+}
+
+/** 需求方是否已在时间线中确认完成 */
+function requesterConfirmed(order: OrderListItem): boolean {
+  if (isDemandPlaceholder(order)) return false
+  return order.timeline.some(
+    (t) => String(t.operatorId) === String(order.requesterId)
+      && (t.label.includes('需求方确认完成') || t.label.includes('已确认完成，等待接单方确认'))
+  )
+}
+
 const visibleOrders = computed<OrderListItem[]>(() => {
   const currentUserId = store.currentUser?.id
   if (!currentUserId) return []
@@ -270,7 +288,7 @@ onMounted(() => {
             开始执行
           </button>
           <button
-            v-if="order.status === 'IN_PROGRESS' && activeTab === 'accepted' && !(order as any).completionHint"
+            v-if="order.status === 'IN_PROGRESS' && activeTab === 'accepted' && !providerConfirmed(order)"
             type="button"
             class="button primary"
             @click.stop="completeOrder(order.id)"
@@ -278,7 +296,7 @@ onMounted(() => {
             提交完成确认
           </button>
           <button
-            v-if="order.status === 'IN_PROGRESS' && activeTab === 'published' && (order as any).completionHint"
+            v-if="order.status === 'IN_PROGRESS' && activeTab === 'published' && providerConfirmed(order) && !requesterConfirmed(order)"
             type="button"
             class="button primary"
             @click.stop="completeOrder(order.id)"

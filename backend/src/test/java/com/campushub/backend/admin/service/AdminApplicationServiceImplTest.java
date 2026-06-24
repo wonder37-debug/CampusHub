@@ -374,6 +374,7 @@ class AdminApplicationServiceImplTest {
                 null,
                 BigDecimal.ONE,
                 List.of("tag"),
+                null,
                 false
             )
         );
