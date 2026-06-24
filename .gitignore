@@ -44,3 +44,6 @@ CLAUDE.md
 backend/src/main/resources/application-local.properties
 application-local.properties
 AGENTS.md
+
+# 图片上传目录，每人本地自行测试
+uploads/
