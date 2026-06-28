@@ -119,6 +119,12 @@ onMounted(() => {
         if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
       }, 200)
     }
+    if (tab === 'arbitration') {
+      setTimeout(() => {
+        const el = document.getElementById('arbitration-section')
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }, 200)
+    }
   })
 })
 
@@ -391,7 +397,7 @@ async function submitDeleteOrder(): Promise<void> {
         </div>
       </article>
 
-      <article class="panel">
+      <article class="panel" id="arbitration-section">
         <div class="panel-head">
           <div>
             <p class="eyebrow">争议订单</p>

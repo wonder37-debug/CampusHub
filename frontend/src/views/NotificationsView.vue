@@ -60,6 +60,15 @@ async function openNotification(notification: any): Promise<void> {
     return
   }
 
+  if (type === 'ORDER_ARBITRATION_REQUESTED' || type === 'ORDER_ARBITRATION_RESOLVED') {
+    if (isAdmin) {
+      router.push('/admin?tab=arbitration')
+    } else {
+      router.push(`/orders/${encodeURIComponent(relatedId)}`)
+    }
+    return
+  }
+
   if (actionHint === 'VIEW_ORDER_REVIEWS' && targetType === 'ORDER') {
     router.push(`/orders/${encodeURIComponent(targetId || relatedId)}?tab=reviews`)
     return
