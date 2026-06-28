@@ -81,15 +81,10 @@ onMounted(() => {
       </div>
 
       <div class="form-grid two-column">
-        <div class="field">
+        <div class="field" style="grid-column: 1 / -1;">
           <label for="nickname">昵称</label>
           <input id="nickname" v-model="profileForm.nickname" @input="fieldErrors.nickname = ''" />
           <p v-if="fieldErrors.nickname" class="input-help" style="color: var(--danger)">{{ fieldErrors.nickname }}</p>
-        </div>
-        <div class="field">
-          <label for="avatar">头像链接</label>
-          <input id="avatar" v-model="profileForm.avatarUrl" @input="fieldErrors.avatarUrl = ''" />
-          <p v-if="fieldErrors.avatarUrl" class="input-help" style="color: var(--danger)">{{ fieldErrors.avatarUrl }}</p>
         </div>
         <!-- 本地上传头像控件 -->
         <div class="field" style="grid-column: 1 / -1;">
