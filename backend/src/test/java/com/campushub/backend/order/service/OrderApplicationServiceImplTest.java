@@ -312,6 +312,7 @@ class OrderApplicationServiceImplTest {
                 BigDecimal.ZERO,
                 List.of(),
                 null,
+                null,
                 false
             )
         );
@@ -359,6 +360,7 @@ class OrderApplicationServiceImplTest {
                 LocalDateTime.now().plusHours(3),
                 new BigDecimal("3.00"),
                 List.of("快递"),
+                null,
                 null,
                 false
             )

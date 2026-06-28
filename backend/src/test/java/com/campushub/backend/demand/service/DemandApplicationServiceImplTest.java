@@ -84,6 +84,7 @@ class DemandApplicationServiceImplTest {
                 new BigDecimal("2.50"),
                 List.of("快递", "跑腿"),
                 null,
+                null,
                 true
             )
         );
@@ -112,6 +113,7 @@ class DemandApplicationServiceImplTest {
                     BigDecimal.ONE,
                     List.of(),
                     null,
+                    null,
                     false
                 )
             )
@@ -136,6 +138,7 @@ class DemandApplicationServiceImplTest {
                 BigDecimal.ZERO,
                 List.of(),
                 null,
+                null,
                 false
             )
         );
@@ -152,6 +155,7 @@ class DemandApplicationServiceImplTest {
                 null,
                 BigDecimal.TEN,
                 List.of(),
+                null,
                 null,
                 false
             )
@@ -192,6 +196,7 @@ class DemandApplicationServiceImplTest {
                 BigDecimal.ZERO,
                 List.of(),
                 null,
+                null,
                 false
             )
         );
@@ -208,6 +213,7 @@ class DemandApplicationServiceImplTest {
                 null,
                 BigDecimal.ZERO,
                 List.of(),
+                null,
                 null,
                 false
             )
@@ -246,6 +252,7 @@ class DemandApplicationServiceImplTest {
                 BigDecimal.ZERO,
                 List.of(),
                 null,
+                null,
                 true
             )
         );
@@ -272,6 +279,7 @@ class DemandApplicationServiceImplTest {
                 BigDecimal.ZERO,
                 List.of(),
                 null,
+                null,
                 false
             )
         );
@@ -288,6 +296,7 @@ class DemandApplicationServiceImplTest {
                 null,
                 BigDecimal.ZERO,
                 List.of(),
+                null,
                 null,
                 false
             )
@@ -313,6 +322,7 @@ class DemandApplicationServiceImplTest {
                 BigDecimal.ZERO,
                 List.of(),
                 null,
+                null,
                 false
             )
         );
@@ -322,7 +332,7 @@ class DemandApplicationServiceImplTest {
             () -> demandApplicationService.update(
                 999L,
                 published.id(),
-                new UpdateDemandCommand("改标题", null, null, null, null, null, null, null, null, null, null)
+                new UpdateDemandCommand("改标题", null, null, null, null, null, null, null, null, null, null, null)
             )
         );
 
@@ -345,6 +355,7 @@ class DemandApplicationServiceImplTest {
                 BigDecimal.ONE,
                 List.of("a"),
                 null,
+                null,
                 false
             )
         );
@@ -363,6 +374,7 @@ class DemandApplicationServiceImplTest {
                 null,
                 new BigDecimal("9.99"),
                 List.of("新标签"),
+                null,
                 true
             )
         );
@@ -391,6 +403,7 @@ class DemandApplicationServiceImplTest {
             BigDecimal.ZERO,
             List.of(),
             List.of(),
+            null,
             DemandStatus.COMPLETED,
             true,
             false,
@@ -408,7 +421,7 @@ class DemandApplicationServiceImplTest {
             () -> demandApplicationService.update(
                 publisherId,
                 saved.getId(),
-                new UpdateDemandCommand("改不了", null, null, null, null, null, null, null, null, null, null)
+                new UpdateDemandCommand("改不了", null, null, null, null, null, null, null, null, null, null, null)
             )
         );
 

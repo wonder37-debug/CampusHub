@@ -229,6 +229,7 @@ class ReviewApplicationServiceImplTest {
                 new BigDecimal("2.00"),
                 List.of("快递"),
                 null,
+                null,
                 false
             )
         );

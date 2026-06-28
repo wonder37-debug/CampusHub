@@ -193,6 +193,7 @@ class RecommendationApplicationServiceImplTest {
                 BigDecimal.ONE,
                 List.of("tag"),
                 null,
+                null,
                 false
             )
         );
