@@ -101,6 +101,7 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
             normalizeReward(command.reward()),
             command.tags(),
             command.images(),
+            trimToNull(command.contactInfo()),
             DemandStatus.REVIEWING,
             false,
             command.anonymous(),
@@ -208,6 +209,9 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
         if (command.tags() != null) {
             validateTags(command.tags());
             demand.setTags(command.tags());
+        }
+        if (command.contactInfo() != null) {
+            demand.setContactInfo(trimToNull(command.contactInfo()));
         }
         if (command.anonymous() != null) {
             demand.setAnonymous(command.anonymous());

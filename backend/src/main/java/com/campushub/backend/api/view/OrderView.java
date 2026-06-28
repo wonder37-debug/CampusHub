@@ -24,6 +24,7 @@ public record OrderView(
     boolean currentUserReviewed,
     Long pendingReviewTarget,
     String completionHint,
-    List<String> demandImages
+    List<String> demandImages,
+    String demandContactInfo
 ) {
 }

@@ -270,6 +270,15 @@
 - `fix(validators)` 修复头像保存校验：`validateAvatarUrl` 放行 `/` 开头的相对路径（上传返回的相对 URL），不再强制要求 `http://` / `https://` 开头。
 - `fix(order-list)` 修复订单列表页"提交完成确认"按钮逻辑：改为基于时间线判断（`providerConfirmed`/`requesterConfirmed`），接单人确认后按钮立即消失，需求方仅在接单方确认后才显示"确认完成"。
 
+## 2026-06-28
+
+- `feat(demand-contact)` 新增需求联系方式功能：
+  - **数据库**：`ord_demand` 表新增 `contact_info varchar(200)` 列，支持电话/微信/QQ/邮箱。
+  - **实体与 DTO**：`Demand`、`DemandEntity`、`PublishDemandCommand`、`UpdateDemandCommand`、`DemandDetailResponse`、`DemandView` 同步新增 `contactInfo` 字段。
+  - **权限控制**：`ApiViewMapper.resolveContactInfo()` 仅对接单人、发布者和管理员返回联系方式，其余用户收到 `null`；需求列表卡片不展示该字段。
+  - **发布需求**：表单新增"联系方式（可选）"输入框，提示填写电话/微信/QQ/邮箱，并注明接单后对方可见；草稿同步保存。
+  - **需求详情**：在"地点"下方展示联系方式卡片（仅可见时渲染），接单后方可查看。
+
 ## 补充说明
 
 - 本日志偏向阶段性变更归纳，不等同于逐条 git commit 原文。

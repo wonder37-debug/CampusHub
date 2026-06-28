@@ -11,6 +11,7 @@ export interface DemandDraft {
   reward: string
   tags: string
   images: string[]
+  contactInfo: string
   anonymous: boolean
 }
 

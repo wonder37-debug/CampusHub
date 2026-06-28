@@ -66,6 +66,9 @@ public class DemandEntity {
     @TableField(value = "images", typeHandler = com.campushub.backend.demand.repository.handler.JsonStringArrayTypeHandler.class)
     private List<String> images;
 
+    @TableField("contact_info")
+    private String contactInfo;
+
     @TableField("status")
     private String status;
 
@@ -124,6 +127,7 @@ public class DemandEntity {
         entity.reward = demand.getReward();
         entity.tags = demand.getTags();
         entity.images = demand.getImages();
+        entity.contactInfo = demand.getContactInfo();
         entity.status = demand.getStatus() == null ? null : demand.getStatus().name();
         entity.isApproved = demand.getIsApproved();
         entity.anonymous = demand.isAnonymous();
@@ -153,6 +157,7 @@ public class DemandEntity {
         demand.setReward(this.reward);
         demand.setTags(this.tags == null ? new ArrayList<>() : new ArrayList<>(this.tags));
         demand.setImages(this.images == null ? new ArrayList<>() : new ArrayList<>(this.images));
+        demand.setContactInfo(this.contactInfo);
         demand.setStatus(this.status == null ? null : DemandStatus.valueOf(this.status));
         demand.setIsApproved(this.isApproved != null && this.isApproved);
         demand.setAnonymous(this.anonymous != null && this.anonymous);
@@ -259,6 +264,14 @@ public class DemandEntity {
 
     public void setImages(List<String> images) {
         this.images = images;
+    }
+
+    public String getContactInfo() {
+        return contactInfo;
+    }
+
+    public void setContactInfo(String contactInfo) {
+        this.contactInfo = contactInfo;
     }
 
     public String getStatus() {

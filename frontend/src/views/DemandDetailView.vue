@@ -319,6 +319,12 @@ onMounted(() => {
         <p style="margin-top: 4px;">{{ demand.location || '未填写' }}</p>
       </div>
 
+      <!-- 联系方式（仅接单人/发布者/管理员可见） -->
+      <div v-if="demand.contactInfo" class="list-card" style="margin-top: 8px; border-color: rgba(31, 95, 83, 0.2);">
+        <div class="meta"><strong>📞 联系方式</strong></div>
+        <p style="margin-top: 4px; white-space: pre-wrap;">{{ demand.contactInfo }}</p>
+      </div>
+
       <!-- 需求详情（描述） -->
       <div class="list-card" style="margin-top: 8px;">
         <div class="meta"><strong>📋 需求详情</strong></div>

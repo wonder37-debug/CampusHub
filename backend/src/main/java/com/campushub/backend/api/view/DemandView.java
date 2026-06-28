@@ -30,6 +30,7 @@ public record DemandView(
     boolean canViewAcceptNote,
     boolean canSubmitAcceptNote,
     List<String> images,
+    String contactInfo,
     LocalDateTime createdAt,
     LocalDateTime updatedAt
 ) {

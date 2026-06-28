@@ -41,6 +41,7 @@ const form = reactive({
   reward: '10',
   tags: '',
   images: [] as string[],
+  contactInfo: '',
   anonymous: false
 })
 
@@ -206,6 +207,7 @@ onMounted(() => {
     form.reward = draft.reward ?? '10'
     form.tags = draft.tags ?? ''
     form.images = draft.images ?? []
+    form.contactInfo = draft.contactInfo ?? ''
     form.anonymous = draft.anonymous ?? false
   }
 })
@@ -415,6 +417,12 @@ async function checkRewardBalance(): Promise<void> {
           <div class="field" style="grid-column: 1 / -1;">
             <label>上传图片</label>
             <ImageUploader v-model="form.images" :max-count="6" :max-size-m-b="5" />
+          </div>
+
+          <div class="field" style="grid-column: 1 / -1;">
+            <label for="demand-contact">联系方式（可选）</label>
+            <input id="demand-contact" v-model="form.contactInfo" maxlength="200" placeholder="电话/微信/QQ/邮箱，接单后对方可见" />
+            <p class="input-help">填写后仅接单人可见，方便线下沟通。</p>
           </div>
 
           <label class="chip" style="grid-column: 1 / -1; width: fit-content;">

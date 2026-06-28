@@ -100,6 +100,7 @@ public class ApiViewMapper {
             canViewAcceptNote(relatedOrder, currentUser),
             canSubmitAcceptNote(relatedOrder, currentUser),
             demand.getImages(),
+            resolveContactInfo(demand, relatedOrder, currentUser),
             demand.getCreatedAt(),
             demand.getUpdatedAt()
         );
@@ -139,7 +140,10 @@ public class ApiViewMapper {
             currentUserReviewed,
             resolvePendingReviewTarget(order, currentUser, currentUserReviewed),
             resolveCompletionHint(order, currentUser),
-            demand == null ? List.of() : demand.getImages()
+            demand == null ? List.of() : demand.getImages(),
+            resolveContactInfo(demand,
+                orderRepository.findByDemandId(order.getDemandId()).orElse(null),
+                currentUser)
         );
     }
 
@@ -237,6 +241,29 @@ public class ApiViewMapper {
             entry.operatorId(),
             entry.note()
         );
+    }
+
+    /**
+     * 联系方式仅对接单人、发布者和管理员可见。
+     */
+    private String resolveContactInfo(Demand demand, Order relatedOrder, CurrentUser currentUser) {
+        if (demand == null || demand.getContactInfo() == null) {
+            return null;
+        }
+        if (currentUser == null) {
+            return null;
+        }
+        if (currentUser.isAdmin()) {
+            return demand.getContactInfo();
+        }
+        if (demand.getPublisherId() != null && demand.getPublisherId().equals(currentUser.userId())) {
+            return demand.getContactInfo();
+        }
+        if (relatedOrder != null && relatedOrder.getAccepterId() != null
+            && relatedOrder.getAccepterId().equals(currentUser.userId())) {
+            return demand.getContactInfo();
+        }
+        return null;
     }
 
     private boolean canAcceptDemand(Demand demand, Order relatedOrder, CurrentUser currentUser) {

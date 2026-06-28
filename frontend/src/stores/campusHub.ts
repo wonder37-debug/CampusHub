@@ -149,7 +149,8 @@ function mapDemandRecord(raw: any): DemandRecord {
     publisherStudentIdMasked: raw.publisherStudentIdMasked == null ? undefined : String(raw.publisherStudentIdMasked),
     publisherIdentityVisible: raw.publisherIdentityVisible == null ? undefined : Boolean(raw.publisherIdentityVisible),
     reviewReason: raw.reviewReason == null ? undefined : String(raw.reviewReason),
-    images: Array.isArray(raw.images) ? raw.images.map((url: any) => String(url)) : undefined
+    images: Array.isArray(raw.images) ? raw.images.map((url: any) => String(url)) : undefined,
+    contactInfo: raw.contactInfo == null ? undefined : String(raw.contactInfo)
   }
 }
 
@@ -218,6 +219,7 @@ function mapOrderRecord(raw: any): OrderRecord {
     pendingReviewTarget: raw.pendingReviewTarget == null ? undefined : String(raw.pendingReviewTarget),
     completionHint: raw.completionHint == null ? undefined : String(raw.completionHint),
     demandImages: Array.isArray(raw.demandImages) ? raw.demandImages.map((url: any) => String(url)) : undefined,
+    demandContactInfo: raw.demandContactInfo == null ? undefined : String(raw.demandContactInfo),
     timeline: Array.isArray(raw.statusHistory)
       ? raw.statusHistory.map((entry: any) => ({
           at: String(entry.changedAt ?? entry.createdAt ?? now()),
@@ -604,6 +606,7 @@ export const useCampusHubStore = defineStore('campusHub', {
             .map((tag) => tag.trim())
             .filter(Boolean),
           images: form.images ?? [],
+          contactInfo: form.contactInfo?.trim() || undefined,
           anonymous: Boolean(form.anonymous)
         })
       }, this.token)

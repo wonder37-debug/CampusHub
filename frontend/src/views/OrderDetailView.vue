@@ -327,6 +327,12 @@ onMounted(() => {
         </div>
       </div>
 
+      <!-- 联系方式（仅接单后可查看） -->
+      <div v-if="order.demandContactInfo" class="list-card" style="margin-top: 12px; border-color: rgba(31, 95, 83, 0.2);">
+        <div class="meta"><strong>📞 联系方式</strong></div>
+        <p style="margin-top: 4px; white-space: pre-wrap;">{{ order.demandContactInfo }}</p>
+      </div>
+
       <!-- 需求关联图片 -->
       <div v-if="order.demandImages && order.demandImages.length > 0" class="order-images">
         <p class="eyebrow">需求图片 ({{ order.demandImages.length }})</p>

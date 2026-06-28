@@ -114,6 +114,7 @@ CREATE TABLE IF NOT EXISTS`ord_demand` (
 
   `tags` varchar(500) DEFAULT NULL COMMENT '标签(逗号分隔)',
   `images` json DEFAULT NULL COMMENT '图片URL列表(JSON数组)',
+  `contact_info` varchar(200) DEFAULT NULL COMMENT '联系方式(电话/微信/QQ/邮箱)',
 
   `anonymous` tinyint(1) NOT NULL DEFAULT 0 COMMENT '是否匿名(0否 1是)',
 

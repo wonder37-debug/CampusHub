@@ -21,6 +21,7 @@ public class Demand {
     private BigDecimal reward;
     private List<String> tags;
     private List<String> images;
+    private String contactInfo;
     private DemandStatus status;
     private boolean isApproved;
     private boolean anonymous;
@@ -51,6 +52,7 @@ public class Demand {
         BigDecimal reward,
         List<String> tags,
         List<String> images,
+        String contactInfo,
         DemandStatus status,
         boolean isApproved,
         boolean anonymous,
@@ -75,6 +77,7 @@ public class Demand {
         this.reward = reward;
         this.tags = tags == null ? new ArrayList<>() : new ArrayList<>(tags);
         this.images = images == null ? new ArrayList<>() : new ArrayList<>(images);
+        this.contactInfo = contactInfo;
         this.status = status;
         this.isApproved = isApproved;
         this.anonymous = anonymous;
@@ -203,6 +206,14 @@ public class Demand {
 
     public void setImages(List<String> images) {
         this.images = images == null ? new ArrayList<>() : new ArrayList<>(images);
+    }
+
+    public String getContactInfo() {
+        return contactInfo;
+    }
+
+    public void setContactInfo(String contactInfo) {
+        this.contactInfo = contactInfo;
     }
 
     public DemandStatus getStatus() {
