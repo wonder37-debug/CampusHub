@@ -977,7 +977,7 @@ export const useCampusHubStore = defineStore('campusHub', {
         const items = extractPageItems(payload)
         this.demands = items.map((item: any) => mapDemandRecord(item))
       } catch {
-        this.demands = []
+        // API 调用失败时保留现有数据，不覆盖为空数组
       }
     },
 
@@ -1017,7 +1017,7 @@ export const useCampusHubStore = defineStore('campusHub', {
         const items = extractPageItems(payload)
         this.orders = items.map((item: any) => mapOrderRecord(item))
       } catch {
-        this.orders = []
+        // API 调用失败时保留现有数据，不覆盖为空数组
       }
     },
 
@@ -1027,7 +1027,7 @@ export const useCampusHubStore = defineStore('campusHub', {
         const items = Array.isArray(payload?.items) ? payload.items : Array.isArray(payload) ? payload : payload?.data?.items ?? []
         this.notifications = items.map((item: any) => mapNotificationRecord(item, this.currentUserId))
       } catch {
-        this.notifications = []
+        // API 调用失败时保留现有数据，不覆盖为空数组
       }
     },
 

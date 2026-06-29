@@ -164,8 +164,10 @@ onMounted(() => {
               <p class="eyebrow">个人中心</p>
               <h1 class="page-title">{{ store.currentUser.nickname }}</h1>
             </div>
-            <button type="button" class="button primary profile-edit-btn" @click="openEditPage">修改个人信息</button>
-            <button type="button" class="button secondary profile-edit-btn" @click="openChangePassword">修改密码</button>
+            <div class="profile-actions">
+              <button type="button" class="button profile-edit-btn" @click="openEditPage">修改个人信息</button>
+              <button type="button" class="button profile-change-pwd-btn" @click="openChangePassword">修改密码</button>
+            </div>
           </div>
           <p class="page-summary">学号：{{ store.currentUser.studentId }}</p>
           <div class="stats-row" style="gap:12px;">
@@ -291,6 +293,54 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.profile-header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex: 1;
+}
+
+.profile-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.profile-actions .button {
+  height: 38px;
+  min-width: 120px;
+  padding: 0 18px;
+  justify-content: center;
+  align-items: center;
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  border: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  transition: background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.profile-edit-btn {
+  background: linear-gradient(135deg, #64b5f6, #1e88e5);
+}
+
+.profile-edit-btn:hover {
+  background: linear-gradient(135deg, #42a5f5, #1565c0);
+  box-shadow: 0 4px 12px rgba(30, 136, 229, 0.35);
+}
+
+.profile-change-pwd-btn {
+  background: linear-gradient(135deg, #ef9a9a, #e53935);
+}
+
+.profile-change-pwd-btn:hover {
+  background: linear-gradient(135deg, #e57373, #c62828);
+  box-shadow: 0 4px 12px rgba(229, 57, 53, 0.35);
+}
+
 .avatar-upload-wrap {
   position: relative;
   cursor: pointer;
