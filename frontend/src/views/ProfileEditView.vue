@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref, computed, watch } from 'vue'
+import { onMounted, reactive, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { useCampusHubStore } from '@/stores/campusHub'
 import { validateNickname, validateAvatarUrl } from '@/utils/validators'
 import { handleError } from '@/utils/errorHandler'
 import { useConfirm } from '@/composables/useDialog'
-import ImageUploader from '@/components/ImageUploader.vue'
+import AvatarCropper from '@/components/AvatarCropper.vue'
 
 const store = useCampusHubStore()
 const router = useRouter()
@@ -19,19 +19,6 @@ const isValid = computed(() => !fieldErrors.nickname && !fieldErrors.avatarUrl &
 const profileForm = reactive({
   nickname: store.currentUser?.nickname ?? '',
   avatarUrl: store.currentUser?.avatarUrl ?? ''
-})
-
-// 本地上传已移除
-
-const avatarImages = ref<string[]>(store.currentUser?.avatarUrl ? [store.currentUser.avatarUrl] : [])
-
-// Watch avatar images and update the avatarUrl field
-watch(avatarImages, (val) => {
-  if (val.length > 0) {
-    profileForm.avatarUrl = val[0]
-  } else {
-    profileForm.avatarUrl = ''
-  }
 })
 
 async function save(): Promise<void> {
@@ -76,7 +63,7 @@ onMounted(() => {
         <div>
           <p class="eyebrow">编辑资料</p>
           <h1 class="page-title">修改个人信息</h1>
-          <p class="page-summary">更新昵称和头像链接。</p>
+          <p class="page-summary">更新昵称和头像。</p>
         </div>
       </div>
 
@@ -86,10 +73,9 @@ onMounted(() => {
           <input id="nickname" v-model="profileForm.nickname" @input="fieldErrors.nickname = ''" />
           <p v-if="fieldErrors.nickname" class="input-help" style="color: var(--danger)">{{ fieldErrors.nickname }}</p>
         </div>
-        <!-- 本地上传头像控件 -->
         <div class="field" style="grid-column: 1 / -1;">
-          <label>上传新头像</label>
-          <ImageUploader v-model="avatarImages" :max-count="1" :max-size-m-b="5" />
+          <label>头像</label>
+          <AvatarCropper v-model="profileForm.avatarUrl" :size="80" />
         </div>
       </div>
 

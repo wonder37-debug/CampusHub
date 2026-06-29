@@ -6,6 +6,7 @@ import { useCampusHubStore } from '@/stores/campusHub'
 import { validateLoginForm, validateRegisterForm } from '@/utils/validators'
 import { formatUserRole, formatUserStatus } from '@/utils/format'
 import { handleError } from '@/utils/errorHandler'
+import AvatarCropper from '@/components/AvatarCropper.vue'
 
 const store = useCampusHubStore()
 const router = useRouter()
@@ -46,47 +47,6 @@ const registerForm = reactive({
   avatarUrl: ''
 })
 const showRegisterPassword = ref(false)
-const registerAvatarInput = ref<HTMLInputElement | null>(null)
-const uploadingRegisterAvatar = ref(false)
-
-function triggerRegisterAvatarUpload() {
-  registerAvatarInput.value?.click()
-}
-
-async function handleRegisterAvatarChange(e: Event) {
-  const target = e.target as HTMLInputElement
-  const file = target.files?.[0]
-  if (!file) return
-  target.value = ''
-
-  const allowedExts = ['jpg', 'jpeg', 'png', 'webp']
-  const ext = file.name.split('.').pop()?.toLowerCase()
-  if (!ext || !allowedExts.includes(ext)) {
-    error.value = '头像仅支持 jpg/png/webp 格式'
-    return
-  }
-  if (file.size > 5 * 1024 * 1024) {
-    error.value = '头像大小不能超过 5MB'
-    return
-  }
-
-  uploadingRegisterAvatar.value = true
-  error.value = ''
-  try {
-    const urls = await store.uploadImages([file])
-    if (urls.length > 0) {
-      registerForm.avatarUrl = urls[0]
-    }
-  } catch (uploadErr: any) {
-    error.value = handleError(uploadErr, '头像上传失败')
-  } finally {
-    uploadingRegisterAvatar.value = false
-  }
-}
-
-function removeRegisterAvatar() {
-  registerForm.avatarUrl = ''
-}
 
 const forgotPasswordForm = reactive({
   email: '',
@@ -424,29 +384,7 @@ async function submitForgotPassword(): Promise<void> {
         <div class="field" style="grid-column: 1 / -1;">
           <label>头像 <span class="optional-hint">（选填）</span></label>
           <div class="register-avatar-section">
-            <div v-if="!registerForm.avatarUrl.trim()" class="avatar-upload-trigger" @click="triggerRegisterAvatarUpload">
-              <input
-                ref="registerAvatarInput"
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                style="display: none"
-                @change="handleRegisterAvatarChange"
-              />
-              <span v-if="uploadingRegisterAvatar" class="avatar-upload-status">上传中...</span>
-              <template v-else>
-                <span class="avatar-upload-icon">📷</span>
-                <span class="avatar-upload-text">点击上传头像</span>
-                <span class="avatar-upload-hint">支持 jpg/png/webp，≤5MB</span>
-              </template>
-            </div>
-            <div v-else class="avatar-preview-card">
-              <img :src="registerForm.avatarUrl" alt="头像预览" class="avatar large" />
-              <div class="avatar-preview-info">
-                <strong>头像已上传</strong>
-                <p class="subtle">点击可重新选择，或移除后填入链接。</p>
-              </div>
-              <button type="button" class="avatar-remove-btn" @click="removeRegisterAvatar" title="移除头像">×</button>
-            </div>
+            <AvatarCropper v-model="registerForm.avatarUrl" :size="80" />
           </div>
           <div class="avatar-url-fallback">
             <input
@@ -455,7 +393,7 @@ async function submitForgotPassword(): Promise<void> {
               placeholder="或直接粘贴图片链接 https://..."
             />
           </div>
-          <span class="input-help">上传或粘贴链接设置头像，不填也完全没关系。</span>
+          <span class="input-help">点击头像上传并裁剪，或粘贴链接设置头像。</span>
         </div>
         <button type="submit" class="button primary" style="grid-column: 1 / -1;">注册并进入平台</button>
       </form>
@@ -567,95 +505,6 @@ async function submitForgotPassword(): Promise<void> {
 <style scoped>
 .register-avatar-section {
   margin-bottom: 8px;
-}
-
-.avatar-upload-trigger {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 24px 16px;
-  border: 2px dashed rgba(0, 0, 0, 0.14);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.5);
-  cursor: pointer;
-  transition: border-color 0.2s, background 0.2s;
-}
-
-.avatar-upload-trigger:hover {
-  border-color: var(--accent, #1f5f53);
-  background: rgba(31, 95, 83, 0.04);
-}
-
-.avatar-upload-icon {
-  font-size: 28px;
-}
-
-.avatar-upload-text {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-strong, #1f1a17);
-}
-
-.avatar-upload-hint {
-  font-size: 12px;
-  color: var(--muted, #7f7264);
-}
-
-.avatar-upload-status {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--accent, #1f5f53);
-}
-
-.avatar-preview-card {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 14px 18px;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.72);
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  position: relative;
-}
-
-.avatar-preview-info {
-  flex: 1;
-}
-
-.avatar-preview-info strong {
-  display: block;
-  margin-bottom: 2px;
-}
-
-.avatar-preview-info p {
-  margin: 0;
-  font-size: 13px;
-}
-
-.avatar-remove-btn {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  border: none;
-  background: rgba(0, 0, 0, 0.08);
-  color: var(--text, #4c4134);
-  font-size: 18px;
-  line-height: 1;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.15s, color 0.15s;
-}
-
-.avatar-remove-btn:hover {
-  background: rgba(181, 71, 71, 0.15);
-  color: var(--danger, #b54747);
 }
 
 .avatar-url-fallback input {
