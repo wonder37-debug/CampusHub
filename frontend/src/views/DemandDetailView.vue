@@ -141,6 +141,142 @@ const providerConfirmed = computed(() => {
   )
 })
 
+// ========== 角色判断 ==========
+const isRequester = computed(() => {
+  if (!relatedOrder.value || !store.currentUser) return false
+  return store.currentUser.id === relatedOrder.value.requesterId
+})
+
+const isProvider = computed(() => {
+  if (!relatedOrder.value || !store.currentUser) return false
+  return store.currentUser.id === relatedOrder.value.serviceProviderId
+})
+
+// ========== 仲裁功能 ==========
+const arbitrationDialogOpen = ref(false)
+const arbitrationReason = ref('')
+
+/** 从时间线中查找仲裁发起人 ID */
+const arbitrationInitiatorId = computed(() => {
+  if (!relatedOrder.value) return undefined
+  const entry = relatedOrder.value.timeline.find((t) => t.label === '发起仲裁')
+  return entry?.operatorId
+})
+
+const arbitrationByRequester = computed(() => {
+  const id = arbitrationInitiatorId.value
+  if (!id || !relatedOrder.value) return false
+  return String(id) === String(relatedOrder.value.requesterId)
+})
+
+const arbitrationByProvider = computed(() => {
+  const id = arbitrationInitiatorId.value
+  if (!id || !relatedOrder.value) return false
+  return String(id) === String(relatedOrder.value.serviceProviderId)
+})
+
+const arbitrationTip = computed(() => {
+  if (!relatedOrder.value) return ''
+  if (arbitrationByRequester.value) {
+    if (isRequester.value) return '你发起了争议仲裁，当前订单暂停执行，请等待管理员处理。'
+    if (isProvider.value) return '需求方发起了争议仲裁，当前订单暂停执行，请配合管理员处理。'
+    return '需求方发起了争议仲裁，当前订单暂停执行。'
+  }
+  if (arbitrationByProvider.value) {
+    if (isProvider.value) return '你发起了争议仲裁，当前订单暂停执行，请等待管理员处理。'
+    if (isRequester.value) return '接单方发起了争议仲裁，当前订单暂停执行，请配合管理员处理。'
+    return '接单方发起了争议仲裁，当前订单暂停执行。'
+  }
+  if (isRequester.value) return '订单处于争议仲裁中，当前暂停执行，请等待管理员处理。'
+  if (isProvider.value) return '订单处于争议仲裁中，当前暂停执行，请配合管理员处理。'
+  return '此订单处于争议仲裁中，暂时暂停执行。'
+})
+
+const canRequestArbitration = computed(() => {
+  if (!relatedOrder.value) return false
+  if (!isProvider.value && !isRequester.value) return false
+  return relatedOrder.value.status === 'ACCEPTED' || relatedOrder.value.status === 'IN_PROGRESS'
+})
+
+// ========== 匿名保护 ==========
+const isDemandAnonymous = computed(() => {
+  return demand.value?.anonymous === true || (demand.value?.anonymousCode != null && demand.value.anonymousCode !== '')
+})
+
+function reviewDisplayName(name: string, reviewerId: string): string {
+  if (store.currentUser && reviewerId === store.currentUser.id) return '我'
+  if (isDemandAnonymous.value) {
+    const publisherId = relatedOrder.value?.requesterId
+    if (publisherId && reviewerId === publisherId) {
+      return demand.value?.anonymousCode ?? '匿名校友'
+    }
+  }
+  return name
+}
+
+/** 学号脱敏：保留前3位，其余用*替代 */
+function maskStudentId(id: string | undefined): string {
+  if (!id) return '未知'
+  if (id.length <= 3) return id + '****'
+  return id.slice(0, 3) + '****'
+}
+
+// ========== 时间线增强 ==========
+function formatTimelineLabel(label: string, operatorId?: string): string {
+  if (!relatedOrder.value) return label
+  if (label === '进行中') return '订单进行中'
+  if (label === '接单方确认完成，等待需求方确认') {
+    return isProvider.value ? '你已确认完成，等待需求方确认' : '接单方已确认完成，等待你的确认'
+  }
+  if (label === '需求方确认完成，等待接单方确认') {
+    return isRequester.value ? '你已确认完成，等待接单方确认' : '需求方已确认完成，等待你的确认'
+  }
+  if (label === '发起仲裁' && operatorId && relatedOrder.value) {
+    if (operatorId === relatedOrder.value.requesterId) {
+      return isRequester.value ? '你发起了争议仲裁' : '需求方发起了争议仲裁'
+    }
+    if (operatorId === relatedOrder.value.serviceProviderId) {
+      return isProvider.value ? '你发起了争议仲裁' : '接单方发起了争议仲裁'
+    }
+  }
+  if (label === '已确认完成，等待对方确认' && operatorId && relatedOrder.value) {
+    const isProviderAction = operatorId === relatedOrder.value.serviceProviderId
+    if (isProviderAction) {
+      return isProvider.value ? '你已确认完成，等待需求方确认' : '接单方已确认完成，等待你的确认'
+    } else {
+      return isRequester.value ? '你已确认完成，等待接单方确认' : '需求方已确认完成，等待你的确认'
+    }
+  }
+  return label
+}
+
+const enhancedTimeline = computed(() => {
+  if (!relatedOrder.value) return []
+  // 映射并按时间正序排列（从上到下自然阅读顺序）
+  const items = [...relatedOrder.value.timeline]
+    .map((entry) => ({
+      ...entry,
+      displayLabel: formatTimelineLabel(entry.label, entry.operatorId)
+    }))
+    .sort((a, b) => a.at.localeCompare(b.at))
+
+  // 追加评价条目
+  const reviews = relatedReviews.value
+  if (reviews.length > 0) {
+    const requesterReviewed = reviews.some((r) => r.reviewerId === relatedOrder.value!.requesterId)
+    const providerReviewed = reviews.some((r) => r.reviewerId === relatedOrder.value!.serviceProviderId)
+    if (requesterReviewed) {
+      const review = reviews.find((r) => r.reviewerId === relatedOrder.value!.requesterId)!
+      items.push({ at: review.createdAt, label: 'reviewer', displayLabel: '需求方已评价' })
+    }
+    if (providerReviewed) {
+      const review = reviews.find((r) => r.reviewerId === relatedOrder.value!.serviceProviderId)!
+      items.push({ at: review.createdAt, label: 'provider', displayLabel: '接单方已评价' })
+    }
+  }
+  return items
+})
+
 async function acceptCurrentDemand(): Promise<void> {
   if (!demand.value) {
     return
@@ -231,6 +367,34 @@ async function submitReview(): Promise<void> {
   }
 }
 
+function openArbitrationDialog(): void {
+  arbitrationReason.value = ''
+  arbitrationDialogOpen.value = true
+}
+
+function closeArbitrationDialog(): void {
+  arbitrationDialogOpen.value = false
+  arbitrationReason.value = ''
+}
+
+async function submitArbitration(): Promise<void> {
+  if (!relatedOrder.value) return
+  if (!arbitrationReason.value.trim()) {
+    error.value = '请填写仲裁原因'
+    return
+  }
+
+  message.value = ''
+  error.value = ''
+  try {
+    await store.requestOrderArbitration(relatedOrder.value.id, arbitrationReason.value)
+    message.value = '已提交仲裁申请，等待管理员处理。'
+    closeArbitrationDialog()
+  } catch (arbitrationError) {
+    error.value = handleError(arbitrationError, '发起仲裁失败')
+  }
+}
+
 onMounted(() => {
   loadingDemand.value = true
   void (async () => {
@@ -269,7 +433,7 @@ onMounted(() => {
     </section>
   </div>
 
-  <div v-else-if="demand" class="page-grid two-column">
+  <div v-else-if="demand" class="page-grid demand-detail-layout">
     <section class="panel">
       <div class="page-head" style="margin-bottom: 12px;">
         <button type="button" class="button primary" @click="router.back()">← 返回</button>
@@ -278,11 +442,19 @@ onMounted(() => {
         </button>
       </div>
 
-      <!-- 用户信息（最上方） -->
+      <!-- 标题 + 报酬（置顶，左右对齐） -->
+      <div class="page-head" style="margin-top: 4px;">
+        <div>
+          <h1 class="page-title">{{ demand.title }}</h1>
+        </div>
+        <strong class="page-title">{{ formatMoney(demand.reward) }}</strong>
+      </div>
+
+      <!-- 发布者信息 -->
       <div class="avatar-row">
         <img :src="demand.publisher?.avatarUrl ?? demand.publisherAvatar" :alt="demand.publisher?.nickname ?? demand.publisherName" class="avatar large" />
         <div>
-          <strong>{{ demand.anonymous ? demand.anonymousCode ?? '匿名发布' : (demand.publisher?.nickname ?? demand.publisherName) }}</strong>
+          <strong>发布者：{{ demand.anonymous ? (demand.anonymousCode ?? '匿名发布') : (demand.publisher?.nickname ?? demand.publisherName) }}</strong>
           <p class="subtle">信用分：{{ demand.publisher ? formatScore(demand.publisher.creditScore) : '未知' }}</p>
           <p class="meta" v-if="!demand.anonymous && demand.publisher?.studentId">发布者学号：{{ demand.publisherIdentityVisible === false ? (demand.publisherStudentIdMasked || '已隐藏') : demand.publisher.studentId }}</p>
           <p class="meta">发布于 {{ formatDateTime(demand.createdAt) }}</p>
@@ -299,12 +471,19 @@ onMounted(() => {
         <span v-if="demand.anonymous" class="chip is-warning">匿名</span>
       </div>
 
-      <!-- 标题 + 报酬 -->
-      <div class="page-head" style="margin-top: 8px;">
-        <div>
-          <h1 class="page-title">{{ demand.title }}</h1>
+      <!-- 仲裁状态横幅 -->
+      <div v-if="relatedOrder?.status === 'IN_ARBITRATION'" class="arbitration-banner">
+        <div class="arbitration-icon">⚖️</div>
+        <div class="arbitration-content">
+          <strong>订单处于争议仲裁中</strong>
+          <p>{{ arbitrationTip }}</p>
         </div>
-        <strong class="page-title">{{ formatMoney(demand.reward) }}</strong>
+      </div>
+
+      <!-- 需求详情（突出显示，置于时间信息之前） -->
+      <div v-if="demand.description" class="demand-description-highlight">
+        <p class="eyebrow demand-detail-label">需求详情</p>
+        <div class="description-content">{{ demand.description }}</div>
       </div>
 
       <!-- 时间 -->
@@ -323,12 +502,6 @@ onMounted(() => {
       <div v-if="demand.contactInfo" class="list-card" style="margin-top: 8px; border-color: rgba(31, 95, 83, 0.2);">
         <div class="meta"><strong>📞 联系方式</strong></div>
         <p style="margin-top: 4px; white-space: pre-wrap;">{{ demand.contactInfo }}</p>
-      </div>
-
-      <!-- 需求详情（描述） -->
-      <div class="list-card" style="margin-top: 8px;">
-        <div class="meta"><strong>📋 需求详情</strong></div>
-        <p style="margin-top: 4px; white-space: pre-wrap;">{{ demand.description || '暂无描述' }}</p>
       </div>
 
       <!-- 需求图片 -->
@@ -401,6 +574,7 @@ onMounted(() => {
             确认完成
           </button>
           <span v-else-if="relatedOrder?.status === 'IN_PROGRESS' && !completionSubmitted" class="chip is-warning">{{ currentUserConfirmedCompletion || providerConfirmed ? '等待对方确认完成' : '等待接单方确认完成' }}</span>
+          <button v-if="canRequestArbitration" type="button" class="button secondary" @click="openArbitrationDialog">发起仲裁</button>
         </div>
       </div>
 
@@ -411,9 +585,11 @@ onMounted(() => {
       <p v-if="error" class="hero-badge" style="background: rgba(181, 71, 71, 0.14); color: var(--danger)">{{ error }}</p>
     </section>
 
-    <section class="panel">
-      <p class="eyebrow">关联信息</p>
-      <h2 class="section-title">订单、时间线与评价</h2>
+    <section class="panel demand-sidebar">
+      <div class="sidebar-head">
+        <p class="eyebrow">关联信息</p>
+        <h2 class="section-title">订单、时间线与评价</h2>
+      </div>
 
       <div v-if="relatedOrder" class="section-grid">
         <div class="list-card">
@@ -424,8 +600,9 @@ onMounted(() => {
           <div class="avatar-row">
             <img :src="relatedOrder.serviceProviderAvatar" :alt="relatedOrder.serviceProviderName" class="avatar" />
             <div>
-              <strong>{{ relatedOrder.serviceProviderName }}</strong>
-              <div class="meta">接单方 · 信用分 {{ formatScore(relatedOrder.serviceProviderCreditScore) }}</div>
+              <strong>接单方：{{ relatedOrder.serviceProviderName }}</strong>
+              <div class="meta">接单方学号：{{ isDemandAnonymous ? maskStudentId(relatedOrder.serviceProviderStudentId) : (relatedOrder.serviceProviderStudentId || '未知') }}</div>
+              <div class="meta">信用分 {{ formatScore(relatedOrder.serviceProviderCreditScore) }}</div>
             </div>
           </div>
           <p>接单留言：{{ relatedOrder.note || '暂无留言' }}</p>
@@ -434,8 +611,8 @@ onMounted(() => {
         <div class="list-card">
           <strong>流程时间线</strong>
           <div class="timeline">
-            <div v-for="entry in relatedOrder.timeline" :key="`${entry.at}-${entry.label}`" class="timeline-item">
-              <span>{{ entry.label }}</span>
+            <div v-for="(entry, idx) in enhancedTimeline" :key="`${entry.at}-${entry.label}-${idx}`" class="timeline-item">
+              <span>{{ entry.displayLabel }}</span>
               <span class="meta">{{ formatDateTime(entry.at) }}</span>
             </div>
           </div>
@@ -471,7 +648,7 @@ onMounted(() => {
           <div class="review-list">
             <div v-for="review in relatedReviews" :key="review.id" class="timeline-item">
               <div>
-                <strong>{{ review.reviewerName }} → {{ review.targetName }}</strong>
+                <strong>{{ reviewDisplayName(review.reviewerName, review.reviewerId) }} → {{ reviewDisplayName(review.targetName, review.targetId) }}</strong>
                 <div class="meta">{{ review.comment }}</div>
               </div>
               <span class="chip is-success">{{ review.rating }} 星</span>
@@ -499,10 +676,162 @@ onMounted(() => {
     :initial-index="viewerInitialIndex"
     @close="showImageViewer = false"
   />
+
+  <!-- 仲裁对话框 -->
+  <teleport to="body">
+    <div v-if="arbitrationDialogOpen" class="modal-backdrop" @click.self="closeArbitrationDialog">
+      <div class="modal-card panel">
+        <div class="modal-head">
+          <div>
+            <p class="eyebrow">订单仲裁</p>
+            <h3 class="section-title">提交争议说明</h3>
+          </div>
+          <button type="button" class="button secondary" @click="closeArbitrationDialog">关闭</button>
+        </div>
+
+        <p class="page-summary" style="margin-top: 0;">提交后订单会进入仲裁中状态，双方暂时无法继续推进订单，管理员会根据说明做出处理。</p>
+        <div class="field">
+          <label for="arbitration-reason">仲裁原因</label>
+          <textarea id="arbitration-reason" v-model="arbitrationReason" rows="5" placeholder="请简要说明争议点、当前情况和希望管理员关注的信息"></textarea>
+        </div>
+
+        <div class="card-actions" style="justify-content: flex-end;">
+          <button type="button" class="button secondary" @click="closeArbitrationDialog">取消</button>
+          <button type="button" class="button primary" :disabled="!arbitrationReason.trim()" @click="submitArbitration">提交仲裁</button>
+        </div>
+      </div>
+    </div>
+  </teleport>
   </div>
 </template>
 
 <style scoped>
+/* ========== 双栏布局 ========== */
+.demand-detail-layout {
+  grid-template-columns: 1fr 380px;
+  align-items: start;
+}
+
+.demand-sidebar {
+  position: sticky;
+  top: 20px;
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+}
+
+/* ========== 侧栏标题 ========== */
+.sidebar-head {
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--panel-border);
+  margin-bottom: 4px;
+}
+
+.sidebar-head .eyebrow {
+  margin-bottom: 4px;
+}
+
+.sidebar-head .section-title {
+  margin: 0;
+  font-size: 1.15em;
+  font-weight: 700;
+  color: var(--text-strong);
+  text-align: left;
+}
+
+/* ========== 仲裁横幅 ========== */
+.arbitration-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-top: 12px;
+  padding: 16px 20px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(179, 106, 31, 0.12) 0%, rgba(179, 106, 31, 0.06) 100%);
+  border: 1px solid rgba(179, 106, 31, 0.28);
+  border-left: 4px solid var(--warning);
+}
+
+.arbitration-icon {
+  font-size: 28px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.arbitration-content strong {
+  display: block;
+  color: var(--warning);
+  font-size: 1.05em;
+  margin-bottom: 4px;
+}
+
+.arbitration-content p {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.9em;
+  line-height: 1.5;
+}
+
+/* ========== 需求详情突出显示 ========== */
+.demand-description-highlight {
+  margin-top: 12px;
+  padding: 18px 22px;
+  border-radius: 14px;
+  background: var(--accent-soft);
+  border: 1px solid rgba(31, 95, 83, 0.2);
+  border-left: 4px solid var(--accent);
+}
+
+.demand-description-highlight .eyebrow {
+  margin-bottom: 8px;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.demand-detail-label {
+  font-size: 1.15em;
+  font-family: var(--heading);
+  letter-spacing: 0.12em;
+}
+
+.description-content {
+  font-size: 1.02em;
+  line-height: 1.7;
+  color: var(--text-strong);
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-weight: 700;
+}
+
+/* ========== 模态框 ========== */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(31, 26, 23, 0.46);
+  backdrop-filter: blur(6px);
+}
+
+.modal-card {
+  width: min(640px, 100%);
+  padding: 22px;
+}
+
+.modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.modal-card textarea {
+  min-height: 140px;
+  resize: vertical;
+}
+
+/* ========== 需求图片 ========== */
 .demand-images {
   margin-top: 16px;
 }
@@ -532,5 +861,18 @@ onMounted(() => {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+/* ========== 响应式：移动端切换为单栏 ========== */
+@media (max-width: 960px) {
+  .demand-detail-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .demand-sidebar {
+    position: static;
+    max-height: none;
+    overflow-y: visible;
+  }
 }
 </style>

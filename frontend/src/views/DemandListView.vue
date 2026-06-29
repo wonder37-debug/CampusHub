@@ -13,6 +13,10 @@ type DemandSortDirection = 'asc' | 'desc'
 const store = useCampusHubStore()
 const router = useRouter()
 
+// 匿名用户头像（SVG data URI，保护发布者身份）
+const ANONYMOUS_AVATAR =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='42' height='42' viewBox='0 0 42 42'%3E%3Crect width='42' height='42' rx='14' fill='%231f5f53' fill-opacity='0.12'/%3E%3Ccircle cx='21' cy='16' r='6' fill='%231f5f53' fill-opacity='0.45'/%3E%3Cpath d='M9 35c0-6.6 5.4-12 12-12s12 5.4 12 12' fill='%231f5f53' fill-opacity='0.45'/%3E%3C/svg%3E"
+
 const filters = reactive({
   q: '',
   category: '' as '' | (typeof DEMAND_CATEGORY_OPTIONS)[number],
@@ -119,7 +123,8 @@ async function refreshList(): Promise<void> {
       campusZone: filters.campusZone || undefined,
       sort: getBackendSortMode(),
       page: 1,
-      size: 100
+      size: 100,
+      all: true
     })
     if (isRecommendSort()) {
       await syncRecommendations()
@@ -141,6 +146,23 @@ function goPublish(): void {
     return
   }
   router.push('/demands/new')
+}
+
+/** 匿名需求检测：通过 anonymous 标志或 anonymousCode 多重判断 */
+function isAnonymousDemand(demand: DemandRecord): boolean {
+  return demand.anonymous === true || (demand.anonymousCode != null && demand.anonymousCode !== '')
+}
+
+/** 获取展示用头像：匿名需求返回占位头像 */
+function getDisplayAvatar(demand: DemandRecord): string {
+  if (isAnonymousDemand(demand)) return ANONYMOUS_AVATAR
+  return demand.publisher?.avatarUrl ?? demand.publisherAvatar
+}
+
+/** 获取展示用名称：匿名需求返回匿名代号 */
+function getDisplayName(demand: DemandRecord): string {
+  if (isAnonymousDemand(demand)) return demand.anonymousCode ?? '匿名用户'
+  return demand.publisher?.nickname ?? demand.publisherName
 }
 
 
@@ -330,15 +352,22 @@ watch(
 
         <p>描述：{{ truncateText(demand.description || '无', 86) }}</p>
 
-        <!-- Thumbnail -->
-        <div v-if="demand.images && demand.images.length > 0" class="card-thumb">
-          <img
-            :src="demand.images[0]"
-            alt="需求图片"
-            loading="lazy"
-            class="thumb-img"
-          />
-          <span v-if="demand.images.length > 1" class="thumb-count">+{{ demand.images.length - 1 }}</span>
+        <!-- 需求图片（最多展示3张，超出显示+N） -->
+        <div
+          v-if="demand.images && demand.images.length > 0"
+          class="card-images"
+          :class="`image-count-${Math.min(demand.images.length, 3)}`"
+        >
+          <div
+            v-for="(imgUrl, imgIdx) in demand.images.slice(0, 3)"
+            :key="imgUrl"
+            class="card-image-item"
+          >
+            <img :src="imgUrl" alt="需求图片" loading="lazy" class="card-image-img" />
+            <span v-if="imgIdx === 2 && demand.images.length > 3" class="image-more-overlay">
+              +{{ demand.images.length - 2 }}
+            </span>
+          </div>
         </div>
 
         <div class="tag-row">
@@ -351,10 +380,10 @@ watch(
         </div>
 
         <div class="avatar-row">
-          <img :src="demand.publisher?.avatarUrl ?? demand.publisherAvatar" :alt="(demand.anonymous ? demand.anonymousCode : null) ?? demand.publisher?.nickname ?? demand.publisherName" class="avatar" />
+          <img :src="getDisplayAvatar(demand)" :alt="getDisplayName(demand)" class="avatar" />
           <div>
-            <strong>{{ demand.anonymous ? (demand.anonymousCode ?? '匿名用户') : (demand.publisher?.nickname ?? demand.publisherName) }}</strong>
-            <div class="meta">信用分：{{ demand.publisher?.creditScore != null ? formatScore(demand.publisher.creditScore) : '未知' }}</div>
+            <strong>{{ getDisplayName(demand) }}</strong>
+            <div class="meta">信用分：{{ isAnonymousDemand(demand) ? '隐藏' : (demand.publisher?.creditScore != null ? formatScore(demand.publisher.creditScore) : '未知') }}</div>
           </div>
         </div>
 
@@ -472,40 +501,62 @@ watch(
 .demand-card {
   cursor: pointer;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
+  display: flex;
+  flex-direction: column;
 }
 .demand-card:hover {
   transform: translateY(-2px);
   box-shadow: var(--shadow);
 }
 
-.card-thumb {
-  position: relative;
-  width: 100px;
-  height: 100px;
-  overflow: hidden;
-  border-radius: 10px;
+.card-images {
+  display: grid;
+  gap: 6px;
   margin: 8px 0;
+  height: 130px;
+  flex-shrink: 0;
 }
 
-.thumb-img {
+.image-count-1 {
+  grid-template-columns: 1fr;
+}
+
+.image-count-2 {
+  grid-template-columns: 1fr 1fr;
+}
+
+.image-count-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.card-image-item {
+  position: relative;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  height: 100%;
+}
+
+.card-image-img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   transition: transform 0.3s ease;
 }
 
-.demand-card:hover .thumb-img {
+.demand-card:hover .card-image-img {
   transform: scale(1.03);
 }
 
-.thumb-count {
+.image-more-overlay {
   position: absolute;
-  bottom: 4px;
-  right: 4px;
-  background: rgba(0, 0, 0, 0.55);
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
   color: #fff;
-  font-size: 11px;
-  padding: 1px 6px;
-  border-radius: 8px;
+  font-size: 18px;
+  font-weight: 700;
 }
 </style>

@@ -87,6 +87,15 @@ function formatTimelineLabel(label: string, operatorId?: string): string {
   if (label === '需求方确认完成，等待接单方确认') {
     return isRequester.value ? '你已确认完成，等待接单方确认' : '需求方已确认完成，等待你的确认'
   }
+  // 仲裁发起人角色个性化
+  if (label === '发起仲裁' && operatorId && order.value) {
+    if (operatorId === order.value.requesterId) {
+      return isRequester.value ? '你发起了争议仲裁' : '需求方发起了争议仲裁'
+    }
+    if (operatorId === order.value.serviceProviderId) {
+      return isProvider.value ? '你发起了争议仲裁' : '接单方发起了争议仲裁'
+    }
+  }
   // 旧格式文本兼容：根据 operatorId 判断角色后个性化
   if (label === '已确认完成，等待对方确认' && operatorId && order.value) {
     const isProviderAction = operatorId === order.value.serviceProviderId
@@ -158,6 +167,45 @@ const providerConfirmed = computed(() => {
 const isDemandAnonymous = computed(() => {
   const demand = order.value?.demandDescription != null ? (order.value as any).demand : null
   return demand?.anonymous === true || order.value?.requesterName?.includes('匿名') === true
+})
+
+/** 从时间线中查找仲裁发起人 ID */
+const arbitrationInitiatorId = computed(() => {
+  if (!order.value) return undefined
+  const entry = order.value.timeline.find((t) => t.label === '发起仲裁')
+  return entry?.operatorId
+})
+
+/** 判断仲裁是否由发布方发起 */
+const arbitrationByRequester = computed(() => {
+  const id = arbitrationInitiatorId.value
+  if (!id || !order.value) return false
+  return String(id) === String(order.value.requesterId)
+})
+
+/** 判断仲裁是否由接单方发起 */
+const arbitrationByProvider = computed(() => {
+  const id = arbitrationInitiatorId.value
+  if (!id || !order.value) return false
+  return String(id) === String(order.value.serviceProviderId)
+})
+
+const arbitrationTip = computed(() => {
+  if (!order.value) return ''
+  if (arbitrationByRequester.value) {
+    if (isRequester.value) return '你发起了争议仲裁，当前订单暂停执行，请等待管理员处理。'
+    if (isProvider.value) return '需求方发起了争议仲裁，当前订单暂停执行，请配合管理员处理。'
+    return '需求方发起了争议仲裁，当前订单暂停执行。'
+  }
+  if (arbitrationByProvider.value) {
+    if (isProvider.value) return '你发起了争议仲裁，当前订单暂停执行，请等待管理员处理。'
+    if (isRequester.value) return '接单方发起了争议仲裁，当前订单暂停执行，请配合管理员处理。'
+    return '接单方发起了争议仲裁，当前订单暂停执行。'
+  }
+  // 无法确定发起人时的兼容回退
+  if (isRequester.value) return '订单处于争议仲裁中，当前暂停执行，请等待管理员处理。'
+  if (isProvider.value) return '订单处于争议仲裁中，当前暂停执行，请配合管理员处理。'
+  return '此订单处于争议仲裁中，暂时暂停执行。'
 })
 
 function reviewDisplayName(name: string, reviewerId: string): string {
@@ -286,8 +334,9 @@ onMounted(() => {
     </section>
   </div>
 
-  <div v-else-if="order" class="page-grid">
-    <section class="panel">
+  <div v-else-if="order" class="page-grid order-detail-layout">
+    <!-- 左栏：订单主体信息 -->
+    <section class="panel order-main">
       <div class="page-head">
         <div style="display: flex; align-items: center; gap: 16px;">
           <button type="button" class="button primary" @click="goBack">← 返回</button>
@@ -307,11 +356,22 @@ onMounted(() => {
         <span v-if="completionHint" class="chip is-warning">{{ completionHint }}</span>
       </div>
 
-      <div class="mini-grid">
-        <div class="mini-stat"><span class="subtle">需求方</span><strong>{{ order.requesterName }}</strong><div class="meta">信用分 {{ formatScore(order.requesterCreditScore) }}</div></div>
-        <div class="mini-stat"><span class="subtle">接单方</span><strong>{{ order.serviceProviderName }}</strong><div class="meta">信用分 {{ formatScore(order.serviceProviderCreditScore) }}</div></div>
+      <!-- 仲裁状态横幅 -->
+      <div v-if="order.status === 'IN_ARBITRATION'" class="arbitration-banner">
+        <div class="arbitration-icon">⚖️</div>
+        <div class="arbitration-content">
+          <strong>订单处于争议仲裁中</strong>
+          <p>{{ arbitrationTip }}</p>
+        </div>
       </div>
 
+      <!-- 需求描述（突出显示，置于时间信息之前） -->
+      <div v-if="order.demandDescription" class="demand-description-highlight">
+        <p class="eyebrow">需求描述</p>
+        <div class="description-content">{{ order.demandDescription }}</div>
+      </div>
+
+      <!-- 时间与地点信息 -->
       <div class="mini-grid">
         <div class="mini-stat"><span class="subtle">校区</span><strong>{{ formattedCampusZone || '未填写' }}</strong></div>
         <div class="mini-stat"><span class="subtle">地点</span><strong>{{ order.demandLocation || '未填写' }}</strong></div>
@@ -320,11 +380,10 @@ onMounted(() => {
         <div class="mini-stat"><span class="subtle">报酬</span><strong>{{ order.demandReward ? order.demandReward + ' 元' : '无' }}</strong></div>
       </div>
 
-      <div v-if="order.demandDescription" class="mini-grid" style="margin-top:12px;">
-        <div class="mini-stat description-stat">
-          <span class="subtle">需求描述</span>
-          <strong>{{ order.demandDescription }}</strong>
-        </div>
+      <!-- 参与方信息 -->
+      <div class="mini-grid">
+        <div class="mini-stat"><span class="subtle">需求方</span><strong>{{ order.requesterName }}</strong><div class="meta">信用分 {{ formatScore(order.requesterCreditScore) }}</div></div>
+        <div class="mini-stat"><span class="subtle">接单方</span><strong>{{ order.serviceProviderName }}</strong><div class="meta">信用分 {{ formatScore(order.serviceProviderCreditScore) }}</div></div>
       </div>
 
       <!-- 联系方式（仅接单后可查看） -->
@@ -357,8 +416,45 @@ onMounted(() => {
       <p v-if="message" class="hero-badge">{{ message }}</p>
       <p v-if="error" class="hero-badge" style="background: rgba(181, 71, 71, 0.14); color: var(--danger)">{{ error }}</p>
 
-      <div class="timeline-section" style="margin-top: 16px;">
-        <p class="eyebrow" style="margin-bottom: 8px;">订单时间线</p>
+      <!-- 订单操作 -->
+      <div v-if="hasAvailableActions || canRequestArbitration" class="order-actions-section">
+        <p class="eyebrow">订单操作</p>
+        <div class="card-actions">
+          <button v-if="order.status === 'ACCEPTED' && isProvider" type="button" class="button primary" @click="startOrder">开始执行</button>
+          <button
+            v-if="order.status === 'IN_PROGRESS' && isProvider && !currentUserConfirmedCompletion"
+            type="button"
+            class="button primary"
+            @click="completeOrder"
+          >
+            提交完成确认
+          </button>
+          <button
+            v-if="order.status === 'IN_PROGRESS' && isRequester && providerConfirmed && !currentUserConfirmedCompletion"
+            type="button"
+            class="button primary"
+            @click="completeOrder"
+          >
+            确认完成
+          </button>
+          <span
+            v-if="order.status === 'IN_PROGRESS' && ((isProvider && currentUserConfirmedCompletion) || (isRequester && !providerConfirmed) || (!isProvider && !isRequester) || (isRequester && currentUserConfirmedCompletion))"
+            class="chip is-warning"
+          >{{ completionHint || '等待接单方确认完成' }}</span>
+          <button v-if="order.status === 'ACCEPTED' && isRequester" type="button" class="button danger" @click="cancelOrder">取消订单</button>
+          <button v-if="canRequestArbitration" type="button" class="button secondary" @click="openArbitrationDialog">发起仲裁</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 右栏：时间线与评价 -->
+    <section class="panel order-sidebar">
+      <div class="sidebar-head">
+        <p class="eyebrow">订单进度</p>
+        <h2 class="section-title">时间线与评价</h2>
+      </div>
+
+      <div class="timeline-section">
         <div class="timeline">
           <div v-for="(entry, idx) in enhancedTimeline" :key="`${entry.at}-${entry.displayLabel}-${idx}`" class="timeline-item">
             <span>{{ entry.displayLabel }}</span>
@@ -366,7 +462,8 @@ onMounted(() => {
           </div>
         </div>
       </div>
-      <div v-if="order.status === 'COMPLETED'" style="margin-top: 16px;">
+
+      <div v-if="order.status === 'COMPLETED'" class="sidebar-reviews">
         <div class="list-card">
           <strong>相关评价</strong>
           <div class="order-review-list">
@@ -405,35 +502,6 @@ onMounted(() => {
           <strong>评价</strong>
           <p class="hero-badge" style="margin-top:8px;">您已提交评价，不可重复评价。</p>
         </div>
-      </div>
-    </section>
-
-    <section v-if="hasAvailableActions" class="panel">
-      <p class="eyebrow">订单操作</p>
-      <div class="card-actions">
-        <button v-if="order.status === 'ACCEPTED' && isProvider" type="button" class="button primary" @click="startOrder">开始执行</button>
-        <button
-          v-if="order.status === 'IN_PROGRESS' && isProvider && !currentUserConfirmedCompletion"
-          type="button"
-          class="button primary"
-          @click="completeOrder"
-        >
-          提交完成确认
-        </button>
-        <button
-          v-if="order.status === 'IN_PROGRESS' && isRequester && providerConfirmed && !currentUserConfirmedCompletion"
-          type="button"
-          class="button primary"
-          @click="completeOrder"
-        >
-          确认完成
-        </button>
-        <span
-          v-if="order.status === 'IN_PROGRESS' && ((isProvider && currentUserConfirmedCompletion) || (isRequester && !providerConfirmed) || (!isProvider && !isRequester) || (isRequester && currentUserConfirmedCompletion))"
-          class="chip is-warning"
-        >{{ completionHint || '等待接单方确认完成' }}</span>
-        <button v-if="order.status === 'ACCEPTED' && isRequester" type="button" class="button danger" @click="cancelOrder">取消订单</button>
-        <button v-if="canRequestArbitration" type="button" class="button secondary" @click="openArbitrationDialog">发起仲裁</button>
       </div>
     </section>
   </div>
@@ -478,6 +546,120 @@ onMounted(() => {
 </template>
 
 <style scoped>
+/* ========== 双栏布局 ========== */
+.order-detail-layout {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: 20px;
+  align-items: start;
+}
+
+.order-main {
+  min-width: 0;
+}
+
+.order-sidebar {
+  position: sticky;
+  top: 20px;
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+}
+
+/* ========== 仲裁横幅 ========== */
+.arbitration-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-top: 16px;
+  padding: 16px 20px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(179, 106, 31, 0.12) 0%, rgba(179, 106, 31, 0.06) 100%);
+  border: 1px solid rgba(179, 106, 31, 0.28);
+  border-left: 4px solid var(--warning);
+}
+
+.arbitration-icon {
+  font-size: 28px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.arbitration-content strong {
+  display: block;
+  color: var(--warning);
+  font-size: 1.05em;
+  margin-bottom: 4px;
+}
+
+.arbitration-content p {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.9em;
+  line-height: 1.5;
+}
+
+/* ========== 需求描述突出显示 ========== */
+.demand-description-highlight {
+  margin-top: 16px;
+  padding: 18px 22px;
+  border-radius: 14px;
+  background: var(--accent-soft);
+  border: 1px solid rgba(31, 95, 83, 0.2);
+  border-left: 4px solid var(--accent);
+}
+
+.demand-description-highlight .eyebrow {
+  margin-bottom: 8px;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.description-content {
+  font-size: 1.02em;
+  line-height: 1.7;
+  color: var(--text-strong);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ========== 订单操作区域 ========== */
+.order-actions-section {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--panel-border);
+}
+
+.order-actions-section .eyebrow {
+  margin-bottom: 10px;
+}
+
+/* ========== 侧栏标题与内容 ========== */
+.sidebar-head {
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--panel-border);
+  margin-bottom: 16px;
+}
+
+.sidebar-head .eyebrow {
+  margin-bottom: 4px;
+}
+
+.sidebar-head .section-title {
+  margin: 0;
+  font-size: 1.15em;
+  font-weight: 700;
+  color: var(--text-strong);
+}
+
+.timeline-section {
+  margin-bottom: 16px;
+}
+
+.sidebar-reviews {
+  margin-top: 4px;
+}
+
+/* ========== 需求图片 ========== */
 .order-images {
   margin-top: 16px;
 }
@@ -535,5 +717,17 @@ onMounted(() => {
 .modal-card textarea {
   min-height: 140px;
   resize: vertical;
+}
+/* ========== 响应式：移动端切换为单栏 ========== */
+@media (max-width: 960px) {
+  .order-detail-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .order-sidebar {
+    position: static;
+    max-height: none;
+    overflow-y: visible;
+  }
 }
 </style>

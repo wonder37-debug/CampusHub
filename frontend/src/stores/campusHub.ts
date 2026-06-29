@@ -207,6 +207,7 @@ function mapOrderRecord(raw: any): OrderRecord {
     serviceProviderName: String(provider.nickname ?? raw.accepterName ?? raw.serviceProviderName ?? ''),
     serviceProviderAvatar: String(provider.avatarUrl ?? raw.serviceProviderAvatar ?? buildAvatar(String(provider.nickname ?? raw.accepterName ?? ''))),
     serviceProviderCreditScore: Number(provider.creditScore ?? raw.serviceProviderCreditScore ?? 0),
+    serviceProviderStudentId: String(provider.studentId ?? raw.accepterStudentId ?? raw.serviceProviderStudentId ?? ''),
     status: String(raw.status ?? 'ACCEPTED') as OrderStatus,
     note: String(raw.acceptNote ?? raw.note ?? ''),
     proofSubmitted: Boolean(raw.proofSubmitted ?? false),

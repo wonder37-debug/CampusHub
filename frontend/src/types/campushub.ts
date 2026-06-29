@@ -103,6 +103,7 @@ export interface OrderRecord {
   serviceProviderName: string
   serviceProviderAvatar: string
   serviceProviderCreditScore: number
+  serviceProviderStudentId?: string
   status: OrderStatus
   note: string
   proofSubmitted: boolean
