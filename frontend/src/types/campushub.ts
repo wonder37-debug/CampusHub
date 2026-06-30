@@ -118,6 +118,7 @@ export interface OrderRecord {
   completionHint?: string | null
   demandImages?: string[]
   demandContactInfo?: string | null
+  arbitrationResult?: string | null
 }
 
 export interface RecommendationRecord {

@@ -352,20 +352,19 @@ watch(
 
         <p>描述：{{ truncateText(demand.description || '无', 86) }}</p>
 
-        <!-- 需求图片（最多展示3张，超出显示+N） -->
+        <!-- 需求图片（小网格展示，最多6张，超出显示+N） -->
         <div
           v-if="demand.images && demand.images.length > 0"
-          class="card-images"
-          :class="`image-count-${Math.min(demand.images.length, 3)}`"
+          class="card-image-grid"
         >
           <div
-            v-for="(imgUrl, imgIdx) in demand.images.slice(0, 3)"
+            v-for="(imgUrl, imgIdx) in demand.images.slice(0, 6)"
             :key="imgUrl"
             class="card-image-item"
           >
-            <img :src="imgUrl" alt="需求图片" loading="lazy" class="card-image-img" />
-            <span v-if="imgIdx === 2 && demand.images.length > 3" class="image-more-overlay">
-              +{{ demand.images.length - 2 }}
+            <img :src="imgUrl" alt="需求图片" loading="lazy" />
+            <span v-if="imgIdx === 5 && demand.images.length > 6" class="image-more-overlay">
+              +{{ demand.images.length - 5 }}
             </span>
           </div>
         </div>
@@ -509,43 +508,25 @@ watch(
   box-shadow: var(--shadow);
 }
 
-.card-images {
+.card-image-grid {
   display: grid;
-  gap: 6px;
-  margin: 8px 0;
-  height: 130px;
-  flex-shrink: 0;
-}
-
-.image-count-1 {
-  grid-template-columns: 1fr;
-}
-
-.image-count-2 {
-  grid-template-columns: 1fr 1fr;
-}
-
-.image-count-3 {
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 4px;
+  margin: 6px 0;
 }
 
 .card-image-item {
   position: relative;
-  border-radius: 10px;
+  aspect-ratio: 1;
+  border-radius: 6px;
   overflow: hidden;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  height: 100%;
+  border: 1px solid rgba(0, 0, 0, 0.06);
 }
 
-.card-image-img {
+.card-image-item img {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transition: transform 0.3s ease;
-}
-
-.demand-card:hover .card-image-img {
-  transform: scale(1.03);
 }
 
 .image-more-overlay {
@@ -554,9 +535,9 @@ watch(
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.45);
   color: #fff;
-  font-size: 18px;
+  font-size: 14px;
   font-weight: 700;
 }
 </style>

@@ -221,6 +221,7 @@ function mapOrderRecord(raw: any): OrderRecord {
     completionHint: raw.completionHint == null ? undefined : String(raw.completionHint),
     demandImages: Array.isArray(raw.demandImages) ? raw.demandImages.map((url: any) => String(url)) : undefined,
     demandContactInfo: raw.demandContactInfo == null ? undefined : String(raw.demandContactInfo),
+    arbitrationResult: raw.arbitrationResult == null ? undefined : String(raw.arbitrationResult),
     timeline: Array.isArray(raw.statusHistory)
       ? raw.statusHistory.map((entry: any) => ({
           at: String(entry.changedAt ?? entry.createdAt ?? now()),

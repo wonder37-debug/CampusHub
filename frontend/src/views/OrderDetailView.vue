@@ -365,6 +365,12 @@ onMounted(() => {
         </div>
       </div>
 
+      <!-- 仲裁裁决结果 -->
+      <div v-if="order.arbitrationResult" class="list-card" style="margin-top: 12px; border-color: rgba(180, 120, 40, 0.3);">
+        <div class="meta"><strong>⚖️ 裁决结果</strong></div>
+        <p style="margin-top: 4px; white-space: pre-wrap;">{{ order.arbitrationResult }}</p>
+      </div>
+
       <!-- 需求描述（突出显示，置于时间信息之前） -->
       <div v-if="order.demandDescription" class="demand-description-highlight">
         <p class="eyebrow">需求描述</p>

@@ -267,11 +267,11 @@ public class NotificationApplicationServiceImpl implements NotificationApplicati
 
     private NotificationDraft buildOrderArbitrationRequested(Long orderId, Long requesterId, String reason) {
         String demandTitle = resolveOrderDemandTitle(orderId);
-        String requesterText = requesterId == null ? "有用户" : "用户#" + requesterId;
+        String roleLabel = resolveArbitrationRequesterRole(orderId, requesterId);
         return new NotificationDraft(
             NotificationType.ORDER_ARBITRATION_REQUESTED,
             "有订单申请仲裁",
-            requesterText + " 针对订单《" + demandTitle + "》发起了仲裁。原因：" + normalizeReviewReason(reason),
+            roleLabel + "针对订单《" + demandTitle + "》发起了仲裁。原因：" + normalizeReviewReason(reason),
             orderId
         );
     }
@@ -345,6 +345,30 @@ public class NotificationApplicationServiceImpl implements NotificationApplicati
             .map(demand -> demand.getTitle())
             .filter(title -> !title.isBlank())
             .orElse("相关订单");
+    }
+
+    /**
+     * 根据订单信息判断提起仲裁的人是发单方还是接单方。
+     */
+    private String resolveArbitrationRequesterRole(Long orderId, Long requesterId) {
+        if (orderId == null || requesterId == null || orderRepository == null) {
+            return "有用户";
+        }
+        try {
+            return orderRepository.findById(orderId)
+                .map(order -> {
+                    if (requesterId.equals(order.getPublisherId())) {
+                        return "发单方";
+                    }
+                    if (requesterId.equals(order.getAccepterId())) {
+                        return "接单方";
+                    }
+                    return "用户";
+                })
+                .orElse("用户");
+        } catch (Exception e) {
+            return "用户";
+        }
     }
 
     private String resolveDemandTitle(Long demandId) {

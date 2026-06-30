@@ -143,7 +143,8 @@ public class ApiViewMapper {
             demand == null ? List.of() : demand.getImages(),
             resolveContactInfo(demand,
                 orderRepository.findByDemandId(order.getDemandId()).orElse(null),
-                currentUser)
+                currentUser),
+            resolveArbitrationResult(order)
         );
     }
 
@@ -264,6 +265,28 @@ public class ApiViewMapper {
             return demand.getContactInfo();
         }
         return null;
+    }
+
+    /**
+     * 从订单状态历史中提取仲裁裁决结果。
+     */
+    private String resolveArbitrationResult(Order order) {
+        if (order == null || order.getStatusHistory().isEmpty()) {
+            return null;
+        }
+        return order.getStatusHistory().stream()
+            .filter(entry -> entry.note() != null && entry.note().startsWith("ARBITRATION_RESOLVED:"))
+            .reduce((first, second) -> second) // get the last
+            .map(entry -> {
+                String reason = entry.note().substring("ARBITRATION_RESOLVED:".length()).trim();
+                String outcome = switch (entry.toStatus()) {
+                    case COMPLETED -> "完成";
+                    case CANCELLED -> "取消";
+                    default -> entry.toStatus().name();
+                };
+                return "裁决结果：已" + outcome + "。说明：" + reason;
+            })
+            .orElse(null);
     }
 
     private boolean canAcceptDemand(Demand demand, Order relatedOrder, CurrentUser currentUser) {

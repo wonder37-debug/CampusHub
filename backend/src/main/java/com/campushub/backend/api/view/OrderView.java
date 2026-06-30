@@ -25,6 +25,7 @@ public record OrderView(
     Long pendingReviewTarget,
     String completionHint,
     List<String> demandImages,
-    String demandContactInfo
+    String demandContactInfo,
+    String arbitrationResult
 ) {
 }
