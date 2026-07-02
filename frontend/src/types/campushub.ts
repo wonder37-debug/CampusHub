@@ -4,8 +4,18 @@ export const DEMAND_SORT_MODES = ['time', 'reward', 'recommend'] as const
 export const USER_ROLE_OPTIONS = ['USER', 'ADMIN'] as const
 export const USER_STATUS_OPTIONS = ['ACTIVE', 'BANNED'] as const
 export const DEMAND_STATUS_OPTIONS = ['PENDING', 'REVIEWING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'EXPIRED'] as const
-export const ORDER_STATUS_OPTIONS = ['ACCEPTED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'] as const
-export const NOTIFICATION_TYPE_OPTIONS = ['ORDER_ACCEPTED', 'STATUS_CHANGED', 'REVIEW_RECEIVED', 'REVIEW_REQUEST', 'DEMAND_REJECTED'] as const
+export const ORDER_STATUS_OPTIONS = ['ACCEPTED', 'IN_PROGRESS', 'IN_ARBITRATION', 'COMPLETED', 'CANCELLED'] as const
+export const NOTIFICATION_TYPE_OPTIONS = [
+  'ORDER_ACCEPTED',
+  'STATUS_CHANGED',
+  'REVIEW_RECEIVED',
+  'REVIEW_REQUEST',
+  'DEMAND_REJECTED',
+  'DEMAND_APPROVED',
+  'PENDING_REVIEW',
+  'ORDER_ARBITRATION_REQUESTED',
+  'ORDER_ARBITRATION_RESOLVED'
+] as const
 
 export type DemandCategory = (typeof DEMAND_CATEGORY_OPTIONS)[number]
 export type CampusZone = (typeof CAMPUS_ZONE_OPTIONS)[number]
@@ -57,23 +67,28 @@ export interface DemandRecord {
   distanceKm: number
   canAccept?: boolean
   acceptDisabledReason?: string | null
+  acceptStatusHint?: string | null
   canStartExecution?: boolean
   canViewAcceptNote?: boolean
   canSubmitAcceptNote?: boolean
   publisherStudentIdMasked?: string
   publisherIdentityVisible?: boolean
   reviewReason?: string | null
+  images?: string[]
+  contactInfo?: string | null
 }
 
 export interface OrderTimelineEntry {
   at: string
   label: string
+  operatorId?: string
 }
 
 export interface OrderRecord {
   id: string
   demandId: string
   demandTitle: string
+  demandDescription?: string
   demandLocation?: string
   demandStartTime?: string
   demandEndTime?: string
@@ -88,6 +103,7 @@ export interface OrderRecord {
   serviceProviderName: string
   serviceProviderAvatar: string
   serviceProviderCreditScore: number
+  serviceProviderStudentId?: string
   status: OrderStatus
   note: string
   proofSubmitted: boolean
@@ -100,6 +116,9 @@ export interface OrderRecord {
   currentUserReviewed?: boolean
   pendingReviewTarget?: string | null
   completionHint?: string | null
+  demandImages?: string[]
+  demandContactInfo?: string | null
+  arbitrationResult?: string | null
 }
 
 export interface RecommendationRecord {
@@ -164,6 +183,8 @@ export interface DemandFormInput {
   endTime: string
   reward: string
   tags: string
+  images?: string[]
+  contactInfo?: string
   anonymous: boolean
 }
 

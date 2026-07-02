@@ -1,0 +1,157 @@
+erDiagram
+    %% =============================================
+    %% 1. 用户基础表
+    %% =============================================
+    SYS_USER {
+        bigint id PK "主键 自增"
+        varchar email "学校邮箱(唯一)"
+        varchar student_id "学号(唯一)"
+        varchar password_hash "哈希密码"
+        varchar nickname "昵称"
+        varchar avatar_url "头像链接"
+        varchar role "USER/ADMIN"
+        varchar status "ACTIVE/BANNED"
+        int credit_score "信用分 默认100"
+        decimal balance "可用余额"
+        decimal frozen_balance "冻结金额"
+        datetime created_at "注册时间"
+        datetime email_verified_at "邮箱验证时间"
+        datetime updated_at "更新时间"
+    }
+
+    %% =============================================
+    %% 2. 需求主表
+    %% =============================================
+    ORD_DEMAND {
+        bigint id PK "主键 自增"
+        bigint publisher_id FK "发单人(匿名可空)"
+        varchar publisher_display_name "发布者展示名"
+        varchar title "需求标题"
+        text description "需求描述"
+        varchar category "EXPRESS/ERRAND/STUDY_TUTORING/..."
+        varchar campus_zone "XIANLIN/GULOU/SUZHOU"
+        varchar location "详细地点"
+        datetime start_time "期望开始时间"
+        datetime end_time "期望结束时间"
+        decimal reward "悬赏金额"
+        varchar tags "标签(逗号分隔)"
+        tinyint anonymous "是否匿名 0/1"
+        varchar anonymous_code "匿名识别码"
+        varchar status "REVIEWING/PENDING/IN_PROGRESS/..."
+        tinyint is_approved "审核通过 0/1"
+        varchar note "补充说明"
+        bigint reviewed_by FK "审核人ID"
+        datetime reviewed_at "审核时间"
+        varchar review_reason "审核理由"
+        datetime created_at "发布时间"
+        datetime updated_at "更新时间"
+    }
+
+    %% =============================================
+    %% 3. 订单主表
+    %% =============================================
+    ORD_ORDER {
+        bigint id PK "主键 自增"
+        bigint demand_id FK "关联需求(唯一防重接)"
+        bigint publisher_id FK "发单人ID"
+        bigint accepter_id FK "接单人ID"
+        varchar status "ACCEPTED/IN_PROGRESS/COMPLETED/CANCELLED"
+        varchar accept_note "接单留言"
+        tinyint proof_submitted "是否提交凭证"
+        int proof_image_count "凭证图片数量"
+        datetime created_at "订单生成时间"
+        datetime updated_at "更新时间"
+        datetime completed_at "最终完成时间"
+    }
+
+    %% =============================================
+    %% 4. 订单状态日志表
+    %% =============================================
+    ORD_ORDER_STATUS_LOG {
+        bigint id PK "主键 自增"
+        bigint order_id FK "关联订单ID"
+        varchar from_status "原状态"
+        varchar to_status "新状态"
+        bigint operator_id FK "操作人ID"
+        varchar note "变更备注"
+        datetime changed_at "变更时间"
+    }
+
+    %% =============================================
+    %% 5. 评价表
+    %% =============================================
+    ORD_REVIEW {
+        bigint id PK "主键 自增"
+        bigint order_id FK "关联订单ID"
+        bigint author_id FK "评价人ID"
+        bigint target_id FK "被评价人ID"
+        tinyint rating "1-5星"
+        varchar comment "评价内容"
+        datetime created_at "评价时间"
+    }
+
+    %% =============================================
+    %% 6. 资产流水表
+    %% =============================================
+    AST_LEDGER {
+        bigint id PK "主键 自增"
+        bigint user_id FK "归属人ID"
+        decimal amount "变动金额"
+        varchar direction "IN/OUT/FREEZE/UNFREEZE"
+        bigint biz_order_id FK "关联订单ID(可空)"
+        datetime created_at "流水时间"
+    }
+
+    %% =============================================
+    %% 7. 通知表
+    %% =============================================
+    SYS_NOTIFICATION {
+        bigint id PK "主键 自增"
+        bigint user_id FK "接收人ID"
+        varchar type "通知类型(6种)"
+        varchar title "标题"
+        varchar content "内容"
+        tinyint is_read "0未读 1已读"
+        bigint related_id FK "关联业务ID"
+        datetime created_at "通知时间"
+    }
+
+    %% =============================================
+    %% 8. 推荐行为日志表
+    %% =============================================
+    REC_USER_ACTION_LOG {
+        bigint id PK "主键 自增"
+        bigint user_id FK "行为人ID"
+        varchar action_type "VIEW/ACCEPT"
+        bigint demand_id FK "需求ID"
+        varchar category "需求分类"
+        datetime created_at "行为时间"
+    }
+
+    %% =============================================
+    %% 关系定义
+    %% =============================================
+
+    SYS_USER ||--o{ ORD_DEMAND : "发布需求(publisher_id)"
+
+    SYS_USER ||--o{ ORD_ORDER : "发单(publisher_id)"
+    SYS_USER ||--o{ ORD_ORDER : "接单(accepter_id)"
+
+    ORD_DEMAND ||--o| ORD_ORDER : "接单生成(demand_id)"
+
+    ORD_ORDER ||--o{ ORD_ORDER_STATUS_LOG : "状态轨迹(order_id)"
+
+    ORD_ORDER ||--o{ ORD_REVIEW : "双方互评(order_id)"
+
+    SYS_USER ||--o{ ORD_REVIEW : "发起评价(author_id)"
+    SYS_USER ||--o{ ORD_REVIEW : "被评价(target_id)"
+
+    SYS_USER ||--o{ AST_LEDGER : "资产变动(user_id)"
+
+    ORD_ORDER ||--o{ AST_LEDGER : "业务流水(biz_order_id)"
+
+    SYS_USER ||--o{ SYS_NOTIFICATION : "接收通知(user_id)"
+
+    SYS_USER ||--o{ REC_USER_ACTION_LOG : "浏览/接单(user_id)"
+
+    ORD_DEMAND ||--o{ REC_USER_ACTION_LOG : "被操作(demand_id)"

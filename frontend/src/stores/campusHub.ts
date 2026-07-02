@@ -54,6 +54,26 @@ function unwrapApiPayload<T>(payload: any): T {
   return payload as T
 }
 
+const MAX_PAGE_SIZE = 100
+
+function normalizePageSize(size: number | undefined): number {
+  const resolved = Number(size ?? MAX_PAGE_SIZE)
+  if (!Number.isFinite(resolved)) {
+    return MAX_PAGE_SIZE
+  }
+
+  return Math.min(Math.max(Math.trunc(resolved), 1), MAX_PAGE_SIZE)
+}
+
+function extractPageItems(payload: any): any[] {
+  return Array.isArray(payload?.items) ? payload.items : Array.isArray(payload) ? payload : payload?.data?.items ?? []
+}
+
+function extractPageTotal(payload: any, fallback: number): number {
+  const total = Number(payload?.total ?? payload?.data?.total)
+  return Number.isFinite(total) ? total : fallback
+}
+
 // translateFieldName is defined in utils/errorHandler and intentionally not duplicated here
 
 import { translateApiError } from '@/utils/errorHandler'
@@ -128,8 +148,39 @@ function mapDemandRecord(raw: any): DemandRecord {
     canSubmitAcceptNote: raw.canSubmitAcceptNote == null ? undefined : Boolean(raw.canSubmitAcceptNote),
     publisherStudentIdMasked: raw.publisherStudentIdMasked == null ? undefined : String(raw.publisherStudentIdMasked),
     publisherIdentityVisible: raw.publisherIdentityVisible == null ? undefined : Boolean(raw.publisherIdentityVisible),
-    reviewReason: raw.reviewReason == null ? undefined : String(raw.reviewReason)
+    reviewReason: raw.reviewReason == null ? undefined : String(raw.reviewReason),
+    images: Array.isArray(raw.images) ? raw.images.map((url: any) => String(url)) : undefined,
+    contactInfo: raw.contactInfo == null ? undefined : String(raw.contactInfo)
   }
+}
+
+function mapOrderTimelineLabel(entry: any): string {
+  const toStatus = String(entry?.toStatus ?? 'ACCEPTED')
+  const note = entry?.note == null ? '' : String(entry.note)
+
+  if (note === 'PROVIDER_CONFIRMED_COMPLETION') {
+    return '接单方确认完成，等待需求方确认'
+  }
+  if (note === 'REQUESTER_CONFIRMED_COMPLETION') {
+    return '需求方确认完成，等待接单方确认'
+  }
+  if (note === 'ORDER_COMPLETED' || note === 'SYSTEM_AUTO_COMPLETED') {
+    return formatOrderStatus('COMPLETED' as OrderStatus)
+  }
+  if (note.startsWith('ARBITRATION_REQUESTED:')) {
+    return '发起仲裁'
+  }
+  if (note.startsWith('ARBITRATION_RESOLVED:')) {
+    return '仲裁已处理'
+  }
+  if (toStatus === 'ACCEPTED') {
+    return formatOrderStatus('ACCEPTED' as OrderStatus)
+  }
+  if (toStatus === 'IN_PROGRESS' && !note) {
+    return formatOrderStatus('IN_PROGRESS' as OrderStatus)
+  }
+
+  return note || formatOrderStatus(toStatus as OrderStatus)
 }
 
 function mapOrderRecord(raw: any): OrderRecord {
@@ -141,6 +192,7 @@ function mapOrderRecord(raw: any): OrderRecord {
     id: String(raw.orderId ?? raw.id ?? ''),
     demandId: String(demand.id ?? raw.demandId ?? ''),
     demandTitle: String(demand.title ?? raw.demandTitle ?? ''),
+    demandDescription: String(demand.description ?? raw.demandDescription ?? ''),
     demandLocation: String(demand.location ?? raw.location ?? ''),
     demandStartTime: String(demand.startTime ?? raw.startTime ?? ''),
     demandEndTime: String(demand.endTime ?? raw.endTime ?? ''),
@@ -155,6 +207,7 @@ function mapOrderRecord(raw: any): OrderRecord {
     serviceProviderName: String(provider.nickname ?? raw.accepterName ?? raw.serviceProviderName ?? ''),
     serviceProviderAvatar: String(provider.avatarUrl ?? raw.serviceProviderAvatar ?? buildAvatar(String(provider.nickname ?? raw.accepterName ?? ''))),
     serviceProviderCreditScore: Number(provider.creditScore ?? raw.serviceProviderCreditScore ?? 0),
+    serviceProviderStudentId: String(provider.studentId ?? raw.accepterStudentId ?? raw.serviceProviderStudentId ?? ''),
     status: String(raw.status ?? 'ACCEPTED') as OrderStatus,
     note: String(raw.acceptNote ?? raw.note ?? ''),
     proofSubmitted: Boolean(raw.proofSubmitted ?? false),
@@ -166,10 +219,14 @@ function mapOrderRecord(raw: any): OrderRecord {
     currentUserReviewed: raw.currentUserReviewed == null ? undefined : Boolean(raw.currentUserReviewed),
     pendingReviewTarget: raw.pendingReviewTarget == null ? undefined : String(raw.pendingReviewTarget),
     completionHint: raw.completionHint == null ? undefined : String(raw.completionHint),
+    demandImages: Array.isArray(raw.demandImages) ? raw.demandImages.map((url: any) => String(url)) : undefined,
+    demandContactInfo: raw.demandContactInfo == null ? undefined : String(raw.demandContactInfo),
+    arbitrationResult: raw.arbitrationResult == null ? undefined : String(raw.arbitrationResult),
     timeline: Array.isArray(raw.statusHistory)
       ? raw.statusHistory.map((entry: any) => ({
           at: String(entry.changedAt ?? entry.createdAt ?? now()),
-          label: String(entry.note ?? formatOrderStatus(String(entry.toStatus ?? 'ACCEPTED') as OrderStatus))
+          operatorId: entry.operatorId == null ? undefined : String(entry.operatorId),
+          label: mapOrderTimelineLabel(entry)
         }))
       : []
   }
@@ -235,6 +292,7 @@ export const useCampusHubStore = defineStore('campusHub', {
     adminUsers: [] as PublicUser[],
     adminDashboard: null as AdminDashboardSummary | null,
     adminPendingDemands: [] as DemandRecord[],
+    adminArbitrationOrders: [] as OrderRecord[],
     verificationCodes: {} as Record<string, EmailVerificationRecord>,
     appMessage: '校园互助平台已加载基础业务数据。'
   }),
@@ -294,7 +352,9 @@ export const useCampusHubStore = defineStore('campusHub', {
 
       return {
         openDemands: state.demands.filter((demand) => demand.status === 'PENDING').length,
-        activeOrders: state.orders.filter((order) => order.status === 'IN_PROGRESS' || order.status === 'ACCEPTED').length,
+        activeOrders: state.orders.filter((order) =>
+          order.status === 'IN_PROGRESS' || order.status === 'ACCEPTED' || order.status === 'IN_ARBITRATION'
+        ).length,
         unreadNotifications: state.notifications.filter((notification) => notification.receiverId === state.currentUserId && !notification.isRead).length,
         pendingApprovals: state.demands.filter((demand) => demand.status === 'REVIEWING').length,
         averageCredit
@@ -465,6 +525,68 @@ export const useCampusHubStore = defineStore('campusHub', {
       return mapped
     },
 
+    async changePassword(oldPassword: string, newPassword: string): Promise<void> {
+      await requestJson<void>('/auth/change-password', {
+        method: 'POST',
+        body: JSON.stringify({ oldPassword, newPassword })
+      }, this.token)
+    },
+
+    async sendPasswordResetCode(email: string): Promise<void> {
+      const normalizedEmail = normalizeEmail(email)
+      if (!normalizedEmail || !normalizedEmail.includes('@')) {
+        throw new Error('请输入有效的邮箱地址')
+      }
+
+      await requestJson<void>('/auth/password-reset/code', {
+        method: 'POST',
+        body: JSON.stringify({ email: normalizedEmail })
+      })
+    },
+
+    async resetPassword(email: string, verificationCode: string, newPassword: string): Promise<void> {
+      const normalizedEmail = normalizeEmail(email)
+      if (!normalizedEmail || !normalizedEmail.includes('@')) {
+        throw new Error('请输入有效的邮箱地址')
+      }
+
+      await requestJson<void>('/auth/password-reset', {
+        method: 'POST',
+        body: JSON.stringify({
+          email: normalizedEmail,
+          verificationCode: verificationCode.trim(),
+          newPassword
+        })
+      })
+    },
+
+    async withdrawDemand(demandId: string): Promise<void> {
+      await requestJson<void>(`/demands/${encodeURIComponent(demandId)}/withdraw`, {
+        method: 'POST'
+      }, this.token)
+      await this.fetchDemandDetail(demandId)
+      await this.fetchDemands()
+    },
+
+    async uploadImages(files: File[]): Promise<string[]> {
+      const formData = new FormData()
+      for (const file of files) {
+        formData.append('files', file)
+      }
+      const response = await fetch(`${API_BASE}/upload/images`, {
+        method: 'POST',
+        headers: this.token ? { Authorization: `Bearer ${this.token}` } : {},
+        body: formData
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) {
+        const message = translateApiError(payload)
+        throw new Error(message)
+      }
+      const data = unwrapApiPayload<{ urls: string[] }>(payload)
+      return data?.urls ?? []
+    },
+
     async createDemand(form: DemandFormInput): Promise<DemandRecord> {
       if (!this.currentUserId) {
         throw new Error('请先登录后再发布需求')
@@ -485,6 +607,8 @@ export const useCampusHubStore = defineStore('campusHub', {
             .split(/[，,]/)
             .map((tag) => tag.trim())
             .filter(Boolean),
+          images: form.images ?? [],
+          contactInfo: form.contactInfo?.trim() || undefined,
           anonymous: Boolean(form.anonymous)
         })
       }, this.token)
@@ -525,6 +649,27 @@ export const useCampusHubStore = defineStore('campusHub', {
         this.orders.unshift(mapped)
       }
       return mapped
+    },
+
+    async fetchOrderByDemandId(demandId: string): Promise<OrderRecord | null> {
+      if (!demandId || !this.token) {
+        return null
+      }
+
+      try {
+        const order = await requestJson<any>(`/orders/by-demand/${encodeURIComponent(demandId)}`, {}, this.token)
+        if (!order) return null
+        const mapped = mapOrderRecord(order)
+        const existingIndex = this.orders.findIndex((item) => item.id === mapped.id)
+        if (existingIndex >= 0) {
+          this.orders.splice(existingIndex, 1, mapped)
+        } else {
+          this.orders.unshift(mapped)
+        }
+        return mapped
+      } catch {
+        return null
+      }
     },
 
     async approveDemand(demandId: string, approved: boolean, reason?: string): Promise<DemandRecord> {
@@ -627,6 +772,19 @@ export const useCampusHubStore = defineStore('campusHub', {
       return mapped
     },
 
+    async requestOrderArbitration(orderId: string, reason: string): Promise<OrderRecord> {
+      const order = await requestJson<any>(`/orders/${encodeURIComponent(orderId)}/arbitration`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: reason.trim() })
+      }, this.token)
+
+      const mapped = mapOrderRecord(order)
+      await this.fetchDemandDetail(String(mapped.demandId ?? ''))
+      await this.fetchOrders()
+      await this.fetchNotifications()
+      return mapped
+    },
+
     async cancelOrder(orderId: string): Promise<OrderRecord> {
       const order = await requestJson<any>(`/orders/${encodeURIComponent(orderId)}`, {
         method: 'PUT',
@@ -637,6 +795,47 @@ export const useCampusHubStore = defineStore('campusHub', {
       await this.fetchDemandDetail(String(mapped.demandId ?? ''))
       await this.fetchOrders()
       await this.fetchNotifications()
+      return mapped
+    },
+
+    async deleteOrderByAdmin(orderId: string, reason = ''): Promise<void> {
+      await requestJson<void>(`/admin/orders/${encodeURIComponent(orderId)}`, {
+        method: 'DELETE',
+        body: JSON.stringify(reason.trim() ? { reason: reason.trim() } : {})
+      }, this.token)
+
+      this.orders = this.orders.filter((item) => item.id !== orderId)
+      await this.fetchDemands({ page: 1, size: 100, all: true, includeOwn: true })
+      await this.fetchNotifications()
+      await this.fetchAdminDashboard()
+    },
+
+    async resolveOrderArbitrationByAdmin(orderId: string, outcome: 'complete' | 'cancel', reason: string): Promise<OrderRecord | null> {
+      const order = await requestJson<any>(`/admin/orders/${encodeURIComponent(orderId)}/arbitration/resolve`, {
+        method: 'POST',
+        body: JSON.stringify({
+          outcome,
+          reason: reason.trim()
+        })
+      }, this.token)
+
+      if (!order) {
+        await this.fetchNotifications()
+        await this.fetchAdminDashboard()
+        return null
+      }
+
+      const mapped = mapOrderRecord(order)
+      const existingIndex = this.orders.findIndex((item) => item.id === mapped.id)
+      if (existingIndex >= 0) {
+        this.orders.splice(existingIndex, 1, mapped)
+      } else {
+        this.orders.unshift(mapped)
+      }
+
+      await this.fetchDemandDetail(String(mapped.demandId ?? ''))
+      await this.fetchNotifications()
+      await this.fetchAdminDashboard()
       return mapped
     },
 
@@ -730,9 +929,13 @@ export const useCampusHubStore = defineStore('campusHub', {
       sort?: string
       page?: number
       size?: number
+      all?: boolean
+      includeOwn?: boolean
     }): Promise<void> {
       try {
-        const params = new URLSearchParams({ page: '1', size: '100' })
+        const params = new URLSearchParams()
+        const requestedPage = typeof query === 'object' && query?.page != null ? query.page : 1
+        const requestedSize = normalizePageSize(typeof query === 'object' ? query?.size : undefined)
         if (typeof query === 'string') {
           if (query) params.set('status', query)
         } else if (query) {
@@ -744,26 +947,79 @@ export const useCampusHubStore = defineStore('campusHub', {
           if (query.startTimeFrom?.trim()) params.set('startTimeFrom', query.startTimeFrom.trim())
           if (query.startTimeTo?.trim()) params.set('startTimeTo', query.startTimeTo.trim())
           if (query.sort?.trim()) params.set('sort', query.sort.trim())
-          if (query.page != null) params.set('page', String(query.page))
-          if (query.size != null) params.set('size', String(query.size))
+          if (query.includeOwn) params.set('includeOwn', 'true')
         }
-        const payload = await requestJson<any>(`/demands?${params.toString()}`, {}, this.token)
-        const items = Array.isArray(payload?.items) ? payload.items : Array.isArray(payload) ? payload : payload?.data?.items ?? []
+
+        const loadPage = async (page: number) => {
+          params.set('page', String(page))
+          params.set('size', String(requestedSize))
+          return requestJson<any>(`/demands?${params.toString()}`, {}, this.token)
+        }
+
+        if (typeof query === 'object' && query?.all) {
+          const firstPayload = await loadPage(1)
+          const firstItems = extractPageItems(firstPayload)
+          const items = [...firstItems]
+          const total = extractPageTotal(firstPayload, firstItems.length)
+
+          for (let page = 2; items.length < total; page += 1) {
+            const payload = await loadPage(page)
+            const pageItems = extractPageItems(payload)
+            if (!pageItems.length) {
+              break
+            }
+            items.push(...pageItems)
+          }
+
+          this.demands = items.map((item: any) => mapDemandRecord(item))
+          return
+        }
+
+        const payload = await loadPage(requestedPage)
+        const items = extractPageItems(payload)
         this.demands = items.map((item: any) => mapDemandRecord(item))
       } catch {
-        this.demands = []
+        // API 调用失败时保留现有数据，不覆盖为空数组
       }
     },
 
     // (recent demand-resolution helpers reverted)
 
-    async fetchOrders(): Promise<void> {
+    async fetchOrders(query: { page?: number; size?: number; all?: boolean } = {}): Promise<void> {
       try {
-        const payload = await requestJson<any>('/orders?page=1&size=100', {}, this.token)
-        const items = Array.isArray(payload?.items) ? payload.items : Array.isArray(payload) ? payload : payload?.data?.items ?? []
+        const requestedSize = normalizePageSize(query.size)
+        const loadPage = async (page: number) => {
+          const params = new URLSearchParams({
+            page: String(page),
+            size: String(requestedSize)
+          })
+          return requestJson<any>(`/orders?${params.toString()}`, {}, this.token)
+        }
+
+        if (query.all) {
+          const firstPayload = await loadPage(1)
+          const firstItems = extractPageItems(firstPayload)
+          const items = [...firstItems]
+          const total = extractPageTotal(firstPayload, firstItems.length)
+
+          for (let page = 2; items.length < total; page += 1) {
+            const payload = await loadPage(page)
+            const pageItems = extractPageItems(payload)
+            if (!pageItems.length) {
+              break
+            }
+            items.push(...pageItems)
+          }
+
+          this.orders = items.map((item: any) => mapOrderRecord(item))
+          return
+        }
+
+        const payload = await loadPage(query.page ?? 1)
+        const items = extractPageItems(payload)
         this.orders = items.map((item: any) => mapOrderRecord(item))
       } catch {
-        this.orders = []
+        // API 调用失败时保留现有数据，不覆盖为空数组
       }
     },
 
@@ -773,7 +1029,7 @@ export const useCampusHubStore = defineStore('campusHub', {
         const items = Array.isArray(payload?.items) ? payload.items : Array.isArray(payload) ? payload : payload?.data?.items ?? []
         this.notifications = items.map((item: any) => mapNotificationRecord(item, this.currentUserId))
       } catch {
-        this.notifications = []
+        // API 调用失败时保留现有数据，不覆盖为空数组
       }
     },
 
@@ -828,6 +1084,16 @@ export const useCampusHubStore = defineStore('campusHub', {
         this.adminPendingDemands = items.map((item: any) => mapDemandRecord(item))
       } catch {
         this.adminPendingDemands = []
+      }
+    },
+
+    async fetchAdminArbitrationOrders(): Promise<void> {
+      try {
+        const payload = await requestJson<any>('/admin/orders/arbitration?page=1&size=100', {}, this.token)
+        const items = Array.isArray(payload?.items) ? payload.items : Array.isArray(payload) ? payload : payload?.data?.items ?? []
+        this.adminArbitrationOrders = items.map((item: any) => mapOrderRecord(item))
+      } catch {
+        this.adminArbitrationOrders = []
       }
     },
 

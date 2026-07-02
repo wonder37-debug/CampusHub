@@ -28,6 +28,7 @@ import com.campushub.backend.order.dto.AcceptOrderCommand;
 import com.campushub.backend.order.dto.OrderDetailResponse;
 import com.campushub.backend.order.dto.OrderHistoryQuery;
 import com.campushub.backend.order.dto.OrderSummaryResponse;
+import com.campushub.backend.order.dto.RequestOrderArbitrationCommand;
 import com.campushub.backend.order.dto.UpdateOrderStatusCommand;
 import com.campushub.backend.order.repository.InMemoryOrderRepository;
 import com.campushub.backend.order.repository.OrderRepository;
@@ -182,6 +183,90 @@ class OrderApplicationServiceImplTest {
     }
 
     @Test
+    void shouldAllowRequesterToConfirmCompletionBeforeProvider() {
+        DemandDetailResponse demand = createDemand();
+        OrderDetailResponse accepted = orderApplicationService.accept(accepterId, demand.id(), new AcceptOrderCommand("我来"));
+
+        orderApplicationService.updateStatus(
+            accepterId,
+            accepted.orderId(),
+            new UpdateOrderStatusCommand("IN_PROGRESS", "开始处理", null)
+        );
+
+        OrderDetailResponse requesterPending = orderApplicationService.updateStatus(
+            publisherId,
+            accepted.orderId(),
+            new UpdateOrderStatusCommand("COMPLETED", "先确认完成", null)
+        );
+        OrderDetailResponse finalCompleted = orderApplicationService.updateStatus(
+            accepterId,
+            accepted.orderId(),
+            new UpdateOrderStatusCommand("COMPLETED", "补交凭证并完成", 2)
+        );
+
+        assertEquals("IN_PROGRESS", requesterPending.status());
+        assertEquals("COMPLETED", finalCompleted.status());
+        assertTrue(finalCompleted.proofSubmitted());
+        assertEquals(2, finalCompleted.proofImageCount());
+    }
+
+    @Test
+    void shouldRejectRepeatedCompletionConfirmationFromSameUser() {
+        DemandDetailResponse demand = createDemand();
+        OrderDetailResponse accepted = orderApplicationService.accept(accepterId, demand.id(), new AcceptOrderCommand("我来"));
+
+        orderApplicationService.updateStatus(
+            accepterId,
+            accepted.orderId(),
+            new UpdateOrderStatusCommand("IN_PROGRESS", "开始处理", null)
+        );
+        orderApplicationService.updateStatus(
+            accepterId,
+            accepted.orderId(),
+            new UpdateOrderStatusCommand("COMPLETED", "第一次确认完成", 2)
+        );
+
+        BusinessException exception = assertThrows(
+            BusinessException.class,
+            () -> orderApplicationService.updateStatus(
+                accepterId,
+                accepted.orderId(),
+                new UpdateOrderStatusCommand("COMPLETED", "重复确认", 2)
+            )
+        );
+
+        assertEquals(ErrorCode.BUSINESS_CONFLICT, exception.getErrorCode());
+    }
+
+    @Test
+    void shouldRequireProofWhenProviderConfirmsCompletionSecond() {
+        DemandDetailResponse demand = createDemand();
+        OrderDetailResponse accepted = orderApplicationService.accept(accepterId, demand.id(), new AcceptOrderCommand("我来"));
+
+        orderApplicationService.updateStatus(
+            accepterId,
+            accepted.orderId(),
+            new UpdateOrderStatusCommand("IN_PROGRESS", "开始处理", null)
+        );
+        orderApplicationService.updateStatus(
+            publisherId,
+            accepted.orderId(),
+            new UpdateOrderStatusCommand("COMPLETED", "先确认完成", null)
+        );
+
+        BusinessException exception = assertThrows(
+            BusinessException.class,
+            () -> orderApplicationService.updateStatus(
+                accepterId,
+                accepted.orderId(),
+                new UpdateOrderStatusCommand("COMPLETED", "未上传凭证", null)
+            )
+        );
+
+        assertEquals(ErrorCode.VALIDATION_FAILED, exception.getErrorCode());
+    }
+
+    @Test
     void shouldRejectNonParticipantViewingOrder() {
         DemandDetailResponse demand = createDemand();
         OrderDetailResponse accepted = orderApplicationService.accept(accepterId, demand.id(), new AcceptOrderCommand("我来"));
@@ -226,6 +311,8 @@ class OrderApplicationServiceImplTest {
                 null,
                 BigDecimal.ZERO,
                 List.of(),
+                null,
+                null,
                 false
             )
         );
@@ -244,6 +331,21 @@ class OrderApplicationServiceImplTest {
         assertEquals(2, history.items().size());
     }
 
+    @Test
+    void shouldRequestArbitrationForActiveOrder() {
+        DemandDetailResponse demand = createDemand();
+        OrderDetailResponse accepted = orderApplicationService.accept(accepterId, demand.id(), new AcceptOrderCommand("我来"));
+
+        OrderDetailResponse arbitration = orderApplicationService.requestArbitration(
+            publisherId,
+            accepted.orderId(),
+            new RequestOrderArbitrationCommand("对履约细节有争议")
+        );
+
+        assertEquals("IN_ARBITRATION", arbitration.status());
+        assertTrue(arbitration.statusHistory().stream().anyMatch(item -> "IN_ARBITRATION".equals(item.toStatus())));
+    }
+
     private DemandDetailResponse createDemand() {
         DemandDetailResponse demand = demandApplicationService.publish(
             publisherId,
@@ -258,6 +360,8 @@ class OrderApplicationServiceImplTest {
                 LocalDateTime.now().plusHours(3),
                 new BigDecimal("3.00"),
                 List.of("快递"),
+                null,
+                null,
                 false
             )
         );

@@ -15,6 +15,7 @@ public record UpdateDemandCommand(
     LocalDateTime endTime,
     BigDecimal reward,
     List<String> tags,
+    String contactInfo,
     Boolean anonymous
 ) {
 }

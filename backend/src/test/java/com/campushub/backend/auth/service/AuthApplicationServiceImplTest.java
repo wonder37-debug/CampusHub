@@ -11,6 +11,7 @@ import com.campushub.backend.auth.domain.UserStatus;
 import com.campushub.backend.auth.dto.EmailVerificationIssue;
 import com.campushub.backend.auth.dto.LoginCommand;
 import com.campushub.backend.auth.dto.LoginResult;
+import com.campushub.backend.auth.dto.PasswordResetCommand;
 import com.campushub.backend.auth.dto.RegisterCommand;
 import com.campushub.backend.auth.dto.UpdateProfileCommand;
 import com.campushub.backend.auth.dto.UserProfileResponse;
@@ -265,6 +266,29 @@ class AuthApplicationServiceImplTest {
         );
 
         assertEquals(ErrorCode.AUTH_FAILED, exception.getErrorCode());
+    }
+
+    @Test
+    void shouldResetPasswordWithEmailCode() {
+        EmailVerificationIssue registerIssue = authApplicationService.sendRegistrationCode("reset@example.edu.cn", "20260009");
+        authApplicationService.register(
+            new RegisterCommand(
+                "reset@example.edu.cn",
+                registerIssue.verificationCode(),
+                "20260009",
+                "Password1",
+                "reset-user",
+                null
+            )
+        );
+
+        EmailVerificationIssue resetIssue = authApplicationService.sendPasswordResetCode("reset@example.edu.cn");
+        authApplicationService.resetPassword(
+            new PasswordResetCommand("reset@example.edu.cn", resetIssue.verificationCode(), "NewPassword1")
+        );
+
+        LoginResult result = authApplicationService.login(new LoginCommand("20260009", "NewPassword1"));
+        assertNotNull(result.token());
     }
 
     private static class RecordingVerificationEmailSender implements VerificationEmailSender {

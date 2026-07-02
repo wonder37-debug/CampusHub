@@ -322,6 +322,11 @@ img {
   background: linear-gradient(135deg, var(--accent-strong), var(--accent));
 }
 
+.button.danger {
+  color: #fff;
+  background: linear-gradient(135deg, #c0392b, var(--danger));
+}
+
 .demo-strip {
   margin-top: 16px;
   display: grid;
@@ -517,6 +522,69 @@ img {
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
 }
 
+.review-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.review-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 18px;
+  border-radius: 14px;
+  background: var(--bg-soft);
+  border: 1px solid var(--panel-border);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.review-item:hover {
+  background: rgba(255, 255, 255, 0.65);
+  border-color: var(--accent-soft);
+}
+
+.review-item-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.review-item-body {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.review-partner {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-strong);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.review-comment {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.review-order-title {
+  font-size: 13px;
+  color: var(--accent);
+  font-weight: 500;
+  transition: color 0.15s ease;
+}
+
+.review-item:hover .review-order-title {
+  text-decoration: underline;
+  color: var(--accent-strong);
+}
+
 .card,
 .list-card,
 .panel {
@@ -548,6 +616,7 @@ img {
   gap: 6px;
   padding: 6px 10px;
   font-size: 13px;
+  justify-self: start;
 }
 
 .chip {
@@ -596,8 +665,29 @@ img {
 
 .avatar-row {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.profile-header {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.profile-header-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.profile-edit-btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+  padding: 10px 20px !important;
+  font-size: 13px !important;
 }
 
 .field-grid,
@@ -769,6 +859,46 @@ td .avatar-row strong {
   background: rgba(255, 255, 255, 0.72);
 }
 
+.description-stat {
+  grid-column: 1 / -1;
+}
+
+.description-stat strong {
+  font-size: 20px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.order-review-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.order-review-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.order-review-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.order-review-comment {
+  margin: 4px 0 0;
+  font-size: 0.9rem;
+  color: var(--text);
+  line-height: 1.5;
+}
+
 .progress-bar {
   height: 10px;
   border-radius: 999px;
@@ -834,6 +964,52 @@ td .avatar-row strong {
   box-shadow: 0 26px 60px rgba(22, 60, 53, 0.28) !important;
 }
 
+.fab-icon {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+button.back-to-top {
+  min-width: 130px;
+  height: 48px;
+  font-size: 14px;
+  padding: 10px 18px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--text-strong);
+  border: 1px solid var(--panel-border);
+  box-shadow: 0 12px 30px rgba(58, 39, 21, 0.14);
+}
+
+button.back-to-top:hover {
+  background: #fff;
+  box-shadow: 0 18px 38px rgba(22, 60, 53, 0.20);
+}
+
+/* 全局弹窗样式 */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(31, 26, 23, 0.46);
+  backdrop-filter: blur(6px);
+}
+
+.modal-card {
+  width: min(640px, 100%);
+  padding: 22px;
+}
+
+.modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 @media (max-width: 780px) {
   .fab {
     right: 16px;
@@ -860,6 +1036,61 @@ td .avatar-row strong {
   text-align: center;
 }
 
+.site-footer {
+  margin-top: 20px;
+  padding: 24px 18px;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(249, 241, 231, 0.9));
+  box-shadow: var(--shadow-soft);
+}
+
+.footer-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 20px;
+}
+
+.footer-col strong {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 15px;
+  color: var(--text-strong);
+}
+
+.footer-col p {
+  margin: 4px 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.footer-copyright {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--panel-border);
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* 加载更多 通用面板 */
+.load-more-panel {
+  cursor: pointer;
+  align-items: center;
+  text-align: center;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.load-more-panel:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow);
+}
+.load-more-done {
+  text-align: center;
+  padding: 14px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .toolbar {
   justify-content: space-between;
   align-items: center;
@@ -880,12 +1111,16 @@ td .avatar-row strong {
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.78);
   border: 1px solid rgba(0, 0, 0, 0.06);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
 }
 
 .mini-stat strong {
   display: block;
-  margin-top: 10px;
-  font-size: 30px;
+  margin-top: 8px;
+  font-size: 28px;
+  line-height: 1.2;
   color: var(--text-strong);
 }
 
@@ -1011,4 +1246,29 @@ td .avatar-row strong {
     width: 100%;
     justify-content: center;
   }
+}
+
+
+/* 页面切换淡入淡出过渡 */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.18s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+/* 空状态卡片 */
+.empty-state {
+  text-align: center;
+  padding: 32px 20px;
+}
+
+.empty-state::before {
+  display: block;
+  font-size: 42px;
+  margin-bottom: 10px;
+  line-height: 1;
+  content: var(--empty-icon, '📭');
 }

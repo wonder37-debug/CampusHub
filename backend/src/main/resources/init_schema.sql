@@ -70,13 +70,13 @@ ON DUPLICATE KEY UPDATE id=id;
 
 INSERT INTO `sys_user` (`email`, `student_id`, `password_hash`, `nickname`, `role`) 
 
-VALUES ('test1@edu.cn', 'TEST001', '$2a$10$ZZ9LIwTu25X6iXkfc1SASe4YEghRHDiD1jTMuvWiqCuDEvAunM68O', '测试用户', 'USER')
+VALUES ('test1@edu.cn', 'TEST001', '$2a$10$ZZ9LIwTu25X6iXkfc1SASe4YEghRHDiD1jTMuvWiqCuDEvAunM68O', '测试用户1', 'USER')
 
 ON DUPLICATE KEY UPDATE id=id;
 
 INSERT INTO `sys_user` (`email`, `student_id`, `password_hash`, `nickname`, `role`) 
 
-VALUES ('test2@edu.cn', 'TEST002', '$2a$10$ZZ9LIwTu25X6iXkfc1SASe4YEghRHDiD1jTMuvWiqCuDEvAunM68O', '测试用户', 'USER')
+VALUES ('test2@edu.cn', 'TEST002', '$2a$10$ZZ9LIwTu25X6iXkfc1SASe4YEghRHDiD1jTMuvWiqCuDEvAunM68O', '测试用户2', 'USER')
 
 ON DUPLICATE KEY UPDATE id=id;
 
@@ -113,6 +113,8 @@ CREATE TABLE IF NOT EXISTS`ord_demand` (
   `reward` decimal(10,2) NOT NULL DEFAULT '0.00' COMMENT '悬赏金额',
 
   `tags` varchar(500) DEFAULT NULL COMMENT '标签(逗号分隔)',
+  `images` json DEFAULT NULL COMMENT '图片URL列表(JSON数组)',
+  `contact_info` varchar(200) DEFAULT NULL COMMENT '联系方式(电话/微信/QQ/邮箱)',
 
   `anonymous` tinyint(1) NOT NULL DEFAULT 0 COMMENT '是否匿名(0否 1是)',
 
@@ -178,7 +180,7 @@ CREATE TABLE IF NOT EXISTS`ord_order` (
 
   KEY `idx_order_accepter` (`accepter_id`),
 
-  CONSTRAINT `chk_order_status` CHECK (`status` IN ('ACCEPTED','IN_PROGRESS','COMPLETED','CANCELLED'))
+  CONSTRAINT `chk_order_status` CHECK (`status` IN ('ACCEPTED','IN_PROGRESS','IN_ARBITRATION','COMPLETED','CANCELLED'))
 
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单主表';
 
@@ -296,7 +298,7 @@ CREATE TABLE IF NOT EXISTS`sys_notification` (
 
   KEY `idx_notify_user_read` (`user_id`, `is_read`) COMMENT '加速未读消息列表查询',
 
-  CONSTRAINT `chk_notify_type` CHECK (`type` IN ('ORDER_ACCEPTED','STATUS_CHANGED','REVIEW_RECEIVED','REVIEW_REQUEST','DEMAND_REJECTED'))
+  CONSTRAINT `chk_notify_type` CHECK (`type` IN ('ORDER_ACCEPTED','STATUS_CHANGED','REVIEW_RECEIVED','REVIEW_REQUEST','DEMAND_REJECTED','DEMAND_APPROVED','PENDING_REVIEW','ORDER_ARBITRATION_REQUESTED','ORDER_ARBITRATION_RESOLVED'))
 
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='站内信通知表';
 

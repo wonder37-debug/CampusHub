@@ -28,7 +28,7 @@ class NotificationApplicationServiceImplTest {
     @Test
     void shouldListUnreadNotifications() {
         notificationApplicationService.notifyOrderAcceptedForPublisher(1L, 100L);
-        notificationApplicationService.notifyOrderStatusChanged(1L, 100L, OrderStatus.IN_PROGRESS);
+        notificationApplicationService.notifyOrderStatusChanged(1L, 100L, OrderStatus.IN_PROGRESS, true);
 
         PageResponse<NotificationResponse> page = notificationApplicationService.list(
             1L,

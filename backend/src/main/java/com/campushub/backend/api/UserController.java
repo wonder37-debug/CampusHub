@@ -32,17 +32,20 @@ public class UserController {
     private final ReviewApplicationService reviewApplicationService;
     private final UserRepository userRepository;
     private final RequestUserExtractor requestUserExtractor;
+    private final ApiViewMapper apiViewMapper;
 
     public UserController(
         AuthApplicationService authApplicationService,
         ReviewApplicationService reviewApplicationService,
         UserRepository userRepository,
-        RequestUserExtractor requestUserExtractor
+        RequestUserExtractor requestUserExtractor,
+        ApiViewMapper apiViewMapper
     ) {
         this.authApplicationService = authApplicationService;
         this.reviewApplicationService = reviewApplicationService;
         this.userRepository = userRepository;
         this.requestUserExtractor = requestUserExtractor;
+        this.apiViewMapper = apiViewMapper;
     }
 
     @GetMapping("/me")
@@ -66,7 +69,7 @@ public class UserController {
         PageResponse<ReviewResponse> reviewPage = reviewApplicationService.listUserReviews(userId, new ReviewQuery(new PageQuery(page, size)));
         return ApiResponse.success(
             new PageResponse<>(
-                reviewPage.items().stream().map(this::toReviewView).toList(),
+                reviewPage.items().stream().map(r -> apiViewMapper.toAnonymizedReviewView(r, currentUser)).toList(),
                 reviewPage.page(),
                 reviewPage.size(),
                 reviewPage.total()
@@ -82,21 +85,6 @@ public class UserController {
         CurrentUser currentUser = requestUserExtractor.requireCurrentUser(request);
         return ApiResponse.success(
             UserSummaryView.from(authApplicationService.updateProfile(currentUser.userId(), currentUser.userId(), command))
-        );
-    }
-
-    private ReviewView toReviewView(ReviewResponse review) {
-        var author = userRepository.findById(review.authorId()).orElse(null);
-        var target = userRepository.findById(review.targetId()).orElse(null);
-        return new ReviewView(
-            review.id(),
-            review.orderId(),
-            review.rating(),
-            review.comment(),
-            review.targetId(),
-            target == null ? null : target.getNickname(),
-            author == null ? null : UserSummaryView.from(author),
-            review.createdAt()
         );
     }
 }

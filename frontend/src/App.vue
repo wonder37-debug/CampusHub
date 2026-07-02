@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { useCampusHubStore } from '@/stores/campusHub'
 import { formatUserRole } from '@/utils/format'
 
@@ -20,7 +21,7 @@ const navigation = computed<Array<{ label: string; to: string; requiresAuth?: bo
     base.splice(1, 0, { label: '订单', to: '/orders', requiresAuth: true })
   }
   if (store.currentUser?.role === 'ADMIN') {
-    // 管理员额外显示“管理后台”入口，插入到“我的”之前
+    // 管理员额外显示"管理后台"入口，插入到"我的"之前
     const myIndex = base.findIndex((b) => b.label === '我的')
     const insertIndex = myIndex >= 0 ? myIndex : base.length
     base.splice(insertIndex, 0, { label: '管理后台', to: '/admin', requiresAuth: true })
@@ -100,6 +101,7 @@ function onStatusClick(): void {
       <div class="topbar-tools">
         <div class="status-chip" role="button" tabindex="0" @click="onStatusClick" @keydown.enter="onStatusClick" style="cursor: pointer;">
           <template v-if="store.currentUser">
+            <img :src="store.currentUser.avatarUrl" :alt="store.currentUser.nickname" class="topbar-avatar" />
             <span>{{ roleLabel }}</span>
             <strong>{{ store.currentUser.nickname }}</strong>
           </template>
@@ -117,7 +119,47 @@ function onStatusClick(): void {
     </header>
 
     <main class="content-shell">
-      <RouterView />
+      <RouterView v-slot="{ Component }">
+        <Transition name="fade" mode="out-in">
+          <component :is="Component" />
+        </Transition>
+      </RouterView>
     </main>
+
+    <footer class="site-footer">
+      <div class="footer-grid">
+        <div class="footer-col">
+          <strong>关于 CampusHub</strong>
+          <p>南京大学校园互助平台，连接每一个需要帮助的同学。</p>
+        </div>
+        <div class="footer-col">
+          <strong>联系方式</strong>
+          <p>📧 campus-hub@nju.edu.cn</p>
+          <p>📍 南京大学信息化建设管理中心</p>
+        </div>
+        <div class="footer-col">
+          <strong>支持</strong>
+          <p>🔗 帮助中心</p>
+          <p>🛡 用户协议 &amp; 隐私政策</p>
+        </div>
+      </div>
+      <div class="footer-copyright">
+        © 2026 CampusHub · 南京大学 · 课程项目
+      </div>
+    </footer>
+
+    <!-- 全局确认/提示弹窗 -->
+    <ConfirmDialog />
   </div>
 </template>
+
+<style scoped>
+.topbar-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid rgba(255, 255, 255, 0.6);
+  margin-right: 4px;
+}
+</style>

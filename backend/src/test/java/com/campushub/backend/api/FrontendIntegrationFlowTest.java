@@ -258,6 +258,32 @@ class FrontendIntegrationFlowTest {
     }
 
     @Test
+    void shouldListOwnReviewingDemandOnlyWhenRequested() throws Exception {
+        TestUser publisher = registerAndLogin("publisher-own-reviewing-list");
+        String title = "Own reviewing demand " + System.nanoTime();
+        Long demandId = publishDemand(publisher.token(), title);
+
+        mockMvc.perform(get("/api/v1/demands")
+                .header("Authorization", bearer(publisher.token()))
+                .param("q", title)
+                .param("page", "1")
+                .param("size", "10"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.total").value(0));
+
+        mockMvc.perform(get("/api/v1/demands")
+                .header("Authorization", bearer(publisher.token()))
+                .param("q", title)
+                .param("includeOwn", "true")
+                .param("page", "1")
+                .param("size", "10"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.total").value(1))
+            .andExpect(jsonPath("$.data.items[0].id").value(demandId))
+            .andExpect(jsonPath("$.data.items[0].status").value("REVIEWING"));
+    }
+
+    @Test
     void shouldRejectPublisherAcceptingOwnDemand() throws Exception {
         TestUser publisher = registerAndLogin("publisher-own-accept");
         String adminToken = login("admin", "Admin1234").token();
@@ -326,8 +352,12 @@ class FrontendIntegrationFlowTest {
     }
 
     private Long publishDemand(String token) throws Exception {
+        return publishDemand(token, "Pickup express package");
+    }
+
+    private Long publishDemand(String token, String title) throws Exception {
         Map<String, Object> body = new java.util.LinkedHashMap<>();
-        body.put("title", "Pickup express package");
+        body.put("title", title);
         body.put("description", "Please pick up a small package from the station");
         body.put("note", "Call me after pickup");
         body.put("category", "EXPRESS");

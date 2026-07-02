@@ -3,9 +3,11 @@ package com.campushub.backend.auth.service;
 import com.campushub.backend.auth.domain.User;
 import com.campushub.backend.auth.domain.UserRole;
 import com.campushub.backend.auth.domain.UserStatus;
+import com.campushub.backend.auth.dto.ChangePasswordCommand;
 import com.campushub.backend.auth.dto.EmailVerificationIssue;
 import com.campushub.backend.auth.dto.LoginCommand;
 import com.campushub.backend.auth.dto.LoginResult;
+import com.campushub.backend.auth.dto.PasswordResetCommand;
 import com.campushub.backend.auth.dto.RegisterCommand;
 import com.campushub.backend.auth.dto.UpdateProfileCommand;
 import com.campushub.backend.auth.dto.UserProfileResponse;
@@ -25,6 +27,7 @@ import org.springframework.stereotype.Service;
 public class AuthApplicationServiceImpl implements AuthApplicationService {
 
     private static final int DEFAULT_CREDIT_SCORE = 100;
+    private static final BigDecimal DEFAULT_INITIAL_BALANCE = new BigDecimal("100.00");
     private static final long TOKEN_EXPIRES_IN_SECONDS = 3600L;
     private static final String DEFAULT_NICKNAME = "匿名校友";
 
@@ -63,6 +66,15 @@ public class AuthApplicationServiceImpl implements AuthApplicationService {
     }
 
     @Override
+    public EmailVerificationIssue sendPasswordResetCode(String email) {
+        String normalizedEmail = normalizeEmail(email);
+        validateEmail(normalizedEmail);
+        User user = userRepository.findByEmail(normalizedEmail)
+            .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "user not found"));
+        return verificationCodeService.issueCode(normalizedEmail, user.getStudentId());
+    }
+
+    @Override
     public UserProfileResponse register(RegisterCommand command) {
         validateRegisterCommand(command);
 
@@ -94,7 +106,7 @@ public class AuthApplicationServiceImpl implements AuthApplicationService {
             UserRole.USER,
             UserStatus.ACTIVE,
             DEFAULT_CREDIT_SCORE,
-            BigDecimal.ZERO,
+            DEFAULT_INITIAL_BALANCE,
             BigDecimal.ZERO,
             now,
             now
@@ -124,8 +136,7 @@ public class AuthApplicationServiceImpl implements AuthApplicationService {
 
     @Override
     public UserProfileResponse getProfile(Long userId) {
-        User user = findUserById(userId);
-        return UserProfileResponse.from(user);
+        return UserProfileResponse.from(findUserById(userId));
     }
 
     @Override
@@ -143,6 +154,50 @@ public class AuthApplicationServiceImpl implements AuthApplicationService {
         user.setAvatarUrl(emptyToNull(command.avatarUrl()));
         user.setUpdatedAt(LocalDateTime.now());
         return UserProfileResponse.from(userRepository.save(user));
+    }
+
+    @Override
+    public void changePassword(Long userId, String oldPassword, String newPassword) {
+        if (userId == null) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "userId must not be null");
+        }
+        if (isBlank(oldPassword)) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "oldPassword must not be blank");
+        }
+        validateNewPassword(newPassword);
+
+        User user = findUserById(userId);
+        if (!passwordEncoder.matches(oldPassword, user.getPasswordHash())) {
+            throw new BusinessException(ErrorCode.PERMISSION_DENIED, "current password is incorrect");
+        }
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        user.setUpdatedAt(LocalDateTime.now());
+        userRepository.save(user);
+    }
+
+    @Override
+    public void resetPassword(PasswordResetCommand command) {
+        if (command == null) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "password reset command must not be null");
+        }
+        if (isBlank(command.email()) || isBlank(command.verificationCode())) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "email and verificationCode must not be blank");
+        }
+        validateNewPassword(command.newPassword());
+
+        String normalizedEmail = normalizeEmail(command.email());
+        User user = userRepository.findByEmail(normalizedEmail)
+            .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "user not found"));
+        if (!verificationCodeService.matchesStudentId(normalizedEmail, user.getStudentId())) {
+            throw new BusinessException(ErrorCode.AUTH_FAILED, "verification code does not match current account");
+        }
+        if (!verificationCodeService.verify(normalizedEmail, command.verificationCode())) {
+            throw new BusinessException(ErrorCode.AUTH_FAILED, "verification code is invalid");
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(command.newPassword()));
+        user.setUpdatedAt(LocalDateTime.now());
+        userRepository.save(user);
     }
 
     private User findUserById(Long userId) {
@@ -170,9 +225,7 @@ public class AuthApplicationServiceImpl implements AuthApplicationService {
         if (command.studentId().trim().length() < 3 || command.studentId().trim().length() > 64) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "studentId length must be between 3 and 64");
         }
-        if (isBlank(command.password()) || command.password().length() < 8) {
-            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "password must be at least 8 characters");
-        }
+        validateNewPassword(command.password());
         if (!isBlank(command.nickname()) && command.nickname().trim().length() > 64) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "nickname length must not exceed 64");
         }
@@ -184,6 +237,15 @@ public class AuthApplicationServiceImpl implements AuthApplicationService {
         }
         if (isBlank(command.loginId()) || isBlank(command.password())) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "loginId and password must not be blank");
+        }
+    }
+
+    private void validateNewPassword(String newPassword) {
+        if (isBlank(newPassword)) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "newPassword must not be blank");
+        }
+        if (newPassword.length() < 8) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "newPassword must be at least 8 characters");
         }
     }
 

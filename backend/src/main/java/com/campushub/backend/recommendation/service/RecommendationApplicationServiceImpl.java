@@ -14,7 +14,9 @@ import com.campushub.backend.order.domain.Order;
 import com.campushub.backend.order.repository.OrderRepository;
 import com.campushub.backend.recommendation.domain.RecommendationItem;
 import com.campushub.backend.recommendation.dto.RecommendationItemResponse;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -108,12 +110,17 @@ public class RecommendationApplicationServiceImpl implements RecommendationAppli
 
         Map<String, Long> acceptedCategoryStats = buildAcceptedCategoryStats(userId);
         boolean enabled = recommendationSwitch.enabled();
+        BigDecimal maxReward = filteredDemands.stream()
+            .map(Demand::getReward)
+            .filter(r -> r != null)
+            .max(BigDecimal::compareTo)
+            .orElse(BigDecimal.ONE);
 
         List<RecommendationItem> ranked = new ArrayList<>();
         int rank = 1;
-        for (Demand demand : filteredDemands.stream().sorted(resolveComparator(enabled, acceptedCategoryStats)).toList()) {
-            double score = enabled ? scoreDemand(demand, acceptedCategoryStats) : 0.0;
-            List<String> reasonTags = enabled ? buildReasonTags(demand, acceptedCategoryStats) : List.of("默认排序");
+        for (Demand demand : filteredDemands.stream().sorted(resolveComparator(enabled, acceptedCategoryStats, maxReward)).toList()) {
+            double score = enabled ? scoreDemand(demand, acceptedCategoryStats, maxReward) : 0.0;
+            List<String> reasonTags = enabled ? buildReasonTags(demand, acceptedCategoryStats, maxReward) : List.of("默认排序");
             ranked.add(new RecommendationItem(demand, score, rank++, reasonTags));
         }
 
@@ -156,36 +163,101 @@ public class RecommendationApplicationServiceImpl implements RecommendationAppli
         return stats;
     }
 
-    private Comparator<Demand> resolveComparator(boolean enabled, Map<String, Long> acceptedCategoryStats) {
-        if (!enabled || acceptedCategoryStats.isEmpty()) {
+    private Comparator<Demand> resolveComparator(boolean enabled, Map<String, Long> acceptedCategoryStats, BigDecimal maxReward) {
+        if (!enabled) {
             return Comparator.comparing(Demand::getCreatedAt, Comparator.nullsLast(LocalDateTime::compareTo)).reversed();
         }
+        if (acceptedCategoryStats.isEmpty()) {
+            return Comparator
+                .comparingDouble((Demand demand) -> scoreColdStart(demand, maxReward))
+                .reversed()
+                .thenComparing(Demand::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder()));
+        }
         return Comparator
-            .comparingDouble((Demand demand) -> scoreDemand(demand, acceptedCategoryStats))
+            .comparingDouble((Demand demand) -> scoreDemand(demand, acceptedCategoryStats, maxReward))
             .reversed()
-            .thenComparing(
-                Demand::getCreatedAt,
-                Comparator.nullsLast(Comparator.reverseOrder())
-            );
+            .thenComparing(Demand::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder()));
     }
 
-    private double scoreDemand(Demand demand, Map<String, Long> acceptedCategoryStats) {
-        if (acceptedCategoryStats.isEmpty()) {
-            return 0.1;
-        }
+    private double scoreDemand(Demand demand, Map<String, Long> acceptedCategoryStats, BigDecimal maxReward) {
         long totalAccepted = acceptedCategoryStats.values().stream().mapToLong(Long::longValue).sum();
         long categoryAccepted = acceptedCategoryStats.getOrDefault(demand.getCategory().name(), 0L);
         double categoryScore = totalAccepted == 0 ? 0.0 : ((double) categoryAccepted / totalAccepted);
-        double timeBoost = demand.getCreatedAt() == null ? 0.0 : 0.1;
-        return Math.min(1.0, 0.8 * categoryScore + timeBoost);
+        double rewardScore = computeRewardScore(demand.getReward(), maxReward);
+        double urgencyScore = computeUrgencyScore(demand.getEndTime());
+        double freshnessScore = computeFreshnessScore(demand.getCreatedAt());
+        return Math.min(1.0, 0.5 * categoryScore + 0.2 * rewardScore + 0.15 * urgencyScore + 0.15 * freshnessScore);
     }
 
-    private List<String> buildReasonTags(Demand demand, Map<String, Long> acceptedCategoryStats) {
+    private double scoreColdStart(Demand demand, BigDecimal maxReward) {
+        double rewardScore = computeRewardScore(demand.getReward(), maxReward);
+        double urgencyScore = computeUrgencyScore(demand.getEndTime());
+        double freshnessScore = computeFreshnessScore(demand.getCreatedAt());
+        return Math.min(1.0, 0.4 * rewardScore + 0.3 * urgencyScore + 0.3 * freshnessScore);
+    }
+
+    private double computeRewardScore(BigDecimal reward, BigDecimal maxReward) {
+        if (reward == null || maxReward == null || maxReward.compareTo(BigDecimal.ZERO) <= 0) {
+            return 0.0;
+        }
+        return Math.min(1.0, reward.doubleValue() / maxReward.doubleValue());
+    }
+
+    private double computeUrgencyScore(LocalDateTime endTime) {
+        if (endTime == null) {
+            return 0.3;
+        }
+        long daysUntilExpiry = ChronoUnit.DAYS.between(LocalDateTime.now(), endTime);
+        if (daysUntilExpiry < 0) {
+            return 0.0;
+        }
+        if (daysUntilExpiry <= 1) {
+            return 1.0;
+        }
+        if (daysUntilExpiry >= 7) {
+            return 0.1;
+        }
+        return 1.0 - (daysUntilExpiry - 1.0) / 6.0;
+    }
+
+    private double computeFreshnessScore(LocalDateTime createdAt) {
+        if (createdAt == null) {
+            return 0.0;
+        }
+        long daysSinceCreated = ChronoUnit.DAYS.between(createdAt, LocalDateTime.now());
+        if (daysSinceCreated < 0) {
+            daysSinceCreated = 0;
+        }
+        if (daysSinceCreated >= 14) {
+            return 0.0;
+        }
+        return 1.0 - daysSinceCreated / 14.0;
+    }
+
+    private List<String> buildReasonTags(Demand demand, Map<String, Long> acceptedCategoryStats, BigDecimal maxReward) {
         List<String> tags = new ArrayList<>();
         if (acceptedCategoryStats.containsKey(demand.getCategory().name())) {
             tags.add("同分类");
             tags.add("历史接单偏好");
-        } else {
+        }
+        if (demand.getReward() != null && maxReward != null
+            && maxReward.compareTo(BigDecimal.ZERO) > 0
+            && demand.getReward().doubleValue() / maxReward.doubleValue() > 0.7) {
+            tags.add("高报酬");
+        }
+        if (demand.getEndTime() != null) {
+            long daysUntilExpiry = ChronoUnit.DAYS.between(LocalDateTime.now(), demand.getEndTime());
+            if (daysUntilExpiry >= 0 && daysUntilExpiry <= 3) {
+                tags.add("即将截止");
+            }
+        }
+        if (demand.getCreatedAt() != null) {
+            long daysSinceCreated = ChronoUnit.DAYS.between(demand.getCreatedAt(), LocalDateTime.now());
+            if (daysSinceCreated <= 1) {
+                tags.add("最新需求");
+            }
+        }
+        if (tags.isEmpty()) {
             tags.add("默认排序");
         }
         return tags;

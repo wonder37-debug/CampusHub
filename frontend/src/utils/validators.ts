@@ -8,7 +8,10 @@ export function validateNickname(nickname: string): string {
 
 export function validateAvatarUrl(url: string): string {
   if (!url) return ''
-  if (!isURL(url.trim())) return '请输入有效的图片链接'
+  const trimmed = url.trim()
+  // 允许相对路径（以 / 开头）和完整 http/https URL
+  if (trimmed.startsWith('/')) return ''
+  if (!isURL(trimmed)) return '请输入有效的图片链接'
   return ''
 }
 

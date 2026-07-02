@@ -13,6 +13,8 @@ CREATE TABLE ord_demand (
   end_time DATETIME,
   reward DECIMAL(10,2) NOT NULL DEFAULT '0.00',
   tags VARCHAR(500),
+  images TEXT DEFAULT NULL,
+  contact_info VARCHAR(200) DEFAULT NULL,
   anonymous BOOLEAN NOT NULL DEFAULT FALSE,
   anonymous_code VARCHAR(64),
   status VARCHAR(32) NOT NULL DEFAULT 'REVIEWING',

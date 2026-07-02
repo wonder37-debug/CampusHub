@@ -20,6 +20,8 @@ public class Demand {
     private LocalDateTime endTime;
     private BigDecimal reward;
     private List<String> tags;
+    private List<String> images;
+    private String contactInfo;
     private DemandStatus status;
     private boolean isApproved;
     private boolean anonymous;
@@ -32,6 +34,7 @@ public class Demand {
 
     public Demand() {
         this.tags = new ArrayList<>();
+        this.images = new ArrayList<>();
     }
 
     public Demand(
@@ -48,6 +51,8 @@ public class Demand {
         LocalDateTime endTime,
         BigDecimal reward,
         List<String> tags,
+        List<String> images,
+        String contactInfo,
         DemandStatus status,
         boolean isApproved,
         boolean anonymous,
@@ -71,6 +76,8 @@ public class Demand {
         this.endTime = endTime;
         this.reward = reward;
         this.tags = tags == null ? new ArrayList<>() : new ArrayList<>(tags);
+        this.images = images == null ? new ArrayList<>() : new ArrayList<>(images);
+        this.contactInfo = contactInfo;
         this.status = status;
         this.isApproved = isApproved;
         this.anonymous = anonymous;
@@ -191,6 +198,22 @@ public class Demand {
 
     public void setTags(List<String> tags) {
         this.tags = tags == null ? new ArrayList<>() : new ArrayList<>(tags);
+    }
+
+    public List<String> getImages() {
+        return new ArrayList<>(images);
+    }
+
+    public void setImages(List<String> images) {
+        this.images = images == null ? new ArrayList<>() : new ArrayList<>(images);
+    }
+
+    public String getContactInfo() {
+        return contactInfo;
+    }
+
+    public void setContactInfo(String contactInfo) {
+        this.contactInfo = contactInfo;
     }
 
     public DemandStatus getStatus() {

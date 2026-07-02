@@ -23,6 +23,9 @@ public record OrderView(
     List<ReviewView> reviews,
     boolean currentUserReviewed,
     Long pendingReviewTarget,
-    String completionHint
+    String completionHint,
+    List<String> demandImages,
+    String demandContactInfo,
+    String arbitrationResult
 ) {
 }

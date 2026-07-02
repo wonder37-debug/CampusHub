@@ -15,6 +15,8 @@ public record PublishDemandCommand(
     LocalDateTime endTime,
     BigDecimal reward,
     List<String> tags,
+    List<String> images,
+    String contactInfo,
     boolean anonymous
 ) {
 }

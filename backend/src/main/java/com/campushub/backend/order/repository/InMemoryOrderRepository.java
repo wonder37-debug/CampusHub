@@ -57,4 +57,12 @@ public class InMemoryOrderRepository implements OrderRepository {
     public List<Order> findAll() {
         return new ArrayList<>(orders.values());
     }
+
+    @Override
+    public synchronized void deleteById(Long orderId) {
+        Order removed = orders.remove(orderId);
+        if (removed != null && removed.getDemandId() != null) {
+            demandToOrder.remove(removed.getDemandId());
+        }
+    }
 }

@@ -19,7 +19,8 @@ public record DemandSummaryResponse(
     LocalDateTime startTime,
     LocalDateTime endTime,
     LocalDateTime createdAt,
-    List<String> tags
+    List<String> tags,
+    List<String> images
 ) {
 
     public static DemandSummaryResponse from(Demand demand) {
@@ -37,7 +38,8 @@ public record DemandSummaryResponse(
             demand.getStartTime(),
             demand.getEndTime(),
             demand.getCreatedAt(),
-            demand.getTags()
+            demand.getTags(),
+            demand.getImages()
         );
     }
 }

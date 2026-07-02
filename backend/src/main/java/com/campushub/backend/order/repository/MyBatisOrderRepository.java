@@ -7,28 +7,14 @@ import com.campushub.backend.order.repository.entity.OrderEntity;
 import com.campushub.backend.order.repository.entity.OrderStatusLogEntity;
 import com.campushub.backend.order.repository.mapper.OrderMapper;
 import com.campushub.backend.order.repository.mapper.OrderStatusLogMapper;
-import org.springframework.context.annotation.Profile;
-import org.springframework.stereotype.Repository;
-import org.springframework.transaction.annotation.Transactional;
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.context.annotation.Profile;
+import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
-/**
- * 基于 MyBatis-Plus 的 {@link OrderRepository} 实现（一主多从结构）。
- *
- * <p>主表 {@code ord_order} 与流水表 {@code ord_order_status_log} 在同一事务中维护，
- * 保证订单与流水的原子性。仅在 {@code local} profile 下激活，避免与默认内存仓储冲突。</p>
- *
- * <p>并发防重底线：依赖 ord_order 上的唯一索引 {@code uk_order_demand(demand_id)}，
- * 重复抢单将由数据库抛出 SQLException，Spring 体系会转换为 {@link
- * org.springframework.dao.DuplicateKeyException}。本类不做任何捕获，原样向上传播。</p>
- *
- * <p>流水写入策略：基于"流水仅追加"的领域约束，UPDATE 路径下统计已持久化的流水条数 N，
- * 仅把领域列表中索引 ≥ N 的尾部条目插入到流水表，从而避免重复写入历史记录。</p>
- */
 @Repository
 @Profile("local")
 public class MyBatisOrderRepository implements OrderRepository {
@@ -51,7 +37,6 @@ public class MyBatisOrderRepository implements OrderRepository {
 
         int existingLogCount;
         if (order.getId() == null) {
-            // 唯一索引 uk_order_demand 触发的重复抢单异常会在此抛出
             orderMapper.insert(entity);
             order.setId(entity.getId());
             existingLogCount = 0;
@@ -60,13 +45,10 @@ public class MyBatisOrderRepository implements OrderRepository {
             existingLogCount = countLogs(order.getId());
         }
 
-        // 仅追加新增流水：跳过 [0, existingLogCount) 的已持久化条目
         List<OrderStatusHistoryEntry> history = order.getStatusHistory();
         if (history != null) {
             for (int i = existingLogCount; i < history.size(); i++) {
-                OrderStatusLogEntity logEntity =
-                    OrderStatusLogEntity.fromDomain(order.getId(), history.get(i));
-                statusLogMapper.insert(logEntity);
+                statusLogMapper.insert(OrderStatusLogEntity.fromDomain(order.getId(), history.get(i)));
             }
         }
         return order;
@@ -89,9 +71,7 @@ public class MyBatisOrderRepository implements OrderRepository {
         if (demandId == null) {
             return Optional.empty();
         }
-        OrderEntity entity = orderMapper.selectOne(
-            new LambdaQueryWrapper<OrderEntity>().eq(OrderEntity::getDemandId, demandId)
-        );
+        OrderEntity entity = orderMapper.selectOne(new LambdaQueryWrapper<OrderEntity>().eq(OrderEntity::getDemandId, demandId));
         if (entity == null) {
             return Optional.empty();
         }
@@ -103,22 +83,28 @@ public class MyBatisOrderRepository implements OrderRepository {
         if (userId == null) {
             return new ArrayList<>();
         }
-        // publisher_id == userId OR accepter_id == userId
         LambdaQueryWrapper<OrderEntity> wrapper = new LambdaQueryWrapper<OrderEntity>()
             .eq(OrderEntity::getPublisherId, userId)
             .or()
             .eq(OrderEntity::getAccepterId, userId);
-        List<OrderEntity> entities = orderMapper.selectList(wrapper);
-        return assembleAll(entities);
+        return assembleAll(orderMapper.selectList(wrapper));
     }
 
     @Override
     public List<Order> findAll() {
-        List<OrderEntity> entities = orderMapper.selectList(null);
-        return assembleAll(entities);
+        return assembleAll(orderMapper.selectList(null));
     }
 
-    /** 把实体列表组装为携带流水的领域订单列表，绝不返回 null。 */
+    @Override
+    @Transactional
+    public void deleteById(Long orderId) {
+        if (orderId == null) {
+            return;
+        }
+        statusLogMapper.delete(new LambdaQueryWrapper<OrderStatusLogEntity>().eq(OrderStatusLogEntity::getOrderId, orderId));
+        orderMapper.deleteById(orderId);
+    }
+
     private List<Order> assembleAll(List<OrderEntity> entities) {
         if (entities == null || entities.isEmpty()) {
             return new ArrayList<>();
@@ -130,7 +116,6 @@ public class MyBatisOrderRepository implements OrderRepository {
         return orders;
     }
 
-    /** 读取指定订单的全部流水，按 changed_at 升序、id 升序稳定排序。 */
     private List<OrderStatusHistoryEntry> loadHistory(Long orderId) {
         if (orderId == null) {
             return Collections.emptyList();
@@ -148,12 +133,9 @@ public class MyBatisOrderRepository implements OrderRepository {
         return result;
     }
 
-    /** 统计某订单当前已持久化的流水条数，用于实现"仅追加"的写入策略。 */
     private int countLogs(Long orderId) {
-        Long c = statusLogMapper.selectCount(
-            new LambdaQueryWrapper<OrderStatusLogEntity>()
-                .eq(OrderStatusLogEntity::getOrderId, orderId)
-        );
-        return c == null ? 0 : c.intValue();
+        Long count = statusLogMapper.selectCount(new LambdaQueryWrapper<OrderStatusLogEntity>()
+            .eq(OrderStatusLogEntity::getOrderId, orderId));
+        return count == null ? 0 : count.intValue();
     }
 }

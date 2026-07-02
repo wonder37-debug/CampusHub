@@ -5,6 +5,8 @@ import { useRouter } from 'vue-router'
 import { useCampusHubStore } from '@/stores/campusHub'
 import { validateNickname, validateAvatarUrl } from '@/utils/validators'
 import { handleError } from '@/utils/errorHandler'
+import { useConfirm } from '@/composables/useDialog'
+import AvatarCropper from '@/components/AvatarCropper.vue'
 
 const store = useCampusHubStore()
 const router = useRouter()
@@ -19,8 +21,6 @@ const profileForm = reactive({
   avatarUrl: store.currentUser?.avatarUrl ?? ''
 })
 
-// 本地上传已移除
-
 async function save(): Promise<void> {
   // run local validations
   fieldErrors.nickname = validateNickname(profileForm.nickname)
@@ -30,6 +30,8 @@ async function save(): Promise<void> {
     error.value = '请修正表单错误后再保存'
     return
   }
+
+  if (!await useConfirm('确认保存', '确认保存个人信息？')) return
 
   saving.value = true
   message.value = ''
@@ -54,28 +56,27 @@ onMounted(() => {
 </script>
 
 <template>
-  <div v-if="store.currentUser" class="page-grid">
+  <div>
+    <div v-if="store.currentUser" class="page-grid">
     <section class="panel">
       <div class="page-head">
         <div>
           <p class="eyebrow">编辑资料</p>
           <h1 class="page-title">修改个人信息</h1>
-          <p class="page-summary">更新昵称和头像链接。</p>
+          <p class="page-summary">更新昵称和头像。</p>
         </div>
       </div>
 
       <div class="form-grid two-column">
-        <div class="field">
+        <div class="field" style="grid-column: 1 / -1;">
           <label for="nickname">昵称</label>
           <input id="nickname" v-model="profileForm.nickname" @input="fieldErrors.nickname = ''" />
           <p v-if="fieldErrors.nickname" class="input-help" style="color: var(--danger)">{{ fieldErrors.nickname }}</p>
         </div>
-        <div class="field">
-          <label for="avatar">头像链接</label>
-          <input id="avatar" v-model="profileForm.avatarUrl" @input="fieldErrors.avatarUrl = ''" />
-          <p v-if="fieldErrors.avatarUrl" class="input-help" style="color: var(--danger)">{{ fieldErrors.avatarUrl }}</p>
+        <div class="field" style="grid-column: 1 / -1;">
+          <label>头像</label>
+          <AvatarCropper v-model="profileForm.avatarUrl" :size="80" />
         </div>
-        <!-- 本地上传头像控件已移除 -->
       </div>
 
       <div class="card-actions" style="margin-top: 16px;">
@@ -89,5 +90,6 @@ onMounted(() => {
 
   <div v-else class="empty-state">
     <strong>请先登录</strong>
+  </div>
   </div>
 </template>

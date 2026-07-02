@@ -19,6 +19,10 @@ import com.campushub.backend.demand.dto.PublishDemandCommand;
 import com.campushub.backend.demand.dto.UpdateDemandCommand;
 import com.campushub.backend.demand.repository.DemandRepository;
 import com.campushub.backend.notification.service.NotificationApplicationService;
+import com.campushub.backend.order.domain.OrderStatus;
+import com.campushub.backend.order.repository.OrderRepository;
+import com.campushub.backend.order.service.OrderApplicationService;
+import com.campushub.backend.review.repository.ReviewRepository;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Comparator;
@@ -36,13 +40,16 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
     private final UserRepository userRepository;
     private final SensitiveWordChecker sensitiveWordChecker;
     private final NotificationApplicationService notificationApplicationService;
+    private final OrderApplicationService orderApplicationService;
+    private final ReviewRepository reviewRepository;
+    private final OrderRepository orderRepository;
 
     public DemandApplicationServiceImpl(
         DemandRepository demandRepository,
         UserRepository userRepository,
         SensitiveWordChecker sensitiveWordChecker
     ) {
-        this(demandRepository, userRepository, sensitiveWordChecker, null);
+        this(demandRepository, userRepository, sensitiveWordChecker, null, null, null, null);
     }
 
     @Autowired
@@ -50,12 +57,18 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
         DemandRepository demandRepository,
         UserRepository userRepository,
         SensitiveWordChecker sensitiveWordChecker,
-        @Autowired(required = false) NotificationApplicationService notificationApplicationService
+        @Autowired(required = false) NotificationApplicationService notificationApplicationService,
+        @Autowired(required = false) OrderApplicationService orderApplicationService,
+        @Autowired(required = false) ReviewRepository reviewRepository,
+        @Autowired(required = false) OrderRepository orderRepository
     ) {
         this.demandRepository = demandRepository;
         this.userRepository = userRepository;
         this.sensitiveWordChecker = sensitiveWordChecker;
         this.notificationApplicationService = notificationApplicationService;
+        this.orderApplicationService = orderApplicationService;
+        this.reviewRepository = reviewRepository;
+        this.orderRepository = orderRepository;
     }
 
     @Override
@@ -65,6 +78,12 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
         User publisher = findActivePublisher(publisherId);
         guardForbiddenWords(command.title(), command.description());
         validateRewardAgainstBalance(publisher, command.reward());
+
+        BigDecimal reward = normalizeReward(command.reward());
+        freezeBalance(publisher, reward);
+
+        // 自动完成超时订单 + 检查未评价订单并提醒
+        checkPendingReviewsAndAutoComplete(publisherId);
 
         LocalDateTime now = LocalDateTime.now();
         Demand demand = new Demand(
@@ -81,6 +100,8 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
             command.endTime(),
             normalizeReward(command.reward()),
             command.tags(),
+            command.images(),
+            trimToNull(command.contactInfo()),
             DemandStatus.REVIEWING,
             false,
             command.anonymous(),
@@ -105,7 +126,9 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
 
         LocalDateTime now = LocalDateTime.now();
         Stream<Demand> filtered = demandRepository.findAll().stream()
-            .filter(demand -> isPubliclyVisible(demand, now))
+            .filter(demand -> isPubliclyVisible(demand, now)
+                || (query.currentUserId() != null && demand.getPublisherId() != null
+                    && demand.getPublisherId().equals(query.currentUserId())))
             .filter(demand -> matchesKeyword(demand, query.q()))
             .filter(demand -> matchesCategory(demand, query.category()))
             .filter(demand -> matchesCampusZone(demand, query.campusZone()))
@@ -173,11 +196,22 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
             User publisher = userRepository.findById(demand.getPublisherId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "publisher not found"));
             validateRewardAgainstBalance(publisher, command.reward());
-            demand.setReward(normalizeReward(command.reward()));
+            BigDecimal newReward = normalizeReward(command.reward());
+            BigDecimal oldReward = demand.getReward() == null ? BigDecimal.ZERO : demand.getReward();
+            BigDecimal diff = newReward.subtract(oldReward);
+            if (diff.compareTo(BigDecimal.ZERO) > 0) {
+                freezeBalance(publisher, diff);
+            } else if (diff.compareTo(BigDecimal.ZERO) < 0) {
+                unfreezeBalance(publisher, diff.negate());
+            }
+            demand.setReward(newReward);
         }
         if (command.tags() != null) {
             validateTags(command.tags());
             demand.setTags(command.tags());
+        }
+        if (command.contactInfo() != null) {
+            demand.setContactInfo(trimToNull(command.contactInfo()));
         }
         if (command.anonymous() != null) {
             demand.setAnonymous(command.anonymous());
@@ -185,6 +219,47 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
         }
         demand.setUpdatedAt(LocalDateTime.now());
         return DemandDetailResponse.from(demandRepository.save(demand));
+    }
+
+    @Override
+    public void unfreezePublisherBalance(Long demandId) {
+        Demand demand = findDemandById(demandId);
+        if (demand.getPublisherId() == null) {
+            return;
+        }
+        User publisher = userRepository.findById(demand.getPublisherId())
+            .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "publisher not found"));
+        BigDecimal reward = demand.getReward() == null ? BigDecimal.ZERO : demand.getReward();
+        unfreezeBalance(publisher, reward);
+    }
+
+    @Override
+    public DemandDetailResponse withdraw(Long operatorId, Long demandId) {
+        Demand demand = demandRepository.findById(demandId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "demand not found"));
+        if (!demand.getPublisherId().equals(operatorId)) {
+            throw new BusinessException(ErrorCode.PERMISSION_DENIED, "only the publisher can withdraw this demand");
+        }
+        if (demand.getStatus() != DemandStatus.REVIEWING && demand.getStatus() != DemandStatus.PENDING) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "only reviewing or open demands can be withdrawn");
+        }
+        demand.setStatus(DemandStatus.CANCELLED);
+        demand.setUpdatedAt(LocalDateTime.now());
+        unfreezeBalanceForDemand(demand);
+        demandRepository.save(demand);
+        return DemandDetailResponse.from(demand);
+    }
+
+    private void unfreezeBalanceForDemand(Demand demand) {
+        if (demand.getReward() == null || demand.getReward().compareTo(BigDecimal.ZERO) <= 0 || demand.getPublisherId() == null) {
+            return;
+        }
+        User publisher = userRepository.findById(demand.getPublisherId()).orElse(null);
+        if (publisher != null) {
+            BigDecimal frozen = publisher.getFrozenBalance() == null ? BigDecimal.ZERO : publisher.getFrozenBalance();
+            publisher.setFrozenBalance(frozen.subtract(demand.getReward()).max(BigDecimal.ZERO));
+            userRepository.save(publisher);
+        }
     }
 
     private User findActivePublisher(Long publisherId) {
@@ -268,6 +343,19 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
         return available.max(BigDecimal.ZERO);
     }
 
+    private void freezeBalance(User user, BigDecimal amount) {
+        BigDecimal currentFrozen = user.getFrozenBalance() == null ? BigDecimal.ZERO : user.getFrozenBalance();
+        user.setFrozenBalance(currentFrozen.add(amount));
+        userRepository.save(user);
+    }
+
+    void unfreezeBalance(User user, BigDecimal amount) {
+        BigDecimal currentFrozen = user.getFrozenBalance() == null ? BigDecimal.ZERO : user.getFrozenBalance();
+        BigDecimal newFrozen = currentFrozen.subtract(amount).max(BigDecimal.ZERO);
+        user.setFrozenBalance(newFrozen);
+        userRepository.save(user);
+    }
+
     private void guardForbiddenWords(String title, String description) {
         String merged = (title == null ? "" : title) + "\n" + (description == null ? "" : description);
         if (sensitiveWordChecker.containsForbiddenWords(merged)) {
@@ -312,7 +400,12 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
     }
 
     private boolean isPubliclyVisible(Demand demand, LocalDateTime now) {
-        return demand.getStatus() == DemandStatus.PENDING && !isExpired(demand, now);
+        if (isExpired(demand, now)) {
+            return false;
+        }
+        return demand.getStatus() == DemandStatus.PENDING
+            || demand.getStatus() == DemandStatus.IN_PROGRESS
+            || demand.getStatus() == DemandStatus.COMPLETED;
     }
 
     private boolean isExpired(Demand demand, LocalDateTime now) {
@@ -375,6 +468,27 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
                 continue;
             }
             notificationApplicationService.notifyDemandReviewRequested(admin.getId(), demand.getId());
+        }
+    }
+
+    private void checkPendingReviewsAndAutoComplete(Long publisherId) {
+        // 先执行超时订单自动完成
+        if (orderApplicationService != null) {
+            orderApplicationService.autoCompleteOverdueOrders(publisherId);
+        }
+
+        // 检查该用户是否有已完成但未评价的订单，如果有则发送提醒
+        if (notificationApplicationService != null && reviewRepository != null && orderRepository != null) {
+            java.util.List<com.campushub.backend.order.domain.Order> allOrders = orderRepository.findByParticipant(publisherId);
+            for (com.campushub.backend.order.domain.Order order : allOrders) {
+                if (order.getStatus() != OrderStatus.COMPLETED) {
+                    continue;
+                }
+                if (reviewRepository.findByOrderIdAndAuthorId(order.getId(), publisherId).isPresent()) {
+                    continue;
+                }
+                notificationApplicationService.notifyPendingReviewReminder(publisherId, order.getId());
+            }
         }
     }
 }

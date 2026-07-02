@@ -78,6 +78,18 @@ public class MyBatisReviewRepository implements ReviewRepository {
     }
 
     @Override
+    public List<Review> findByAuthorId(Long authorId) {
+        if (authorId == null) {
+            return new ArrayList<>();
+        }
+        List<ReviewEntity> entities = reviewMapper.selectList(
+            new LambdaQueryWrapper<ReviewEntity>()
+                .eq(ReviewEntity::getAuthorId, authorId)
+        );
+        return entities.stream().map(ReviewEntity::toDomain).toList();
+    }
+
+    @Override
     public List<Review> findByOrderId(Long orderId) {
         if (orderId == null) {
             return new ArrayList<>();

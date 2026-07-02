@@ -23,10 +23,20 @@ const rejectDialogOpen = ref(false)
 const rejectingDemandId = ref('')
 const rejectingDemandTitle = ref('')
 const rejectReason = ref('')
+const arbitrationDialogOpen = ref(false)
+const arbitrationOrderId = ref('')
+const arbitrationOrderTitle = ref('')
+const arbitrationOutcome = ref<'complete' | 'cancel'>('complete')
+const arbitrationReason = ref('')
+const deleteDialogOpen = ref(false)
+const deletingOrderId = ref('')
+const deletingOrderTitle = ref('')
+const deleteReason = ref('')
 
 const isAdmin = computed(() => store.currentUser?.role === 'ADMIN')
 const adminDashboard = computed(() => store.adminDashboard)
 const pendingDemands = computed(() => store.adminPendingDemands)
+const arbitrationOrders = computed(() => store.adminArbitrationOrders)
 const adminCategoryOptions = DEMAND_CATEGORY_OPTIONS.map((category) => ({
   value: category,
   label: formatDemandCategory(category)
@@ -90,7 +100,9 @@ async function refreshAdminData(): Promise<void> {
       creditSort.value === 'none' ? '' : 'creditScore',
       creditSort.value === 'none' ? '' : creditSort.value
     ),
-    store.fetchAdminPendingDemands(demandQuery.value, demandCategory.value, demandCampusZone.value)
+    store.fetchAdminPendingDemands(demandQuery.value, demandCategory.value, demandCampusZone.value),
+    store.fetchAdminArbitrationOrders(),
+    store.fetchNotifications()
   ])
 }
 
@@ -104,6 +116,12 @@ onMounted(() => {
       // 尝试滚动到该元素
       setTimeout(() => {
         const el = document.getElementById(`pending-${demandId}`)
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }, 200)
+    }
+    if (tab === 'arbitration') {
+      setTimeout(() => {
+        const el = document.getElementById('arbitration-section')
         if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
       }, 200)
     }
@@ -176,10 +194,77 @@ async function toggleUserStatus(userId: string, banned: boolean): Promise<void> 
 function openDemandDetail(demandId: string): void {
   router.push(`/demands/${demandId}`)
 }
+
+function openArbitrationDialog(order: { id: string; demandTitle?: string; title?: string }): void {
+  arbitrationOrderId.value = order.id
+  arbitrationOrderTitle.value = order.demandTitle || order.title || ''
+  arbitrationOutcome.value = 'complete'
+  arbitrationReason.value = ''
+  arbitrationDialogOpen.value = true
+}
+
+function closeArbitrationDialog(): void {
+  arbitrationDialogOpen.value = false
+  arbitrationOrderId.value = ''
+  arbitrationOrderTitle.value = ''
+  arbitrationReason.value = ''
+}
+
+async function submitArbitrationResolution(): Promise<void> {
+  if (!arbitrationOrderId.value) {
+    closeArbitrationDialog()
+    return
+  }
+
+  if (!arbitrationReason.value.trim()) {
+    error.value = '请填写裁决说明'
+    return
+  }
+
+  try {
+    await store.resolveOrderArbitrationByAdmin(arbitrationOrderId.value, arbitrationOutcome.value, arbitrationReason.value)
+    message.value = '仲裁已处理。'
+    closeArbitrationDialog()
+    await refreshAdminData()
+  } catch (resolveError) {
+    error.value = handleError(resolveError, '仲裁处理失败')
+  }
+}
+
+function openDeleteOrderDialog(order: { id: string; demandTitle?: string; title?: string }): void {
+  deletingOrderId.value = order.id
+  deletingOrderTitle.value = order.demandTitle || order.title || ''
+  deleteReason.value = ''
+  deleteDialogOpen.value = true
+}
+
+function closeDeleteOrderDialog(): void {
+  deleteDialogOpen.value = false
+  deletingOrderId.value = ''
+  deletingOrderTitle.value = ''
+  deleteReason.value = ''
+}
+
+async function submitDeleteOrder(): Promise<void> {
+  if (!deletingOrderId.value) {
+    closeDeleteOrderDialog()
+    return
+  }
+
+  try {
+    await store.deleteOrderByAdmin(deletingOrderId.value, deleteReason.value)
+    message.value = '订单已删除。'
+    closeDeleteOrderDialog()
+    await refreshAdminData()
+  } catch (deleteError) {
+    error.value = handleError(deleteError, '删除订单失败')
+  }
+}
 </script>
 
 <template>
-  <div v-if="isAdmin" class="page-grid">
+  <div>
+    <div v-if="isAdmin" class="page-grid">
     <section class="panel">
       <div class="page-head">
         <div>
@@ -311,6 +396,36 @@ function openDemandDetail(demandId: string): void {
           </table>
         </div>
       </article>
+
+      <article class="panel" id="arbitration-section">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">争议订单</p>
+            <h2 class="section-title">仲裁处理队列</h2>
+          </div>
+        </div>
+
+        <div v-if="arbitrationOrders.length" class="section-grid">
+          <div v-for="order in arbitrationOrders" :key="order.id" class="list-card">
+            <div class="status-row">
+              <span class="chip is-warning">仲裁中</span>
+              <span class="chip">订单 {{ order.id }}</span>
+            </div>
+            <div class="card-head">
+              <h3>{{ order.demandTitle }}</h3>
+              <strong>{{ order.createdAt }}</strong>
+            </div>
+            <p class="meta">需求方：{{ order.requesterName }} ｜ 接单方：{{ order.serviceProviderName }}</p>
+            <p v-if="order.completionHint" class="meta" style="margin-top: 8px; white-space: pre-wrap;">{{ order.completionHint }}</p>
+            <div class="card-actions">
+              <button type="button" class="button primary" @click="openArbitrationDialog(order)">裁决订单</button>
+              <button type="button" class="button secondary" @click="router.push(`/orders/${order.id}`)">查看详情</button>
+              <button type="button" class="button danger" @click="openDeleteOrderDialog(order)">删除订单</button>
+            </div>
+          </div>
+        </div>
+        <div v-else class="empty-state">当前没有待处理的仲裁订单。</div>
+      </article>
     </section>
 
     <section class="panel">
@@ -364,6 +479,64 @@ function openDemandDetail(demandId: string): void {
       </div>
     </div>
   </teleport>
+
+  <teleport to="body">
+    <div v-if="arbitrationDialogOpen" class="modal-backdrop" @click.self="closeArbitrationDialog">
+      <div class="modal-card panel">
+        <div class="modal-head">
+          <div>
+            <p class="eyebrow">仲裁裁决</p>
+            <h3 class="section-title">处理订单争议</h3>
+          </div>
+          <button type="button" class="button secondary" @click="closeArbitrationDialog">关闭</button>
+        </div>
+
+        <p class="page-summary" style="margin-top: 0;">正在处理订单「{{ arbitrationOrderTitle || '未命名订单' }}」的争议，请选择裁决结果并填写说明。</p>
+        <div class="field">
+          <label for="arbitration-outcome">裁决结果</label>
+          <select id="arbitration-outcome" v-model="arbitrationOutcome">
+            <option value="complete">判定完成订单</option>
+            <option value="cancel">判定取消订单</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="arbitration-reason">裁决说明</label>
+          <textarea id="arbitration-reason" v-model="arbitrationReason" rows="5" placeholder="请填写管理员裁决依据，系统会通知订单双方"></textarea>
+        </div>
+
+        <div class="card-actions" style="justify-content: flex-end;">
+          <button type="button" class="button secondary" @click="closeArbitrationDialog">取消</button>
+          <button type="button" class="button primary" :disabled="!arbitrationReason.trim()" @click="submitArbitrationResolution">确认裁决</button>
+        </div>
+      </div>
+    </div>
+  </teleport>
+
+  <teleport to="body">
+    <div v-if="deleteDialogOpen" class="modal-backdrop" @click.self="closeDeleteOrderDialog">
+      <div class="modal-card panel">
+        <div class="modal-head">
+          <div>
+            <p class="eyebrow">删除订单</p>
+            <h3 class="section-title">管理员删除订单</h3>
+          </div>
+          <button type="button" class="button secondary" @click="closeDeleteOrderDialog">关闭</button>
+        </div>
+
+        <p class="page-summary" style="margin-top: 0;">将删除订单「{{ deletingOrderTitle || '未命名订单' }}」。如有需要，可填写删除原因用于审计与通知。</p>
+        <div class="field">
+          <label for="delete-order-reason">删除原因</label>
+          <textarea id="delete-order-reason" v-model="deleteReason" rows="5" placeholder="例如：违规订单、重复订单、数据修正等"></textarea>
+        </div>
+
+        <div class="card-actions" style="justify-content: flex-end;">
+          <button type="button" class="button secondary" @click="closeDeleteOrderDialog">取消</button>
+          <button type="button" class="button danger" @click="submitDeleteOrder">确认删除</button>
+        </div>
+      </div>
+    </div>
+  </teleport>
+  </div>
 </template>
 
 <style scoped>

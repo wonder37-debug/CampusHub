@@ -25,9 +25,12 @@ public record DemandView(
     String anonymousCode,
     boolean canAccept,
     String acceptDisabledReason,
+    String acceptStatusHint,
     boolean canStartExecution,
     boolean canViewAcceptNote,
     boolean canSubmitAcceptNote,
+    List<String> images,
+    String contactInfo,
     LocalDateTime createdAt,
     LocalDateTime updatedAt
 ) {
