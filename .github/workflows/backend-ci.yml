@@ -1,0 +1,163 @@
+name: Backend CI
+
+on:
+  push:
+    paths:
+      - 'backend/**'
+      - '.gitlab/backend.yml'
+      - '.gitlab/maven-settings.xml'
+      - '.gitlab-ci.yml'
+      - '.github/workflows/backend-ci.yml'
+  pull_request:
+    paths:
+      - 'backend/**'
+      - '.gitlab/backend.yml'
+      - '.gitlab/maven-settings.xml'
+      - '.gitlab-ci.yml'
+      - '.github/workflows/backend-ci.yml'
+
+env:
+  MAVEN_CLI_OPTS: >-
+    -B -ntp
+    -s ../.gitlab/maven-settings.xml
+    -Dmaven.artifact.threads=1
+    -Daether.connector.connectTimeout=30000
+    -Daether.connector.requestTimeout=120000
+    -Dmaven.wagon.rto=120000
+    -Dmaven.wagon.http.retryHandler.count=1
+  SPRING_PROFILES_ACTIVE: default
+  SPRING_AUTOCONFIGURE_EXCLUDE: org.springframework.boot.autoconfigure.mail.MailSenderAutoConfiguration
+  SPRING_MAIN_LAZY_INITIALIZATION: true
+  APP_DEMO_DATA_ENABLED: 'false'
+
+jobs:
+  static-check:
+    name: Static Check (Compile)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Cache Maven repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('backend/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      - name: Compile
+        working-directory: backend
+        run: mvn $MAVEN_CLI_OPTS -DskipTests compile
+
+  unit-test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Cache Maven repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('backend/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      - name: Run unit tests
+        working-directory: backend
+        run: >-
+          mvn $MAVEN_CLI_OPTS
+          "-Dtest=*ServiceImplTest,RequestUserExtractorTest"
+          "-Dsurefire.timeout=240"
+          "-Dsurefire.exitTimeout=30"
+          test
+
+      - name: Upload JUnit reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-junit-reports
+          path: backend/target/surefire-reports/
+          retention-days: 7
+
+  integration-test:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Cache Maven repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('backend/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      - name: Run integration tests
+        working-directory: backend
+        run: >-
+          mvn $MAVEN_CLI_OPTS
+          "-Dtest=FrontendIntegrationFlowTest"
+          "-Dsurefire.timeout=360"
+          "-Dsurefire.forkedProcessTimeoutInSeconds=180"
+          "-Dsurefire.exitTimeout=30"
+          "-Dsurefire.useFile=false"
+          test
+
+      - name: Upload JUnit reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-junit-reports
+          path: backend/target/surefire-reports/
+          retention-days: 7
+
+  build:
+    name: Build JAR
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Cache Maven repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('backend/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      - name: Build
+        working-directory: backend
+        run: mvn $MAVEN_CLI_OPTS -DskipTests package
+
+      - name: Upload JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-jar
+          path: backend/target/*.jar
+          retention-days: 7
