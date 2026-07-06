@@ -445,7 +445,7 @@ async function submitForgotPassword(): Promise<void> {
             <h3 class="section-title">找回密码</h3>
             <p class="eyebrow">使用注册邮箱验证</p>
           </div>
-          <button type="button" class="button secondary" @click="showForgotPassword = false">关闭</button>
+          <button type="button" class="modal-close" @click="showForgotPassword = false" title="关闭" aria-label="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
 
         <form class="field-grid" @submit.prevent="submitForgotPassword">

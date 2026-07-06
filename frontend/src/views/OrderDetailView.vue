@@ -524,7 +524,7 @@ onMounted(() => {
             <p class="eyebrow">订单仲裁</p>
             <h3 class="section-title">提交争议说明</h3>
           </div>
-          <button type="button" class="button secondary" @click="closeArbitrationDialog">关闭</button>
+          <button type="button" class="modal-close" @click="closeArbitrationDialog" title="关闭" aria-label="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
 
         <p class="page-summary" style="margin-top: 0;">提交后订单会进入仲裁中状态，双方暂时无法继续推进订单，管理员会根据说明做出处理。</p>

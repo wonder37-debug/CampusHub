@@ -139,8 +139,8 @@ function onStatusClick(): void {
         </div>
         <div class="footer-col">
           <strong>支持</strong>
-          <p>🔗 帮助中心</p>
-          <p>🛡 用户协议 &amp; 隐私政策</p>
+          <p><RouterLink to="/help" class="footer-link">🔗 帮助中心</RouterLink></p>
+          <p><RouterLink to="/legal" class="footer-link">🛡 用户协议 &amp; 隐私政策</RouterLink></p>
         </div>
       </div>
       <div class="footer-copyright">

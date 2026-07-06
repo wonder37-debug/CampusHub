@@ -1010,6 +1010,42 @@ button.back-to-top:hover {
   gap: 12px;
 }
 
+/* 弹窗右上角 × 关闭按钮（现代风格，全局统一） */
+.modal-close {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  margin: -4px -4px 0 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  line-height: 1;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
+}
+
+.modal-close svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+.modal-close:hover {
+  background: var(--panel-border);
+  color: var(--text-strong);
+  transform: rotate(90deg);
+}
+
+.modal-close:focus-visible {
+  outline: 2px solid var(--muted);
+  outline-offset: 2px;
+}
+
 @media (max-width: 780px) {
   .fab {
     right: 16px;
@@ -1071,6 +1107,17 @@ button.back-to-top:hover {
   text-align: center;
   font-size: 12px;
   color: var(--muted);
+}
+
+.footer-link {
+  color: inherit;
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.footer-link:hover {
+  color: var(--text-strong);
+  text-decoration: underline;
 }
 
 /* 加载更多 通用面板 */

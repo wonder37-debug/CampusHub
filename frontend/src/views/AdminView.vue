@@ -462,7 +462,7 @@ async function submitDeleteOrder(): Promise<void> {
             <p class="eyebrow">拒绝审核</p>
             <h3 class="section-title">填写拒绝理由</h3>
           </div>
-          <button type="button" class="button secondary" @click="closeRejectDialog">关闭</button>
+          <button type="button" class="modal-close" @click="closeRejectDialog" title="关闭" aria-label="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
 
         <p class="page-summary" style="margin-top: 0;">拒绝后，这段理由会通过后端自动发送给需求申请方。</p>
@@ -488,7 +488,7 @@ async function submitDeleteOrder(): Promise<void> {
             <p class="eyebrow">仲裁裁决</p>
             <h3 class="section-title">处理订单争议</h3>
           </div>
-          <button type="button" class="button secondary" @click="closeArbitrationDialog">关闭</button>
+          <button type="button" class="modal-close" @click="closeArbitrationDialog" title="关闭" aria-label="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
 
         <p class="page-summary" style="margin-top: 0;">正在处理订单「{{ arbitrationOrderTitle || '未命名订单' }}」的争议，请选择裁决结果并填写说明。</p>
@@ -520,7 +520,7 @@ async function submitDeleteOrder(): Promise<void> {
             <p class="eyebrow">删除订单</p>
             <h3 class="section-title">管理员删除订单</h3>
           </div>
-          <button type="button" class="button secondary" @click="closeDeleteOrderDialog">关闭</button>
+          <button type="button" class="modal-close" @click="closeDeleteOrderDialog" title="关闭" aria-label="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
 
         <p class="page-summary" style="margin-top: 0;">将删除订单「{{ deletingOrderTitle || '未命名订单' }}」。如有需要，可填写删除原因用于审计与通知。</p>
