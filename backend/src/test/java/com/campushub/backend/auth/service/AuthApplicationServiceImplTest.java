@@ -19,7 +19,7 @@ import com.campushub.backend.auth.repository.InMemoryUserRepository;
 import com.campushub.backend.auth.repository.UserRepository;
 import com.campushub.backend.common.exception.BusinessException;
 import com.campushub.backend.common.exception.ErrorCode;
-import com.campushub.backend.common.security.SimpleTokenService;
+import com.campushub.backend.common.security.JwtTokenService;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -43,7 +43,7 @@ class AuthApplicationServiceImplTest {
         authApplicationService = new AuthApplicationServiceImpl(
             userRepository,
             new InMemoryVerificationCodeService(CAMPUS_EMAIL_POLICY, verificationEmailSender),
-            new SimpleTokenService(),
+            new JwtTokenService("ZGV2LWNhbXB1c2h1Yi1qd3Qtc2VjcmV0LWtleS1mb3ItZGV2ZWxvcG1lbnQtb25seS0yNTYtYml0cw=="),
             CAMPUS_EMAIL_POLICY
         );
     }

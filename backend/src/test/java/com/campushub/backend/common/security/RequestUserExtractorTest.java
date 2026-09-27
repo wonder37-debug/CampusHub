@@ -12,14 +12,14 @@ import org.springframework.mock.web.MockHttpServletRequest;
 
 class RequestUserExtractorTest {
 
-    private final SimpleTokenService tokenService = new SimpleTokenService();
-    private final RequestUserExtractor requestUserExtractor = new RequestUserExtractor();
+    private static final String SECRET = "ZGV2LWNhbXB1c2h1Yi1qd3Qtc2VjcmV0LWtleS1mb3ItZGV2ZWxvcG1lbnQtb25seS0yNTYtYml0cw==";
+    private final JwtTokenService tokenService = new JwtTokenService(SECRET);
+    private final RequestUserExtractor requestUserExtractor = new RequestUserExtractor(tokenService);
 
     @Test
     void shouldExtractCurrentUserFromGeneratedToken() {
         String token = tokenService.generateToken(
-            new TokenPayload(42L, UserRole.USER, Instant.now().plusSeconds(3600))
-        );
+            new TokenPayload(42L, UserRole.USER, Instant.now().plusSeconds(3600)));
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.addHeader("Authorization", "Bearer " + token);
 
@@ -32,8 +32,7 @@ class RequestUserExtractorTest {
     @Test
     void shouldRejectExpiredToken() {
         String token = tokenService.generateToken(
-            new TokenPayload(42L, UserRole.USER, Instant.now().minusSeconds(60))
-        );
+            new TokenPayload(42L, UserRole.USER, Instant.now().minusSeconds(60)));
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.addHeader("Authorization", "Bearer " + token);
 
@@ -44,5 +43,18 @@ class RequestUserExtractorTest {
 
         assertEquals(ErrorCode.AUTH_FAILED, exception.getErrorCode());
         assertEquals("token has expired", exception.getMessage());
+    }
+
+    @Test
+    void shouldReturnNullWhenBearerMissing() {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        assertEquals(null, requestUserExtractor.tryExtract(request));
+    }
+
+    @Test
+    void shouldReturnNullForInvalidTokenInTryExtract() {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addHeader("Authorization", "Bearer not-a-jwt");
+        assertEquals(null, requestUserExtractor.tryExtract(request));
     }
 }
