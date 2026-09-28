@@ -6,10 +6,10 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.campushub.backend.BackendApplication;
 import com.campushub.backend.auth.domain.User;
 import com.campushub.backend.auth.domain.UserRole;
 import com.campushub.backend.auth.domain.UserStatus;
-import com.campushub.backend.auth.repository.InMemoryUserRepository;
 import com.campushub.backend.auth.repository.UserRepository;
 import com.campushub.backend.common.api.PageResponse;
 import com.campushub.backend.common.exception.BusinessException;
@@ -26,30 +26,35 @@ import com.campushub.backend.demand.dto.DemandSummaryResponse;
 import com.campushub.backend.demand.dto.PublishDemandCommand;
 import com.campushub.backend.demand.dto.UpdateDemandCommand;
 import com.campushub.backend.demand.repository.DemandRepository;
-import com.campushub.backend.demand.repository.InMemoryDemandRepository;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.annotation.DirtiesContext;
 
+@SpringBootTest(classes = BackendApplication.class, properties = {
+    "app.demo-data.enabled=false",
+    "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.mail.MailSenderAutoConfiguration"
+})
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 class DemandApplicationServiceImplTest {
 
+    @Autowired
     private UserRepository userRepository;
+
+    @Autowired
     private DemandRepository demandRepository;
+
+    @Autowired
     private DemandApplicationService demandApplicationService;
+
     private Long publisherId;
 
     @BeforeEach
     void setUp() {
-        userRepository = new InMemoryUserRepository();
-        demandRepository = new InMemoryDemandRepository();
-        demandApplicationService = new DemandApplicationServiceImpl(
-            demandRepository,
-            userRepository,
-            new DefaultSensitiveWordChecker()
-        );
-
         User user = new User(
             null,
             "zheng@example.edu.cn",

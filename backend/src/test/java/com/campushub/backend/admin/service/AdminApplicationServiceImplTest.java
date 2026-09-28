@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.campushub.backend.BackendApplication;
 import com.campushub.backend.admin.dto.AdminDashboardResponse;
 import com.campushub.backend.admin.dto.AdminDemandQuery;
 import com.campushub.backend.admin.dto.AdminDemandReviewCommand;
@@ -13,7 +14,6 @@ import com.campushub.backend.auth.domain.User;
 import com.campushub.backend.auth.domain.UserRole;
 import com.campushub.backend.auth.domain.UserStatus;
 import com.campushub.backend.auth.dto.UserProfileResponse;
-import com.campushub.backend.auth.repository.InMemoryUserRepository;
 import com.campushub.backend.auth.repository.UserRepository;
 import com.campushub.backend.common.api.PageResponse;
 import com.campushub.backend.common.exception.BusinessException;
@@ -24,66 +24,62 @@ import com.campushub.backend.demand.dto.DemandDetailResponse;
 import com.campushub.backend.demand.dto.DemandSummaryResponse;
 import com.campushub.backend.demand.dto.PublishDemandCommand;
 import com.campushub.backend.demand.repository.DemandRepository;
-import com.campushub.backend.demand.repository.InMemoryDemandRepository;
-import com.campushub.backend.demand.service.DefaultSensitiveWordChecker;
 import com.campushub.backend.demand.service.DemandApplicationService;
-import com.campushub.backend.demand.service.DemandApplicationServiceImpl;
-import com.campushub.backend.notification.repository.InMemoryNotificationRepository;
+import com.campushub.backend.notification.repository.NotificationRepository;
 import com.campushub.backend.notification.service.NotificationApplicationService;
-import com.campushub.backend.notification.service.NotificationApplicationServiceImpl;
 import com.campushub.backend.order.dto.AcceptOrderCommand;
 import com.campushub.backend.order.dto.OrderDetailResponse;
 import com.campushub.backend.order.dto.OrderSummaryResponse;
 import com.campushub.backend.order.dto.RequestOrderArbitrationCommand;
 import com.campushub.backend.order.dto.UpdateOrderStatusCommand;
-import com.campushub.backend.order.repository.InMemoryOrderRepository;
 import com.campushub.backend.order.repository.OrderRepository;
 import com.campushub.backend.order.service.OrderApplicationService;
-import com.campushub.backend.order.service.OrderApplicationServiceImpl;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.annotation.DirtiesContext;
 
+@SpringBootTest(classes = BackendApplication.class, properties = {
+    "app.demo-data.enabled=false",
+    "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.mail.MailSenderAutoConfiguration"
+})
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 class AdminApplicationServiceImplTest {
 
+    @Autowired
     private UserRepository userRepository;
+
+    @Autowired
     private DemandRepository demandRepository;
+
+    @Autowired
     private OrderRepository orderRepository;
+
+    @Autowired
+    private NotificationRepository notificationRepository;
+
+    @Autowired
     private DemandApplicationService demandApplicationService;
+
+    @Autowired
     private OrderApplicationService orderApplicationService;
+
+    @Autowired
     private AdminApplicationService adminApplicationService;
+
+    @Autowired
+    private NotificationApplicationService notificationApplicationService;
+
     private Long adminId;
     private Long publisherId;
     private Long accepterId;
-    private NotificationApplicationService notificationApplicationService;
 
     @BeforeEach
     void setUp() {
-        userRepository = new InMemoryUserRepository();
-        demandRepository = new InMemoryDemandRepository();
-        orderRepository = new InMemoryOrderRepository();
-        notificationApplicationService = new NotificationApplicationServiceImpl(new InMemoryNotificationRepository());
-        demandApplicationService = new DemandApplicationServiceImpl(
-            demandRepository,
-            userRepository,
-            new DefaultSensitiveWordChecker()
-        );
-        orderApplicationService = new OrderApplicationServiceImpl(
-            orderRepository,
-            demandRepository,
-            userRepository,
-            notificationApplicationService
-        );
-        adminApplicationService = new AdminApplicationServiceImpl(
-            userRepository,
-            demandRepository,
-            orderRepository,
-            notificationApplicationService,
-            demandApplicationService
-        );
-
         adminId = userRepository.save(new User(
             null,
             "admin@example.edu.cn",

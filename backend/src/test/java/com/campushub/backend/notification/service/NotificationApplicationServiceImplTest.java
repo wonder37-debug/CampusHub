@@ -5,25 +5,32 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.campushub.backend.BackendApplication;
 import com.campushub.backend.common.api.PageResponse;
 import com.campushub.backend.common.exception.BusinessException;
 import com.campushub.backend.common.exception.ErrorCode;
 import com.campushub.backend.common.model.PageQuery;
 import com.campushub.backend.notification.dto.NotificationQuery;
 import com.campushub.backend.notification.dto.NotificationResponse;
-import com.campushub.backend.notification.repository.InMemoryNotificationRepository;
+import com.campushub.backend.notification.repository.NotificationRepository;
 import com.campushub.backend.order.domain.OrderStatus;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.annotation.DirtiesContext;
 
+@SpringBootTest(classes = BackendApplication.class, properties = {
+    "app.demo-data.enabled=false",
+    "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.mail.MailSenderAutoConfiguration"
+})
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 class NotificationApplicationServiceImplTest {
 
-    private NotificationApplicationService notificationApplicationService;
+    @Autowired
+    private NotificationRepository notificationRepository;
 
-    @BeforeEach
-    void setUp() {
-        notificationApplicationService = new NotificationApplicationServiceImpl(new InMemoryNotificationRepository());
-    }
+    @Autowired
+    private NotificationApplicationService notificationApplicationService;
 
     @Test
     void shouldListUnreadNotifications() {
