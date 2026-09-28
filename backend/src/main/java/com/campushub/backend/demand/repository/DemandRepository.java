@@ -2,6 +2,7 @@ package com.campushub.backend.demand.repository;
 
 import com.campushub.backend.demand.domain.Demand;
 import com.campushub.backend.demand.domain.DemandStatus;
+import com.campushub.backend.demand.dto.DemandQuery;
 import java.util.List;
 import java.util.Optional;
 
@@ -26,4 +27,18 @@ public interface DemandRepository {
      * 按需求状态查询。主要供后台管理审核列表使用，Service 层负责权限校验。
      */
     List<Demand> findByStatus(DemandStatus status);
+
+    /**
+     * 按查询条件分页查询需求（过滤 + 排序 + LIMIT/OFFSET 下推 SQL）。
+     *
+     * @param query 查询条件，为 null 时返回空列表
+     */
+    List<Demand> findPage(DemandQuery query);
+
+    /**
+     * 按查询条件统计匹配的需求总数（过滤下推 SQL，用于分页 total）。
+     *
+     * @param query 查询条件，为 null 时返回 0
+     */
+    long count(DemandQuery query);
 }
