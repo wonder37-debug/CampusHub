@@ -2,6 +2,7 @@ package com.campushub.backend.notification.repository;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.campushub.backend.notification.domain.Notification;
+import com.campushub.backend.notification.dto.NotificationQuery;
 import com.campushub.backend.notification.repository.entity.NotificationEntity;
 import com.campushub.backend.notification.repository.mapper.NotificationMapper;
 import org.springframework.stereotype.Repository;
@@ -65,5 +66,35 @@ public class MyBatisNotificationRepository implements NotificationRepository {
                 .eq(NotificationEntity::getUserId, userId)
         );
         return entities.stream().map(NotificationEntity::toDomain).toList();
+    }
+
+    @Override
+    public List<Notification> findPage(Long userId, NotificationQuery query) {
+        if (userId == null || query == null) {
+            return List.of();
+        }
+        LambdaQueryWrapper<NotificationEntity> wrapper = buildWrapper(userId, query);
+        wrapper.orderByDesc(NotificationEntity::getCreatedAt);
+        int size = query.pageQuery().size();
+        int offset = (query.pageQuery().page() - 1) * size;
+        wrapper.last("LIMIT " + size + " OFFSET " + offset);
+        return notificationMapper.selectList(wrapper).stream().map(NotificationEntity::toDomain).toList();
+    }
+
+    @Override
+    public long count(Long userId, NotificationQuery query) {
+        if (userId == null || query == null) {
+            return 0L;
+        }
+        return notificationMapper.selectCount(buildWrapper(userId, query));
+    }
+
+    private LambdaQueryWrapper<NotificationEntity> buildWrapper(Long userId, NotificationQuery query) {
+        LambdaQueryWrapper<NotificationEntity> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(NotificationEntity::getUserId, userId);
+        if (query.unreadOnly()) {
+            wrapper.eq(NotificationEntity::getIsRead, false);
+        }
+        return wrapper;
     }
 }
