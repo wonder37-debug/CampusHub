@@ -26,7 +26,6 @@ import com.campushub.backend.demand.dto.PublishDemandCommand;
 import com.campushub.backend.demand.repository.DemandRepository;
 import com.campushub.backend.demand.service.DemandApplicationService;
 import com.campushub.backend.notification.repository.NotificationRepository;
-import com.campushub.backend.notification.service.NotificationApplicationService;
 import com.campushub.backend.order.dto.AcceptOrderCommand;
 import com.campushub.backend.order.dto.OrderDetailResponse;
 import com.campushub.backend.order.dto.OrderSummaryResponse;
@@ -70,9 +69,6 @@ class AdminApplicationServiceImplTest {
 
     @Autowired
     private AdminApplicationService adminApplicationService;
-
-    @Autowired
-    private NotificationApplicationService notificationApplicationService;
 
     private Long adminId;
     private Long publisherId;
