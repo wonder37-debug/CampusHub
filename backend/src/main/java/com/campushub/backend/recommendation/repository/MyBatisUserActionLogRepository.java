@@ -7,19 +7,17 @@ import com.campushub.backend.recommendation.repository.entity.UserActionLogEntit
 import com.campushub.backend.recommendation.repository.mapper.UserActionLogMapper;
 import java.util.ArrayList;
 import java.util.List;
-import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Repository;
 
 /**
  * 基于 MyBatis-Plus 的 {@link UserActionLogRepository} 实现。
  *
- * <p>仅在 {@code local} profile 下激活，避免与默认内存仓储冲突。</p>
+ * <p>默认仓储实现。</p>
  *
  * <p>rec_user_action_log 是推荐系统行为日志表，业务上以追加写入为主；
  * 本实现仍保留 id 存在时 updateById 的通用仓储契约，便于测试与一致性维护。</p>
  */
 @Repository
-@Profile("local")
 public class MyBatisUserActionLogRepository implements UserActionLogRepository {
 
     private final UserActionLogMapper userActionLogMapper;

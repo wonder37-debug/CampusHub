@@ -4,7 +4,6 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.campushub.backend.notification.domain.Notification;
 import com.campushub.backend.notification.repository.entity.NotificationEntity;
 import com.campushub.backend.notification.repository.mapper.NotificationMapper;
-import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
@@ -14,14 +13,13 @@ import java.util.Optional;
 /**
  * 基于 MyBatis-Plus 的 {@link NotificationRepository} 实现。
  *
- * <p>仅在 {@code local} profile 下激活，避免与默认内存仓储冲突。</p>
+ * <p>默认仓储实现。</p>
  *
  * <p>本仓储仅保证基本的查询与持久化正确。排序与分页由 Service 层
  * （{@link com.campushub.backend.notification.service.NotificationApplicationServiceImpl}）
  * 在内存中完成，DAO 层不做排序。</p>
  */
 @Repository
-@Profile("local")
 public class MyBatisNotificationRepository implements NotificationRepository {
 
     private final NotificationMapper notificationMapper;

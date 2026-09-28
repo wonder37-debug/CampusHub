@@ -6,7 +6,6 @@ import com.campushub.backend.auth.domain.UserRole;
 import com.campushub.backend.auth.domain.UserStatus;
 import com.campushub.backend.auth.repository.entity.UserEntity;
 import com.campushub.backend.auth.repository.mapper.UserMapper;
-import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
@@ -16,13 +15,11 @@ import java.util.Optional;
 /**
  * 基于 MyBatis-Plus 的 {@link UserRepository} 实现。
  *
- * <p>仅在 {@code local} profile 下激活，避免与默认的内存仓储冲突；
- * 实现严格遵循 {@code P4-数据库接口调用规范.md} 中对 DAO 层的契约：
+ * <p>默认仓储实现；实现严格遵循 {@code P4-数据库接口调用规范.md} 中对 DAO 层的契约：
  * 不在 DAO 层抛业务异常、查不到返回 {@link Optional#empty()}、
  * 唯一约束冲突由底层异常向上传递。</p>
  */
 @Repository
-@Profile("local")
 public class MyBatisUserRepository implements UserRepository {
 
     private final UserMapper userMapper;

@@ -4,7 +4,6 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.campushub.backend.review.domain.Review;
 import com.campushub.backend.review.repository.entity.ReviewEntity;
 import com.campushub.backend.review.repository.mapper.ReviewMapper;
-import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
@@ -14,7 +13,7 @@ import java.util.Optional;
 /**
  * 基于 MyBatis-Plus 的 {@link ReviewRepository} 实现。
  *
- * <p>仅在 {@code local} profile 下激活，避免与默认内存仓储冲突。</p>
+ * <p>默认仓储实现。</p>
  *
  * <p>并发防重底线：依赖 ord_review 上的唯一索引 {@code uk_review_order_author(order_id, author_id)}，
  * 同一订单同一作者重复评价将由数据库抛出 SQLException，Spring 体系转换为 {@link
@@ -24,7 +23,6 @@ import java.util.Optional;
  * 本仓储仅保证基本的查询与持久化正确。</p>
  */
 @Repository
-@Profile("local")
 public class MyBatisReviewRepository implements ReviewRepository {
 
     private final ReviewMapper reviewMapper;

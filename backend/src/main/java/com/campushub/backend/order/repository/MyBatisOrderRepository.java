@@ -11,12 +11,10 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
-import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 @Repository
-@Profile("local")
 public class MyBatisOrderRepository implements OrderRepository {
 
     private final OrderMapper orderMapper;
