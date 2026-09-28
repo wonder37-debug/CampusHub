@@ -42,7 +42,7 @@ import org.springframework.test.web.servlet.ResultActions;
     "spring.datasource.username=sa",
     "spring.datasource.password=",
     "spring.sql.init.mode=always",
-    "spring.sql.init.schema-locations=classpath:schema.sql",
+    "spring.sql.init.schema-locations=classpath:schema.sql,classpath:schema-demand.sql,classpath:schema-order.sql,classpath:schema-review.sql,classpath:schema-notification.sql,classpath:schema-recommendation.sql",
     "spring.datasource.hikari.connection-timeout=3000"
 })
 @AutoConfigureMockMvc
