@@ -2,6 +2,7 @@ package com.campushub.backend.order.repository;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.campushub.backend.order.domain.Order;
+import com.campushub.backend.order.domain.OrderStatus;
 import com.campushub.backend.order.domain.OrderStatusHistoryEntry;
 import com.campushub.backend.order.repository.entity.OrderEntity;
 import com.campushub.backend.order.repository.entity.OrderStatusLogEntity;
@@ -91,6 +92,26 @@ public class MyBatisOrderRepository implements OrderRepository {
     @Override
     public List<Order> findAll() {
         return assembleAll(orderMapper.selectList(null));
+    }
+
+    @Override
+    public List<Order> findArbitrationPage(int page, int size) {
+        LambdaQueryWrapper<OrderEntity> wrapper = new LambdaQueryWrapper<OrderEntity>()
+            .eq(OrderEntity::getStatus, OrderStatus.IN_ARBITRATION.name())
+            .orderByDesc(OrderEntity::getUpdatedAt)
+            .orderByDesc(OrderEntity::getId);
+        long offset = (long) (page - 1) * size;
+        wrapper.last("LIMIT " + size + " OFFSET " + offset);
+        return orderMapper.selectList(wrapper).stream()
+            .map(e -> e.toDomain(Collections.emptyList()))
+            .toList();
+    }
+
+    @Override
+    public long countArbitration() {
+        LambdaQueryWrapper<OrderEntity> wrapper = new LambdaQueryWrapper<OrderEntity>()
+            .eq(OrderEntity::getStatus, OrderStatus.IN_ARBITRATION.name());
+        return orderMapper.selectCount(wrapper);
     }
 
     @Override
