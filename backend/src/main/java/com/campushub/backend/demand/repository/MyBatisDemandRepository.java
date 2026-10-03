@@ -194,4 +194,18 @@ public class MyBatisDemandRepository implements DemandRepository {
         }
         return wrapper;
     }
+
+    @Override
+    public long countAll() {
+        return demandMapper.selectCount(null);
+    }
+
+    @Override
+    public long countByStatus(DemandStatus status) {
+        if (status == null) {
+            return 0L;
+        }
+        return demandMapper.selectCount(new LambdaQueryWrapper<DemandEntity>()
+            .eq(DemandEntity::getStatus, status.name()));
+    }
 }

@@ -56,4 +56,14 @@ public interface DemandRepository {
      * @param query 查询条件，为 null 时返回 0
      */
     long countReview(DemandReviewQuery query);
+
+    /**
+     * 统计需求总数（下推 SQL selectCount，无过滤，用于 dashboard stats）。
+     */
+    long countAll();
+
+    /**
+     * 按状态统计需求数（下推 SQL selectCount，用于 dashboard stats）。
+     */
+    long countByStatus(DemandStatus status);
 }

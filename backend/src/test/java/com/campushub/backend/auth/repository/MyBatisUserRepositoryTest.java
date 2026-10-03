@@ -321,6 +321,20 @@ class MyBatisUserRepositoryTest {
         assertThat(repository.count(null)).isEqualTo(0L);
     }
 
+    @Test
+    void count_returns_zero_when_empty() {
+        assertThat(repository.count()).isZero();
+    }
+
+    @Test
+    void count_returns_total_after_inserts() {
+        repository.save(newUser("a@campus.edu", "2026001"));
+        repository.save(newUser("b@campus.edu", "2026002"));
+        repository.save(newUser("c@campus.edu", "2026003"));
+
+        assertThat(repository.count()).isEqualTo(3L);
+    }
+
     private static User newUser(String email, String studentId) {
         return newUser(email, studentId, UserRole.USER, UserStatus.ACTIVE);
     }

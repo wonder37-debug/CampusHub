@@ -280,6 +280,31 @@ class MyBatisOrderRepositoryTest {
         assertThat(repository.findArbitrationPage(1, 20)).hasSize(3);
     }
 
+    @Test
+    void count_returns_zero_when_empty() {
+        assertThat(repository.count()).isZero();
+    }
+
+    @Test
+    void count_returns_total_after_inserts() {
+        repository.save(newOrder(6001L, 10L, 20L));
+        repository.save(newOrder(6002L, 11L, 21L));
+
+        assertThat(repository.count()).isEqualTo(2L);
+    }
+
+    @Test
+    void countByStatus_counts_matching_status_and_handles_null() {
+        Order arbitration = repository.save(newOrder(6101L, 10L, 20L));
+        arbitration.setStatus(OrderStatus.IN_ARBITRATION);
+        repository.save(arbitration);
+        repository.save(newOrder(6102L, 11L, 21L)); // 默认 ACCEPTED
+
+        assertThat(repository.countByStatus(OrderStatus.IN_ARBITRATION)).isEqualTo(1L);
+        assertThat(repository.countByStatus(OrderStatus.ACCEPTED)).isEqualTo(1L);
+        assertThat(repository.countByStatus(null)).isZero();
+    }
+
     /**
      * 工厂方法：为所有 NOT NULL 列（demand_id / publisher_id / accepter_id / status）
      * 提供默认值，避免 H2 抛出 NULL not allowed 异常。

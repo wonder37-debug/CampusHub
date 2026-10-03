@@ -62,4 +62,9 @@ public interface UserRepository {
      * 保存用户。id 为空时视为新增，否则视为更新。
      */
     User save(User user);
+
+    /**
+     * 统计用户总数（下推 SQL selectCount，用于 dashboard stats）。
+     */
+    long count();
 }

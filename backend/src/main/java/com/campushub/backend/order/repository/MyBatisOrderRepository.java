@@ -115,6 +115,20 @@ public class MyBatisOrderRepository implements OrderRepository {
     }
 
     @Override
+    public long count() {
+        return orderMapper.selectCount(null);
+    }
+
+    @Override
+    public long countByStatus(OrderStatus status) {
+        if (status == null) {
+            return 0L;
+        }
+        return orderMapper.selectCount(new LambdaQueryWrapper<OrderEntity>()
+            .eq(OrderEntity::getStatus, status.name()));
+    }
+
+    @Override
     @Transactional
     public void deleteById(Long orderId) {
         if (orderId == null) {

@@ -196,4 +196,9 @@ public class MyBatisUserRepository implements UserRepository {
         }
         return user;
     }
+
+    @Override
+    public long count() {
+        return userMapper.selectCount(null);
+    }
 }

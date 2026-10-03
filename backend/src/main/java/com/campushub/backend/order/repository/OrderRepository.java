@@ -1,6 +1,7 @@
 package com.campushub.backend.order.repository;
 
 import com.campushub.backend.order.domain.Order;
+import com.campushub.backend.order.domain.OrderStatus;
 import java.util.List;
 import java.util.Optional;
 
@@ -30,6 +31,16 @@ public interface OrderRepository {
      * 统计仲裁中订单总数（status=IN_ARBITRATION 下推 SQL，用于分页 total）。
      */
     long countArbitration();
+
+    /**
+     * 统计订单总数（下推 SQL selectCount，无过滤，用于 dashboard stats）。
+     */
+    long count();
+
+    /**
+     * 按状态统计订单数（下推 SQL selectCount，用于 dashboard stats）。
+     */
+    long countByStatus(OrderStatus status);
 
     void deleteById(Long orderId);
 }

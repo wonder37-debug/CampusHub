@@ -501,6 +501,31 @@ class MyBatisDemandRepositoryTest {
         assertThat(repository.countReview(null)).isEqualTo(0L);
     }
 
+    @Test
+    void countAll_returns_zero_when_empty() {
+        assertThat(repository.countAll()).isZero();
+    }
+
+    @Test
+    void countAll_returns_total_after_inserts() {
+        repository.save(newDemand("d1", DemandCategory.OTHER));
+        repository.save(newDemand("d2", DemandCategory.EXPRESS));
+
+        assertThat(repository.countAll()).isEqualTo(2L);
+    }
+
+    @Test
+    void countByStatus_counts_matching_status_and_handles_null() {
+        Demand reviewing = repository.save(newDemand("r", DemandCategory.OTHER));
+        reviewing.setStatus(DemandStatus.REVIEWING);
+        repository.save(reviewing);
+        repository.save(newDemand("p", DemandCategory.OTHER)); // 默认 PENDING（见 2B.3b 工厂）
+
+        assertThat(repository.countByStatus(DemandStatus.REVIEWING)).isEqualTo(1L);
+        assertThat(repository.countByStatus(DemandStatus.PENDING)).isEqualTo(1L);
+        assertThat(repository.countByStatus(null)).isZero();
+    }
+
     private static Demand newDemand(String title, DemandCategory category) {
         Demand demand = new Demand();
         demand.setPublisherId(1L);
