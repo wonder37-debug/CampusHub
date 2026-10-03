@@ -35,7 +35,6 @@ import com.campushub.backend.review.repository.ReviewRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -169,17 +168,10 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
         int resolvedPage = Math.max(page, 1);
         int resolvedSize = Math.max(size, 1);
 
-        List<Order> filtered = orderRepository.findAll().stream()
-            .filter(order -> order.getStatus() == OrderStatus.IN_ARBITRATION)
-            .sorted(Comparator.comparing(Order::getUpdatedAt, Comparator.nullsLast(LocalDateTime::compareTo)).reversed())
-            .toList();
-
-        int fromIndex = Math.max(0, (resolvedPage - 1) * resolvedSize);
-        int toIndex = Math.min(filtered.size(), fromIndex + resolvedSize);
-        List<OrderSummaryResponse> items = fromIndex >= filtered.size()
-            ? List.of()
-            : filtered.subList(fromIndex, toIndex).stream().map(OrderSummaryResponse::from).toList();
-        return new PageResponse<>(items, resolvedPage, resolvedSize, filtered.size());
+        List<Order> orders = orderRepository.findArbitrationPage(resolvedPage, resolvedSize);
+        List<OrderSummaryResponse> items = orders.stream().map(OrderSummaryResponse::from).toList();
+        long total = orderRepository.countArbitration();
+        return new PageResponse<>(items, resolvedPage, resolvedSize, total);
     }
 
     @Override
