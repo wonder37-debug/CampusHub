@@ -4,12 +4,14 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.campushub.backend.auth.domain.User;
 import com.campushub.backend.auth.domain.UserRole;
 import com.campushub.backend.auth.domain.UserStatus;
+import com.campushub.backend.auth.dto.UserQueryCriteria;
 import com.campushub.backend.auth.repository.entity.UserEntity;
 import com.campushub.backend.auth.repository.mapper.UserMapper;
 import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 
 /**
@@ -100,6 +102,84 @@ public class MyBatisUserRepository implements UserRepository {
         LambdaQueryWrapper<UserEntity> wrapper = new LambdaQueryWrapper<UserEntity>()
             .eq(UserEntity::getRole, role.name());
         return userMapper.selectList(wrapper).stream().map(UserEntity::toDomain).toList();
+    }
+
+    @Override
+    public List<User> findPage(UserQueryCriteria criteria) {
+        if (criteria == null) {
+            return List.of();
+        }
+        LambdaQueryWrapper<UserEntity> wrapper = buildWrapper(criteria);
+        applyUserSort(wrapper, criteria.sortBy(), criteria.sortDirection());
+        int size = criteria.pageQuery().size();
+        long offset = (long) (criteria.pageQuery().page() - 1) * size;
+        wrapper.last("LIMIT " + size + " OFFSET " + offset);
+        return userMapper.selectList(wrapper).stream().map(UserEntity::toDomain).toList();
+    }
+
+    @Override
+    public long count(UserQueryCriteria criteria) {
+        if (criteria == null) {
+            return 0L;
+        }
+        return userMapper.selectCount(buildWrapper(criteria));
+    }
+
+    private LambdaQueryWrapper<UserEntity> buildWrapper(UserQueryCriteria criteria) {
+        LambdaQueryWrapper<UserEntity> wrapper = new LambdaQueryWrapper<>();
+        String q = criteria.q();
+        if (q != null && !q.isBlank()) {
+            String keyword = q.trim();
+            String field = criteria.searchField();
+            if (field == null || field.isBlank()) {
+                wrapper.and(w -> w.like(UserEntity::getNickname, keyword)
+                    .or().like(UserEntity::getEmail, keyword)
+                    .or().like(UserEntity::getStudentId, keyword));
+            } else {
+                switch (field.toLowerCase(Locale.ROOT)) {
+                    case "nickname" -> wrapper.like(UserEntity::getNickname, keyword);
+                    case "email" -> wrapper.like(UserEntity::getEmail, keyword);
+                    case "studentid", "student_id" -> wrapper.like(UserEntity::getStudentId, keyword);
+                    default -> wrapper.and(w -> w.like(UserEntity::getNickname, keyword)
+                        .or().like(UserEntity::getEmail, keyword)
+                        .or().like(UserEntity::getStudentId, keyword));
+                }
+            }
+        }
+        String role = criteria.role();
+        if (role != null && !role.isBlank()) {
+            wrapper.eq(UserEntity::getRole, role.trim().toUpperCase(Locale.ROOT));
+        }
+        String status = criteria.status();
+        if (status != null && !status.isBlank()) {
+            wrapper.eq(UserEntity::getStatus, status.trim().toUpperCase(Locale.ROOT));
+        }
+        return wrapper;
+    }
+
+    private void applyUserSort(LambdaQueryWrapper<UserEntity> wrapper, String sortBy, String sortDirection) {
+        boolean descending = sortDirection == null || sortDirection.isBlank()
+            || !"asc".equalsIgnoreCase(sortDirection.trim());
+        String resolvedSortBy = sortBy == null ? "" : sortBy.trim().toLowerCase(Locale.ROOT);
+        switch (resolvedSortBy) {
+            case "creditscore", "credit_score" -> {
+                if (descending) wrapper.orderByDesc(UserEntity::getCreditScore);
+                else wrapper.orderByAsc(UserEntity::getCreditScore);
+            }
+            case "nickname" -> {
+                if (descending) wrapper.orderByDesc(UserEntity::getNickname);
+                else wrapper.orderByAsc(UserEntity::getNickname);
+            }
+            case "createdat", "created_at" -> {
+                if (descending) wrapper.orderByDesc(UserEntity::getCreatedAt);
+                else wrapper.orderByAsc(UserEntity::getCreatedAt);
+            }
+            default -> {
+                if (descending) wrapper.orderByDesc(UserEntity::getCreatedAt);
+                else wrapper.orderByAsc(UserEntity::getCreatedAt);
+            }
+        }
+        wrapper.orderByAsc(UserEntity::getId);
     }
 
     @Override

@@ -3,6 +3,7 @@ package com.campushub.backend.auth.repository;
 import com.campushub.backend.auth.domain.User;
 import com.campushub.backend.auth.domain.UserRole;
 import com.campushub.backend.auth.domain.UserStatus;
+import com.campushub.backend.auth.dto.UserQueryCriteria;
 import java.util.List;
 import java.util.Optional;
 
@@ -42,6 +43,20 @@ public interface UserRepository {
      * 按用户角色查询。主要供后台管理使用，Service 层负责权限校验。
      */
     List<User> findByRole(UserRole role);
+
+    /**
+     * 按查询条件分页查询用户（过滤 + 排序 + LIMIT/OFFSET 下推 SQL）。
+     *
+     * @param criteria 查询条件，为 null 时返回空列表
+     */
+    List<User> findPage(UserQueryCriteria criteria);
+
+    /**
+     * 按查询条件统计匹配的用户总数（过滤下推 SQL，用于分页 total）。
+     *
+     * @param criteria 查询条件，为 null 时返回 0
+     */
+    long count(UserQueryCriteria criteria);
 
     /**
      * 保存用户。id 为空时视为新增，否则视为更新。

@@ -4,7 +4,9 @@ import com.baomidou.mybatisplus.test.autoconfigure.MybatisPlusTest;
 import com.campushub.backend.auth.domain.User;
 import com.campushub.backend.auth.domain.UserRole;
 import com.campushub.backend.auth.domain.UserStatus;
+import com.campushub.backend.auth.dto.UserQueryCriteria;
 import com.campushub.backend.auth.repository.mapper.UserMapper;
+import com.campushub.backend.common.model.PageQuery;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Import;
@@ -140,6 +142,185 @@ class MyBatisUserRepositoryTest {
         assertThat(userMapper.selectCount(null)).isZero();
     }
 
+    @Test
+    void findPage_returns_all_users_sorted_by_created_desc_with_id_asc_tiebreaker() {
+        User older = repository.save(newUserWithCreated("a1@campus.edu", "2026001", LocalDateTime.now().minusMinutes(10)));
+        User newer = repository.save(newUserWithCreated("a2@campus.edu", "2026002", LocalDateTime.now().minusMinutes(1)));
+        User sameInstant = repository.save(newUserWithCreated("a3@campus.edu", "2026003", newer.getCreatedAt()));
+
+        List<User> page = repository.findPage(new UserQueryCriteria(null, null, null, null, null, null, new PageQuery(1, 20)));
+
+        assertThat(page).hasSize(3);
+        assertThat(page.get(0).getId()).isEqualTo(newer.getId());
+        assertThat(page.get(1).getId()).isEqualTo(sameInstant.getId());
+        assertThat(repository.count(new UserQueryCriteria(null, null, null, null, null, null, new PageQuery(1, 20)))).isEqualTo(3L);
+    }
+
+    @Test
+    void findPage_keyword_without_search_field_matches_nickname_or_email_or_student_id() {
+        User byNickname = repository.save(newUser("nick-test@campus.edu", "2026101"));
+        byNickname.setNickname("张三丰");
+        repository.save(byNickname);
+        User byEmail = repository.save(newUser("alice-test@campus.edu", "2026102"));
+        User byStudentId = repository.save(newUser("bob@campus.edu", "2026103-special"));
+        User noMatch = repository.save(newUser("carol@campus.edu", "2026104"));
+        noMatch.setNickname("carol");
+        repository.save(noMatch);
+
+        List<User> page = repository.findPage(new UserQueryCriteria("test", null, null, null, null, null, new PageQuery(1, 20)));
+
+        assertThat(page).extracting(User::getId).containsExactlyInAnyOrder(byNickname.getId(), byEmail.getId(), byStudentId.getId());
+        assertThat(repository.count(new UserQueryCriteria("test", null, null, null, null, null, new PageQuery(1, 20)))).isEqualTo(3L);
+    }
+
+    @Test
+    void findPage_keyword_with_search_field_nickname_only() {
+        User byNickname = repository.save(newUser("a1@campus.edu", "2026201"));
+        byNickname.setNickname("张三丰-feng");
+        repository.save(byNickname);
+        User byEmail = repository.save(newUser("feng-test@campus.edu", "2026202"));
+
+        List<User> page = repository.findPage(new UserQueryCriteria("feng", "nickname", null, null, null, null, new PageQuery(1, 20)));
+
+        assertThat(page).extracting(User::getId).containsExactly(byNickname.getId());
+    }
+
+    @Test
+    void findPage_keyword_with_search_field_email_or_student_id_variants() {
+        User byEmail = repository.save(newUser("alice@campus.edu", "2026301"));
+        User byStudentId = repository.save(newUser("bob@campus.edu", "2026302-studentid"));
+
+        List<User> byEmailField = repository.findPage(new UserQueryCriteria("alice", "email", null, null, null, null, new PageQuery(1, 20)));
+        assertThat(byEmailField).extracting(User::getId).containsExactly(byEmail.getId());
+
+        List<User> byStudentIdCamel = repository.findPage(new UserQueryCriteria("studentid", "studentId", null, null, null, null, new PageQuery(1, 20)));
+        assertThat(byStudentIdCamel).extracting(User::getId).containsExactly(byStudentId.getId());
+
+        List<User> byStudentIdSnake = repository.findPage(new UserQueryCriteria("studentid", "student_id", null, null, null, null, new PageQuery(1, 20)));
+        assertThat(byStudentIdSnake).extracting(User::getId).containsExactly(byStudentId.getId());
+    }
+
+    @Test
+    void findPage_keyword_with_unknown_search_field_degrades_to_three_field_or() {
+        User byNickname = repository.save(newUser("a1@campus.edu", "2026401"));
+        byNickname.setNickname("张三丰-feng");
+        repository.save(byNickname);
+        User byEmail = repository.save(newUser("feng-test@campus.edu", "2026402"));
+
+        List<User> page = repository.findPage(new UserQueryCriteria("feng", "unknownfield", null, null, null, null, new PageQuery(1, 20)));
+
+        assertThat(page).extracting(User::getId).containsExactlyInAnyOrder(byNickname.getId(), byEmail.getId());
+    }
+
+    @Test
+    void findPage_filters_by_role_case_insensitive() {
+        repository.save(newUser("admin@campus.edu", "2026501", UserRole.ADMIN, UserStatus.ACTIVE));
+        User userRole = repository.save(newUser("user@campus.edu", "2026502", UserRole.USER, UserStatus.ACTIVE));
+
+        List<User> page = repository.findPage(new UserQueryCriteria(null, null, "user", null, null, null, new PageQuery(1, 20)));
+
+        assertThat(page).extracting(User::getId).containsExactly(userRole.getId());
+        assertThat(repository.count(new UserQueryCriteria(null, null, "user", null, null, null, new PageQuery(1, 20)))).isEqualTo(1L);
+    }
+
+    @Test
+    void findPage_filters_by_status_case_insensitive() {
+        User active = repository.save(newUser("active@campus.edu", "2026601", UserRole.USER, UserStatus.ACTIVE));
+        repository.save(newUser("banned@campus.edu", "2026602", UserRole.USER, UserStatus.BANNED));
+
+        List<User> page = repository.findPage(new UserQueryCriteria(null, null, null, "active", null, null, new PageQuery(1, 20)));
+
+        assertThat(page).extracting(User::getId).containsExactly(active.getId());
+        assertThat(repository.count(new UserQueryCriteria(null, null, null, "active", null, null, new PageQuery(1, 20)))).isEqualTo(1L);
+    }
+
+    @Test
+    void findPage_sorts_by_credit_score_desc_with_id_asc_tiebreaker() {
+        User low = repository.save(newUserWithCredit("low@campus.edu", "2026701", 60));
+        User high = repository.save(newUserWithCredit("high@campus.edu", "2026702", 95));
+        User mid = repository.save(newUserWithCredit("mid@campus.edu", "2026703", 95));
+        repository.save(newUserWithCredit("zero@campus.edu", "2026704", 0));
+
+        List<User> page = repository.findPage(new UserQueryCriteria(null, null, null, null, "creditScore", "desc", new PageQuery(1, 20)));
+
+        assertThat(page).extracting(User::getCreditScore).containsExactly(95, 95, 60, 0);
+        assertThat(page.get(0).getId()).isEqualTo(high.getId());
+        assertThat(page.get(1).getId()).isEqualTo(mid.getId());
+    }
+
+    @Test
+    void findPage_sorts_by_credit_score_asc() {
+        repository.save(newUserWithCredit("low@campus.edu", "2026801", 60));
+        repository.save(newUserWithCredit("high@campus.edu", "2026802", 95));
+        repository.save(newUserWithCredit("mid@campus.edu", "2026803", 0));
+
+        List<User> page = repository.findPage(new UserQueryCriteria(null, null, null, null, "creditScore", "asc", new PageQuery(1, 20)));
+
+        assertThat(page).extracting(User::getCreditScore).containsExactly(0, 60, 95);
+    }
+
+    @Test
+    void findPage_sorts_by_nickname_desc_and_asc() {
+        User a = repository.save(newUser("a@campus.edu", "2026901"));
+        a.setNickname("alpha");
+        repository.save(a);
+        User b = repository.save(newUser("b@campus.edu", "2026902"));
+        b.setNickname("beta");
+        repository.save(b);
+        User c = repository.save(newUser("c@campus.edu", "2026903"));
+        c.setNickname("gamma");
+        repository.save(c);
+
+        List<User> desc = repository.findPage(new UserQueryCriteria(null, null, null, null, "nickname", "desc", new PageQuery(1, 20)));
+        assertThat(desc).extracting(User::getNickname).containsExactly("gamma", "beta", "alpha");
+
+        List<User> asc = repository.findPage(new UserQueryCriteria(null, null, null, null, "nickname", "asc", new PageQuery(1, 20)));
+        assertThat(asc).extracting(User::getNickname).containsExactly("alpha", "beta", "gamma");
+    }
+
+    @Test
+    void findPage_unknown_sort_by_defaults_to_created_desc() {
+        User older = repository.save(newUserWithCreated("a@campus.edu", "20261001", LocalDateTime.now().minusMinutes(10)));
+        User newer = repository.save(newUserWithCreated("b@campus.edu", "20261002", LocalDateTime.now().minusMinutes(1)));
+
+        List<User> page = repository.findPage(new UserQueryCriteria(null, null, null, null, "unknownfield", "desc", new PageQuery(1, 20)));
+
+        assertThat(page).extracting(User::getId).containsExactly(newer.getId(), older.getId());
+    }
+
+    @Test
+    void findPage_null_or_blank_sort_direction_defaults_to_desc() {
+        User older = repository.save(newUserWithCreated("a@campus.edu", "20261101", LocalDateTime.now().minusMinutes(10)));
+        User newer = repository.save(newUserWithCreated("b@campus.edu", "20261102", LocalDateTime.now().minusMinutes(1)));
+
+        List<User> nullDir = repository.findPage(new UserQueryCriteria(null, null, null, null, "createdAt", null, new PageQuery(1, 20)));
+        assertThat(nullDir).extracting(User::getId).containsExactly(newer.getId(), older.getId());
+
+        List<User> blankDir = repository.findPage(new UserQueryCriteria(null, null, null, null, "createdAt", "  ", new PageQuery(1, 20)));
+        assertThat(blankDir).extracting(User::getId).containsExactly(newer.getId(), older.getId());
+    }
+
+    @Test
+    void findPage_applies_limit_and_offset_for_pagination() {
+        for (int i = 0; i < 5; i++) {
+            repository.save(newUserWithCreated("u" + i + "@campus.edu", "2026" + (1200 + i), LocalDateTime.now().minusMinutes(5 - i)));
+        }
+        UserQueryCriteria page1 = new UserQueryCriteria(null, null, null, null, null, null, new PageQuery(1, 2));
+        UserQueryCriteria page2 = new UserQueryCriteria(null, null, null, null, null, null, new PageQuery(2, 2));
+        UserQueryCriteria page3 = new UserQueryCriteria(null, null, null, null, null, null, new PageQuery(3, 2));
+
+        assertThat(repository.findPage(page1)).hasSize(2);
+        assertThat(repository.findPage(page2)).hasSize(2);
+        assertThat(repository.findPage(page3)).hasSize(1);
+        assertThat(repository.count(page1)).isEqualTo(5L);
+    }
+
+    @Test
+    void findPage_and_count_return_empty_or_zero_when_criteria_null() {
+        assertThat(repository.findPage(null)).isEmpty();
+        assertThat(repository.count(null)).isEqualTo(0L);
+    }
+
     private static User newUser(String email, String studentId) {
         return newUser(email, studentId, UserRole.USER, UserStatus.ACTIVE);
     }
@@ -154,6 +335,18 @@ class MyBatisUserRepositoryTest {
         user.setStatus(status);
         user.setCreditScore(100);
         user.setCreatedAt(LocalDateTime.now());
+        return user;
+    }
+
+    private static User newUserWithCreated(String email, String studentId, LocalDateTime createdAt) {
+        User user = newUser(email, studentId);
+        user.setCreatedAt(createdAt);
+        return user;
+    }
+
+    private static User newUserWithCredit(String email, String studentId, int creditScore) {
+        User user = newUser(email, studentId);
+        user.setCreditScore(creditScore);
         return user;
     }
 }
