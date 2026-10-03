@@ -10,6 +10,7 @@ import com.campushub.backend.auth.domain.User;
 import com.campushub.backend.auth.domain.UserRole;
 import com.campushub.backend.auth.domain.UserStatus;
 import com.campushub.backend.auth.dto.UserProfileResponse;
+import com.campushub.backend.auth.dto.UserQueryCriteria;
 import com.campushub.backend.auth.repository.UserRepository;
 import com.campushub.backend.common.api.PageResponse;
 import com.campushub.backend.common.exception.BusinessException;
@@ -81,21 +82,15 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "admin user query must not be null");
         }
 
-        List<User> filtered = userRepository.findAll().stream()
-            .filter(user -> matchesUserKeyword(user, query.q(), query.searchField()))
-            .filter(user -> matchesUserRole(user, query.role()))
-            .filter(user -> matchesUserStatus(user, query.status()))
-            .sorted(resolveUserComparator(query.sortBy(), query.sortDirection()))
-            .toList();
-
+        UserQueryCriteria criteria = new UserQueryCriteria(
+            query.q(), query.searchField(), query.role(), query.status(),
+            query.sortBy(), query.sortDirection(), query.pageQuery());
+        List<User> users = userRepository.findPage(criteria);
+        List<UserProfileResponse> items = users.stream().map(UserProfileResponse::from).toList();
+        long total = userRepository.count(criteria);
         int page = query.pageQuery().page();
         int size = query.pageQuery().size();
-        int fromIndex = Math.max(0, (page - 1) * size);
-        int toIndex = Math.min(filtered.size(), fromIndex + size);
-        List<UserProfileResponse> items = fromIndex >= filtered.size()
-            ? List.of()
-            : filtered.subList(fromIndex, toIndex).stream().map(UserProfileResponse::from).toList();
-        return new PageResponse<>(items, page, size, filtered.size());
+        return new PageResponse<>(items, page, size, total);
     }
 
     @Override
@@ -348,26 +343,6 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
             .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "order not found"));
     }
 
-    private boolean matchesUserKeyword(User user, String keyword, String searchField) {
-        if (keyword == null || keyword.isBlank()) {
-            return true;
-        }
-        String normalized = keyword.trim().toLowerCase(Locale.ROOT);
-        if (searchField == null || searchField.isBlank()) {
-            return containsIgnoreCase(user.getNickname(), normalized)
-                || containsIgnoreCase(user.getEmail(), normalized)
-                || containsIgnoreCase(user.getStudentId(), normalized);
-        }
-        return switch (searchField.trim().toLowerCase(Locale.ROOT)) {
-            case "nickname" -> containsIgnoreCase(user.getNickname(), normalized);
-            case "email" -> containsIgnoreCase(user.getEmail(), normalized);
-            case "studentid", "student_id" -> containsIgnoreCase(user.getStudentId(), normalized);
-            default -> containsIgnoreCase(user.getNickname(), normalized)
-                || containsIgnoreCase(user.getEmail(), normalized)
-                || containsIgnoreCase(user.getStudentId(), normalized);
-        };
-    }
-
     private boolean matchesDemandKeyword(Demand demand, String keyword) {
         if (keyword == null || keyword.isBlank()) {
             return true;
@@ -388,36 +363,6 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
 
     private boolean containsIgnoreCase(String value, String normalizedKeyword) {
         return value != null && value.toLowerCase(Locale.ROOT).contains(normalizedKeyword);
-    }
-
-    private boolean matchesUserRole(User user, String role) {
-        if (role == null || role.isBlank()) {
-            return true;
-        }
-        return user.getRole().name().equalsIgnoreCase(role.trim());
-    }
-
-    private boolean matchesUserStatus(User user, String status) {
-        if (status == null || status.isBlank()) {
-            return true;
-        }
-        return user.getStatus().name().equalsIgnoreCase(status.trim());
-    }
-
-    private Comparator<User> resolveUserComparator(String sortBy, String sortDirection) {
-        boolean descending = sortDirection == null || sortDirection.isBlank() || !"asc".equalsIgnoreCase(sortDirection.trim());
-        Comparator<User> comparator = switch (sortBy == null ? "" : sortBy.trim().toLowerCase(Locale.ROOT)) {
-            case "creditscore", "credit_score" ->
-                Comparator.comparing(User::getCreditScore, Comparator.nullsLast(Integer::compareTo));
-            case "nickname" ->
-                Comparator.comparing(User::getNickname, Comparator.nullsLast(String::compareToIgnoreCase));
-            case "createdat", "created_at" ->
-                Comparator.comparing(User::getCreatedAt, Comparator.nullsLast(LocalDateTime::compareTo));
-            default ->
-                Comparator.comparing(User::getCreatedAt, Comparator.nullsLast(LocalDateTime::compareTo));
-        };
-        comparator = descending ? comparator.reversed() : comparator;
-        return comparator.thenComparing(User::getId, Comparator.nullsLast(Long::compareTo));
     }
 
     private long countDailyActiveUsers(List<Demand> demands, List<Order> orders, LocalDate today) {
