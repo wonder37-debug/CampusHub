@@ -5,6 +5,7 @@ import com.campushub.backend.demand.domain.Demand;
 import com.campushub.backend.demand.domain.DemandSort;
 import com.campushub.backend.demand.domain.DemandStatus;
 import com.campushub.backend.demand.dto.DemandQuery;
+import com.campushub.backend.demand.dto.DemandReviewQuery;
 import com.campushub.backend.demand.repository.entity.DemandEntity;
 import com.campushub.backend.demand.repository.mapper.DemandMapper;
 import org.springframework.stereotype.Repository;
@@ -149,5 +150,48 @@ public class MyBatisDemandRepository implements DemandRepository {
             case TIME, DISTANCE, RECOMMEND -> wrapper.orderByDesc(DemandEntity::getCreatedAt)
                                                      .orderByDesc(DemandEntity::getId);
         }
+    }
+
+    @Override
+    public List<Demand> findReviewPage(DemandReviewQuery query) {
+        if (query == null) {
+            return List.of();
+        }
+        LambdaQueryWrapper<DemandEntity> wrapper = buildReviewWrapper(query);
+        wrapper.orderByDesc(DemandEntity::getCreatedAt)
+               .orderByDesc(DemandEntity::getId);
+        int size = query.pageQuery().size();
+        long offset = (long) (query.pageQuery().page() - 1) * size;
+        wrapper.last("LIMIT " + size + " OFFSET " + offset);
+        return demandMapper.selectList(wrapper).stream().map(DemandEntity::toDomain).toList();
+    }
+
+    @Override
+    public long countReview(DemandReviewQuery query) {
+        if (query == null) {
+            return 0L;
+        }
+        return demandMapper.selectCount(buildReviewWrapper(query));
+    }
+
+    private LambdaQueryWrapper<DemandEntity> buildReviewWrapper(DemandReviewQuery query) {
+        LambdaQueryWrapper<DemandEntity> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(DemandEntity::getStatus, DemandStatus.REVIEWING.name());
+        String q = query.q();
+        if (q != null && !q.isBlank()) {
+            String keyword = q.trim();
+            wrapper.and(w -> w.like(DemandEntity::getTitle, keyword)
+                .or().like(DemandEntity::getDescription, keyword)
+                .or().like(DemandEntity::getLocation, keyword));
+        }
+        String category = query.category();
+        if (category != null && !category.isBlank()) {
+            wrapper.eq(DemandEntity::getCategory, category.trim().toUpperCase(Locale.ROOT));
+        }
+        String zone = query.campusZone();
+        if (zone != null && !zone.isBlank()) {
+            wrapper.eq(DemandEntity::getCampusZone, zone.trim().toUpperCase(Locale.ROOT));
+        }
+        return wrapper;
     }
 }

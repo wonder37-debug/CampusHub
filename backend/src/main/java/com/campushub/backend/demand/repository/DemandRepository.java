@@ -3,6 +3,7 @@ package com.campushub.backend.demand.repository;
 import com.campushub.backend.demand.domain.Demand;
 import com.campushub.backend.demand.domain.DemandStatus;
 import com.campushub.backend.demand.dto.DemandQuery;
+import com.campushub.backend.demand.dto.DemandReviewQuery;
 import java.util.List;
 import java.util.Optional;
 
@@ -41,4 +42,18 @@ public interface DemandRepository {
      * @param query 查询条件，为 null 时返回 0
      */
     long count(DemandQuery query);
+
+    /**
+     * 按审核查询条件分页查询审核中需求（status=REVIEWING + 过滤 + 排序 + LIMIT/OFFSET 下推 SQL）。
+     *
+     * @param query 查询条件，为 null 时返回空列表
+     */
+    List<Demand> findReviewPage(DemandReviewQuery query);
+
+    /**
+     * 按审核查询条件统计匹配的审核中需求总数（过滤下推 SQL，用于分页 total）。
+     *
+     * @param query 查询条件，为 null 时返回 0
+     */
+    long countReview(DemandReviewQuery query);
 }
