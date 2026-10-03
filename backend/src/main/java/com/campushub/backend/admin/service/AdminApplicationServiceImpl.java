@@ -284,8 +284,11 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
         LocalDate today = LocalDate.now();
 
         long dailyActiveUsers = countDailyActiveUsers(demands, orders, today);
-        long pendingReviewDemands = demandRepository.findByStatus(DemandStatus.REVIEWING).size();
-        long completedOrders = orders.stream().filter(order -> order.getStatus() == OrderStatus.COMPLETED).count();
+        long totalUsers = userRepository.count();
+        long totalDemands = demandRepository.countAll();
+        long totalOrders = orderRepository.count();
+        long pendingReviewDemands = demandRepository.countByStatus(DemandStatus.REVIEWING);
+        long completedOrders = orderRepository.countByStatus(OrderStatus.COMPLETED);
         Map<String, Long> categoryDistribution = demands.stream()
             .collect(Collectors.groupingBy(demand -> demand.getCategory().name(), Collectors.counting()));
 
@@ -295,14 +298,8 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
             .toList();
 
         return new AdminDashboardResponse(
-            dailyActiveUsers,
-            users.size(),
-            demands.size(),
-            pendingReviewDemands,
-            orders.size(),
-            completedOrders,
-            categoryStats
-        );
+            dailyActiveUsers, totalUsers, totalDemands, pendingReviewDemands,
+            totalOrders, completedOrders, categoryStats);
     }
 
     private User requireAdmin(Long operatorId) {
