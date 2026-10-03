@@ -18,6 +18,7 @@ import com.campushub.backend.common.exception.ErrorCode;
 import com.campushub.backend.demand.domain.Demand;
 import com.campushub.backend.demand.domain.DemandStatus;
 import com.campushub.backend.demand.dto.DemandDetailResponse;
+import com.campushub.backend.demand.dto.DemandReviewQuery;
 import com.campushub.backend.demand.dto.DemandSummaryResponse;
 import com.campushub.backend.demand.repository.DemandRepository;
 import com.campushub.backend.demand.service.DemandApplicationService;
@@ -152,21 +153,14 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "admin demand query must not be null");
         }
 
-        List<Demand> filtered = demandRepository.findByStatus(DemandStatus.REVIEWING).stream()
-            .filter(demand -> matchesDemandKeyword(demand, query.q()))
-            .filter(demand -> matchesDemandCategory(demand, query.category()))
-            .filter(demand -> matchesDemandCampusZone(demand, query.campusZone()))
-            .sorted(Comparator.comparing(Demand::getCreatedAt, Comparator.nullsLast(LocalDateTime::compareTo)).reversed())
-            .toList();
-
+        DemandReviewQuery reviewQuery = new DemandReviewQuery(
+            query.q(), query.category(), query.campusZone(), query.pageQuery());
+        List<Demand> demands = demandRepository.findReviewPage(reviewQuery);
+        List<DemandSummaryResponse> items = demands.stream().map(DemandSummaryResponse::from).toList();
+        long total = demandRepository.countReview(reviewQuery);
         int page = query.pageQuery().page();
         int size = query.pageQuery().size();
-        int fromIndex = Math.max(0, (page - 1) * size);
-        int toIndex = Math.min(filtered.size(), fromIndex + size);
-        List<DemandSummaryResponse> items = fromIndex >= filtered.size()
-            ? List.of()
-            : filtered.subList(fromIndex, toIndex).stream().map(DemandSummaryResponse::from).toList();
-        return new PageResponse<>(items, page, size, filtered.size());
+        return new PageResponse<>(items, page, size, total);
     }
 
     @Override
@@ -341,28 +335,6 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
         }
         return orderRepository.findById(orderId)
             .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "order not found"));
-    }
-
-    private boolean matchesDemandKeyword(Demand demand, String keyword) {
-        if (keyword == null || keyword.isBlank()) {
-            return true;
-        }
-        String normalized = keyword.trim().toLowerCase(Locale.ROOT);
-        return containsIgnoreCase(demand.getTitle(), normalized)
-            || containsIgnoreCase(demand.getDescription(), normalized)
-            || containsIgnoreCase(demand.getLocation(), normalized);
-    }
-
-    private boolean matchesDemandCategory(Demand demand, String category) {
-        return category == null || category.isBlank() || demand.getCategory().name().equalsIgnoreCase(category);
-    }
-
-    private boolean matchesDemandCampusZone(Demand demand, String campusZone) {
-        return campusZone == null || campusZone.isBlank() || demand.getCampusZone().name().equalsIgnoreCase(campusZone);
-    }
-
-    private boolean containsIgnoreCase(String value, String normalizedKeyword) {
-        return value != null && value.toLowerCase(Locale.ROOT).contains(normalizedKeyword);
     }
 
     private long countDailyActiveUsers(List<Demand> demands, List<Order> orders, LocalDate today) {
