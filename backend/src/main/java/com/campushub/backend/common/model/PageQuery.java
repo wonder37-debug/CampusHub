@@ -8,10 +8,17 @@ public record PageQuery(int page, int size) {
     public static final int DEFAULT_PAGE = 1;
     public static final int DEFAULT_SIZE = 20;
     public static final int MAX_SIZE = 100;
+    public static final int MAX_PAGE = 1000;
 
     public PageQuery {
         if (page < 1) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "page must be greater than or equal to 1");
+        }
+        if (page > MAX_PAGE) {
+            throw new BusinessException(
+                ErrorCode.VALIDATION_FAILED,
+                "page must be between 1 and " + MAX_PAGE
+            );
         }
         if (size < 1 || size > MAX_SIZE) {
             throw new BusinessException(

@@ -81,7 +81,7 @@ public class MyBatisDemandRepository implements DemandRepository {
         LambdaQueryWrapper<DemandEntity> wrapper = buildWrapper(query);
         applySort(wrapper, query.sort());
         int size = query.pageQuery().size();
-        int offset = (query.pageQuery().page() - 1) * size;
+        long offset = (long) (query.pageQuery().page() - 1) * size;
         wrapper.last("LIMIT " + size + " OFFSET " + offset);
         return demandMapper.selectList(wrapper).stream().map(DemandEntity::toDomain).toList();
     }
@@ -144,8 +144,10 @@ public class MyBatisDemandRepository implements DemandRepository {
         DemandSort resolved = sort == null ? DemandSort.TIME : sort;
         switch (resolved) {
             case REWARD -> wrapper.orderByDesc(DemandEntity::getReward)
-                                  .orderByDesc(DemandEntity::getCreatedAt);
-            case TIME, DISTANCE, RECOMMEND -> wrapper.orderByDesc(DemandEntity::getCreatedAt);
+                                  .orderByDesc(DemandEntity::getCreatedAt)
+                                  .orderByDesc(DemandEntity::getId);
+            case TIME, DISTANCE, RECOMMEND -> wrapper.orderByDesc(DemandEntity::getCreatedAt)
+                                                     .orderByDesc(DemandEntity::getId);
         }
     }
 }

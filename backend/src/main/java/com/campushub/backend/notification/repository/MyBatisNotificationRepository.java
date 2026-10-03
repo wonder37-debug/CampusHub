@@ -74,9 +74,10 @@ public class MyBatisNotificationRepository implements NotificationRepository {
             return List.of();
         }
         LambdaQueryWrapper<NotificationEntity> wrapper = buildWrapper(userId, query);
-        wrapper.orderByDesc(NotificationEntity::getCreatedAt);
+        wrapper.orderByDesc(NotificationEntity::getCreatedAt)
+               .orderByDesc(NotificationEntity::getId);
         int size = query.pageQuery().size();
-        int offset = (query.pageQuery().page() - 1) * size;
+        long offset = (long) (query.pageQuery().page() - 1) * size;
         wrapper.last("LIMIT " + size + " OFFSET " + offset);
         return notificationMapper.selectList(wrapper).stream().map(NotificationEntity::toDomain).toList();
     }

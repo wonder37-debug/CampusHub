@@ -16,8 +16,11 @@ import org.springframework.test.context.jdbc.Sql;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -318,6 +321,27 @@ class MyBatisDemandRepositoryTest {
     void findPage_and_count_return_empty_when_query_null() {
         assertThat(repository.findPage(null)).isEmpty();
         assertThat(repository.count(null)).isEqualTo(0L);
+    }
+
+    @Test
+    void findPage_with_same_created_at_is_deterministic_across_pages() {
+        LocalDateTime sameTime = LocalDateTime.now();
+        Demand d1 = repository.save(newDemandWithCreated("d1", DemandCategory.OTHER, sameTime));
+        Demand d2 = repository.save(newDemandWithCreated("d2", DemandCategory.OTHER, sameTime));
+        Demand d3 = repository.save(newDemandWithCreated("d3", DemandCategory.OTHER, sameTime));
+        Demand d4 = repository.save(newDemandWithCreated("d4", DemandCategory.OTHER, sameTime));
+
+        DemandQuery page1 = new DemandQuery(null, null, null, null, null, null, DemandSort.TIME, new PageQuery(1, 2));
+        DemandQuery page2 = new DemandQuery(null, null, null, null, null, null, DemandSort.TIME, new PageQuery(2, 2));
+
+        List<Demand> first = repository.findPage(page1);
+        List<Demand> second = repository.findPage(page2);
+
+        List<Long> allIds = new ArrayList<>(first.stream().map(Demand::getId).toList());
+        allIds.addAll(second.stream().map(Demand::getId).toList());
+        assertThat(allIds).containsExactlyInAnyOrder(d1.getId(), d2.getId(), d3.getId(), d4.getId());
+        Set<Long> firstIds = first.stream().map(Demand::getId).collect(Collectors.toSet());
+        second.forEach(d -> assertThat(firstIds).doesNotContain(d.getId()));
     }
 
     private static Demand newDemand(String title, DemandCategory category) {

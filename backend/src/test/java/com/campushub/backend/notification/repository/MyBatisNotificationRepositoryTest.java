@@ -8,6 +8,7 @@ import com.campushub.backend.notification.domain.Notification;
 import com.campushub.backend.notification.domain.NotificationType;
 import com.campushub.backend.notification.dto.NotificationQuery;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -170,6 +171,25 @@ class MyBatisNotificationRepositoryTest {
         assertThat(repository.findPage(10L, null)).isEmpty();
         assertThat(repository.count(null, new NotificationQuery(false, new PageQuery(1, 20)))).isEqualTo(0L);
         assertThat(repository.count(10L, null)).isEqualTo(0L);
+    }
+
+    @Test
+    void findPage_with_same_created_at_is_deterministic_across_pages() {
+        LocalDateTime sameTime = LocalDateTime.now();
+        Notification n1 = repository.save(newNotificationWithCreated(10L, NotificationType.ORDER_ACCEPTED, sameTime));
+        Notification n2 = repository.save(newNotificationWithCreated(10L, NotificationType.REVIEW_RECEIVED, sameTime));
+        Notification n3 = repository.save(newNotificationWithCreated(10L, NotificationType.STATUS_CHANGED, sameTime));
+        Notification n4 = repository.save(newNotificationWithCreated(10L, NotificationType.ORDER_ACCEPTED, sameTime));
+
+        NotificationQuery page1 = new NotificationQuery(false, new PageQuery(1, 2));
+        NotificationQuery page2 = new NotificationQuery(false, new PageQuery(2, 2));
+
+        List<Notification> first = repository.findPage(10L, page1);
+        List<Notification> second = repository.findPage(10L, page2);
+
+        List<Long> allIds = new ArrayList<>(first.stream().map(Notification::getId).toList());
+        allIds.addAll(second.stream().map(Notification::getId).toList());
+        assertThat(allIds).containsExactlyInAnyOrder(n1.getId(), n2.getId(), n3.getId(), n4.getId());
     }
 
     private static Notification newNotification(Long userId, NotificationType type) {
