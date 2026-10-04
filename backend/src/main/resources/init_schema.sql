@@ -188,6 +188,8 @@ CREATE TABLE IF NOT EXISTS`ord_order` (
 
   KEY `idx_order_accepter` (`accepter_id`),
 
+  KEY `idx_order_created_at` (`created_at`),
+
   CONSTRAINT `chk_order_status` CHECK (`status` IN ('ACCEPTED','IN_PROGRESS','IN_ARBITRATION','COMPLETED','CANCELLED'))
 
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单主表';
@@ -255,6 +257,8 @@ CREATE TABLE IF NOT EXISTS`ord_review` (
 
 
 CREATE INDEX idx_review_author ON ord_review(author_id);
+
+CREATE INDEX idx_review_created_at ON ord_review(created_at);
 
 
 

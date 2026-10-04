@@ -20,6 +20,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -658,6 +659,24 @@ class MyBatisDemandRepositoryTest {
     void findAllById_handles_null_and_empty() {
         assertThat(repository.findAllById(null)).isEmpty();
         assertThat(repository.findAllById(List.of())).isEmpty();
+    }
+
+    @Test
+    void countByCategory_returns_category_counts() {
+        repository.save(newDemand("d1", DemandCategory.EXPRESS));
+        repository.save(newDemand("d2", DemandCategory.EXPRESS));
+        repository.save(newDemand("d3", DemandCategory.OTHER));
+
+        Map<String, Long> result = repository.countByCategory();
+
+        assertThat(result).hasSize(2);
+        assertThat(result.get(DemandCategory.EXPRESS.name())).isEqualTo(2L);
+        assertThat(result.get(DemandCategory.OTHER.name())).isEqualTo(1L);
+    }
+
+    @Test
+    void countByCategory_returns_empty_when_no_demands() {
+        assertThat(repository.countByCategory()).isEmpty();
     }
 
     private static Demand newDemand(String title, DemandCategory category) {

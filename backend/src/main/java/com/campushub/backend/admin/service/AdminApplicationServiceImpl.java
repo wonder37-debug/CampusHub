@@ -38,7 +38,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -276,7 +275,6 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
     public AdminDashboardResponse getDashboard(Long operatorId) {
         requireAdmin(operatorId);
 
-        List<Demand> demands = demandRepository.findAll();
         LocalDate today = LocalDate.now();
 
         long dailyActiveUsers = countDailyActiveUsers(today);
@@ -285,8 +283,7 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
         long totalOrders = orderRepository.count();
         long pendingReviewDemands = demandRepository.countByStatus(DemandStatus.REVIEWING);
         long completedOrders = orderRepository.countByStatus(OrderStatus.COMPLETED);
-        Map<String, Long> categoryDistribution = demands.stream()
-            .collect(Collectors.groupingBy(demand -> demand.getCategory().name(), Collectors.counting()));
+        Map<String, Long> categoryDistribution = demandRepository.countByCategory();
 
         List<AdminCategoryStatResponse> categoryStats = categoryDistribution.entrySet().stream()
             .sorted(Map.Entry.<String, Long>comparingByValue().reversed().thenComparing(Map.Entry::getKey))
