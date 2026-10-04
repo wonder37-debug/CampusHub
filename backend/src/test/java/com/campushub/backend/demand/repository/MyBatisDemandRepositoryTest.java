@@ -16,6 +16,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.jdbc.Sql;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -622,6 +623,41 @@ class MyBatisDemandRepositoryTest {
     @Test
     void findCandidatePage_returns_empty_when_query_null() {
         assertThat(repository.findCandidatePage(10L, null)).isEmpty();
+    }
+
+    @Test
+    void findActivePublisherIdsByDate_returns_today_active() {
+        Demand todayDemand = repository.save(newDemandWithCreated("今日", DemandCategory.OTHER, LocalDateTime.now()));
+        Demand oldDemand = repository.save(newDemandWithCreated("旧", DemandCategory.OTHER, LocalDateTime.now().minusDays(2)));
+        oldDemand.setPublisherId(2L);
+        repository.save(oldDemand);
+
+        Set<Long> result = repository.findActivePublisherIdsByDate(LocalDate.now());
+
+        assertThat(result).contains(todayDemand.getPublisherId());
+        assertThat(result).doesNotContain(oldDemand.getPublisherId());
+    }
+
+    @Test
+    void findActivePublisherIdsByDate_null_returns_empty() {
+        assertThat(repository.findActivePublisherIdsByDate(null)).isEmpty();
+    }
+
+    @Test
+    void findAllById_returns_matching_demands() {
+        Demand d1 = repository.save(newDemand("d1", DemandCategory.OTHER));
+        Demand d2 = repository.save(newDemand("d2", DemandCategory.EXPRESS));
+        repository.save(newDemand("d3", DemandCategory.OTHER));
+
+        List<Demand> result = repository.findAllById(List.of(d1.getId(), d2.getId()));
+
+        assertThat(result).extracting(Demand::getId).containsExactlyInAnyOrder(d1.getId(), d2.getId());
+    }
+
+    @Test
+    void findAllById_handles_null_and_empty() {
+        assertThat(repository.findAllById(null)).isEmpty();
+        assertThat(repository.findAllById(List.of())).isEmpty();
     }
 
     private static Demand newDemand(String title, DemandCategory category) {

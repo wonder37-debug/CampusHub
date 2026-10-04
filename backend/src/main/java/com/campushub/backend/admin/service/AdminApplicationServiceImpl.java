@@ -28,9 +28,7 @@ import com.campushub.backend.order.domain.OrderStatus;
 import com.campushub.backend.order.dto.OrderDetailResponse;
 import com.campushub.backend.order.dto.OrderSummaryResponse;
 import com.campushub.backend.order.repository.OrderRepository;
-import com.campushub.backend.recommendation.domain.UserActionLog;
 import com.campushub.backend.recommendation.repository.UserActionLogRepository;
-import com.campushub.backend.review.domain.Review;
 import com.campushub.backend.review.repository.ReviewRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -278,12 +276,10 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
     public AdminDashboardResponse getDashboard(Long operatorId) {
         requireAdmin(operatorId);
 
-        List<User> users = userRepository.findAll();
         List<Demand> demands = demandRepository.findAll();
-        List<Order> orders = orderRepository.findAll();
         LocalDate today = LocalDate.now();
 
-        long dailyActiveUsers = countDailyActiveUsers(demands, orders, today);
+        long dailyActiveUsers = countDailyActiveUsers(today);
         long totalUsers = userRepository.count();
         long totalDemands = demandRepository.countAll();
         long totalOrders = orderRepository.count();
@@ -326,67 +322,18 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
             .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "order not found"));
     }
 
-    private long countDailyActiveUsers(List<Demand> demands, List<Order> orders, LocalDate today) {
+    private long countDailyActiveUsers(LocalDate today) {
         Set<Long> activeUserIds = new HashSet<>();
-        collectDemandActivity(activeUserIds, demands, today);
-        collectOrderActivity(activeUserIds, orders, today);
-        collectReviewActivity(activeUserIds, today);
-        collectRecommendationActivity(activeUserIds, today);
+        activeUserIds.addAll(demandRepository.findActivePublisherIdsByDate(today));
+        activeUserIds.addAll(orderRepository.findActiveParticipantIdsByDate(today));
+        if (reviewRepository != null) {
+            activeUserIds.addAll(reviewRepository.findActiveAuthorIdsByDate(today));
+        }
+        if (userActionLogRepository != null) {
+            activeUserIds.addAll(userActionLogRepository.findActiveUserIdsByDate(today));
+        }
         activeUserIds.remove(null);
         return activeUserIds.size();
-    }
-
-    private void collectDemandActivity(Set<Long> activeUserIds, List<Demand> demands, LocalDate today) {
-        demands.stream()
-            .filter(demand -> isSameDate(demand.getCreatedAt(), today) || isSameDate(demand.getUpdatedAt(), today))
-            .map(Demand::getPublisherId)
-            .forEach(activeUserIds::add);
-    }
-
-    private void collectOrderActivity(Set<Long> activeUserIds, List<Order> orders, LocalDate today) {
-        orders.stream()
-            .filter(order -> isSameDate(order.getCreatedAt(), today)
-                || isSameDate(order.getUpdatedAt(), today)
-                || isSameDate(order.getCompletedAt(), today))
-            .forEach(order -> {
-                activeUserIds.add(order.getPublisherId());
-                activeUserIds.add(order.getAccepterId());
-            });
-    }
-
-    private void collectReviewActivity(Set<Long> activeUserIds, LocalDate today) {
-        if (reviewRepository == null) {
-            return;
-        }
-        for (Review review : listAllReviews()) {
-            if (isSameDate(review.getCreatedAt(), today)) {
-                activeUserIds.add(review.getAuthorId());
-            }
-        }
-    }
-
-    private void collectRecommendationActivity(Set<Long> activeUserIds, LocalDate today) {
-        if (userActionLogRepository == null) {
-            return;
-        }
-        for (User user : userRepository.findAll()) {
-            List<UserActionLog> logs = userActionLogRepository.findByUserId(user.getId());
-            logs.stream()
-                .filter(log -> isSameDate(log.getCreatedAt(), today))
-                .map(UserActionLog::getUserId)
-                .forEach(activeUserIds::add);
-        }
-    }
-
-    private List<Review> listAllReviews() {
-        return userRepository.findAll().stream()
-            .flatMap(user -> reviewRepository.findByTargetId(user.getId()).stream())
-            .distinct()
-            .toList();
-    }
-
-    private boolean isSameDate(LocalDateTime time, LocalDate date) {
-        return time != null && time.toLocalDate().isEqual(date);
     }
 
     private void validateReason(String reason) {

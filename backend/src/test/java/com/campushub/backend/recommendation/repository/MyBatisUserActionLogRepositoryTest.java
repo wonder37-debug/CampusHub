@@ -4,8 +4,10 @@ import com.baomidou.mybatisplus.test.autoconfigure.MybatisPlusTest;
 import com.campushub.backend.demand.domain.DemandCategory;
 import com.campushub.backend.recommendation.domain.ActionType;
 import com.campushub.backend.recommendation.domain.UserActionLog;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Import;
@@ -113,6 +115,24 @@ class MyBatisUserActionLogRepositoryTest {
 
         UserActionLog reloaded = repository.findByUserId(10L).get(0);
         assertThat(reloaded.getCreatedAt()).isEqualTo(createdAt);
+    }
+
+    @Test
+    void findActiveUserIdsByDate_returns_today_active() {
+        UserActionLog todayLog = repository.save(newUserActionLog(10L, ActionType.VIEW, 1001L, DemandCategory.EXPRESS));
+        UserActionLog oldLog = repository.save(newUserActionLog(20L, ActionType.VIEW, 1002L, DemandCategory.EXPRESS));
+        oldLog.setCreatedAt(LocalDateTime.now().minusDays(2));
+        repository.save(oldLog);
+
+        Set<Long> result = repository.findActiveUserIdsByDate(LocalDate.now());
+
+        assertThat(result).contains(todayLog.getUserId());
+        assertThat(result).doesNotContain(oldLog.getUserId());
+    }
+
+    @Test
+    void findActiveUserIdsByDate_null_returns_empty() {
+        assertThat(repository.findActiveUserIdsByDate(null)).isEmpty();
     }
 
     /**
