@@ -3,17 +3,23 @@ package com.campushub.backend.notification.service;
 import com.campushub.backend.common.api.PageResponse;
 import com.campushub.backend.common.exception.BusinessException;
 import com.campushub.backend.common.exception.ErrorCode;
+import com.campushub.backend.demand.domain.Demand;
 import com.campushub.backend.demand.repository.DemandRepository;
 import com.campushub.backend.notification.domain.Notification;
 import com.campushub.backend.notification.domain.NotificationType;
 import com.campushub.backend.notification.dto.NotificationQuery;
 import com.campushub.backend.notification.dto.NotificationResponse;
 import com.campushub.backend.notification.repository.NotificationRepository;
+import com.campushub.backend.order.domain.Order;
 import com.campushub.backend.order.domain.OrderStatus;
 import com.campushub.backend.order.repository.OrderRepository;
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -103,8 +109,34 @@ public class NotificationApplicationServiceImpl implements NotificationApplicati
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "notification query must not be null");
         }
         List<Notification> notifications = notificationRepository.findPage(userId, query);
+        Map<Long, Demand> demandMap;
+        Map<Long, Order> orderMap;
+        if (notifications.isEmpty()) {
+            demandMap = Map.of();
+            orderMap = Map.of();
+        } else {
+            Set<Long> demandRelatedIds = new HashSet<>();
+            Set<Long> orderRelatedIds = new HashSet<>();
+            for (Notification n : notifications) {
+                String type = resolveTargetType(n);
+                if ("DEMAND".equals(type) && n.getRelatedId() != null) {
+                    demandRelatedIds.add(n.getRelatedId());
+                } else if ("ORDER".equals(type) && n.getRelatedId() != null) {
+                    orderRelatedIds.add(n.getRelatedId());
+                }
+            }
+            List<Order> orders = orderRelatedIds.isEmpty() ? List.of()
+                : orderRepository.findAllById(orderRelatedIds);
+            for (Order o : orders) {
+                if (o.getDemandId() != null) demandRelatedIds.add(o.getDemandId());
+            }
+            demandMap = (demandRepository == null || demandRelatedIds.isEmpty()) ? Map.of()
+                : demandRepository.findAllById(demandRelatedIds).stream().collect(Collectors.toMap(Demand::getId, d -> d));
+            orderMap = orders.isEmpty() ? Map.of()
+                : orders.stream().collect(Collectors.toMap(Order::getId, o -> o));
+        }
         List<NotificationResponse> items = notifications.stream()
-            .map(this::toNotificationResponse)
+            .map(n -> toNotificationResponse(n, demandMap, orderMap))
             .toList();
         long total = notificationRepository.count(userId, query);
         int page = query.pageQuery().page();
@@ -280,9 +312,13 @@ public class NotificationApplicationServiceImpl implements NotificationApplicati
     }
 
     private NotificationResponse toNotificationResponse(Notification notification) {
+        return toNotificationResponse(notification, null, null);
+    }
+
+    private NotificationResponse toNotificationResponse(Notification notification, Map<Long, Demand> demandMap, Map<Long, Order> orderMap) {
         String targetType = resolveTargetType(notification);
         Long targetId = notification.getRelatedId();
-        String targetTitle = resolveTargetTitle(notification, targetType);
+        String targetTitle = resolveTargetTitle(notification, targetType, demandMap, orderMap);
         String actionHint = resolveActionHint(notification.getType(), targetType);
         return NotificationResponse.from(notification, targetType, targetId, targetTitle, actionHint);
     }
@@ -298,22 +334,28 @@ public class NotificationApplicationServiceImpl implements NotificationApplicati
         };
     }
 
-    private String resolveTargetTitle(Notification notification, String targetType) {
+    private String resolveTargetTitle(Notification notification, String targetType, Map<Long, Demand> demandMap, Map<Long, Order> orderMap) {
         if (notification == null || notification.getRelatedId() == null || targetType == null) {
             return null;
         }
         if ("DEMAND".equals(targetType)) {
-            return demandRepository == null
-                ? null
-                : demandRepository.findById(notification.getRelatedId()).map(demand -> demand.getTitle()).orElse(null);
+            if (demandRepository == null) return null;
+            if (demandMap != null) {
+                Demand demand = demandMap.get(notification.getRelatedId());
+                return demand == null ? null : demand.getTitle();
+            }
+            return demandRepository.findById(notification.getRelatedId()).map(Demand::getTitle).orElse(null);
         }
-        if (!"ORDER".equals(targetType) || orderRepository == null) {
-            return null;
+        if (!"ORDER".equals(targetType) || orderRepository == null) return null;
+        Order order = orderMap != null ? orderMap.get(notification.getRelatedId())
+            : orderRepository.findById(notification.getRelatedId()).orElse(null);
+        if (order == null || demandRepository == null) return null;
+        Long demandId = order.getDemandId();
+        if (demandMap != null) {
+            Demand demand = demandMap.get(demandId);
+            return demand == null ? null : demand.getTitle();
         }
-        return orderRepository.findById(notification.getRelatedId())
-            .flatMap(order -> demandRepository == null ? Optional.empty() : demandRepository.findById(order.getDemandId()))
-            .map(demand -> demand.getTitle())
-            .orElse(null);
+        return demandRepository.findById(demandId).map(Demand::getTitle).orElse(null);
     }
 
     private String resolveActionHint(NotificationType type, String targetType) {

@@ -470,8 +470,8 @@ public class ApiViewMapper {
                 && entry.operatorId().equals(userId)
                 && entry.fromStatus() == OrderStatus.IN_PROGRESS
                 && entry.toStatus() == OrderStatus.IN_PROGRESS
-                && ("鎺ュ崟鏂圭‘璁ゅ畬鎴愶紝绛夊緟闇€姹傛柟纭".equals(entry.note())
-                    || "闇€姹傛柟纭瀹屾垚锛岀瓑寰呮帴鍗曟柟纭".equals(entry.note())
+                && ("PROVIDER_CONFIRMED_COMPLETION".equals(entry.note())
+                    || "REQUESTER_CONFIRMED_COMPLETION".equals(entry.note())
                     || "已确认完成，等待对方确认。".equals(entry.note())));
     }
 }
