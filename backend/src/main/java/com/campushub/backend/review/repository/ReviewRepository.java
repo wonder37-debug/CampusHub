@@ -3,6 +3,7 @@ package com.campushub.backend.review.repository;
 import com.campushub.backend.review.domain.Review;
 import com.campushub.backend.review.dto.ReviewQuery;
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -51,4 +52,9 @@ public interface ReviewRepository {
     long count(Long targetUserId, ReviewQuery query);
 
     Set<Long> findActiveAuthorIdsByDate(LocalDate today);
+
+    /**
+     * 查询给定 order 集合中已被指定作者评价的 order_id（用于批量排除已评价订单）。
+     */
+    Set<Long> findReviewedOrderIdsByAuthor(Long authorId, Collection<Long> orderIds);
 }

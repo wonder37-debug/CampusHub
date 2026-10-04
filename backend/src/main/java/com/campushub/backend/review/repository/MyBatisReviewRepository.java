@@ -10,6 +10,7 @@ import org.springframework.stereotype.Repository;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -139,6 +140,19 @@ public class MyBatisReviewRepository implements ReviewRepository {
                 .select(ReviewEntity::getAuthorId)
                 .ge(ReviewEntity::getCreatedAt, start).lt(ReviewEntity::getCreatedAt, end));
         return entities.stream().map(ReviewEntity::getAuthorId).filter(Objects::nonNull).collect(Collectors.toSet());
+    }
+
+    @Override
+    public Set<Long> findReviewedOrderIdsByAuthor(Long authorId, Collection<Long> orderIds) {
+        if (authorId == null || orderIds == null || orderIds.isEmpty()) {
+            return Set.of();
+        }
+        List<ReviewEntity> entities = reviewMapper.selectList(
+            new LambdaQueryWrapper<ReviewEntity>()
+                .select(ReviewEntity::getOrderId)
+                .eq(ReviewEntity::getAuthorId, authorId)
+                .in(ReviewEntity::getOrderId, orderIds));
+        return entities.stream().map(ReviewEntity::getOrderId).filter(Objects::nonNull).collect(Collectors.toSet());
     }
 
     private LambdaQueryWrapper<ReviewEntity> buildWrapper(Long targetUserId, ReviewQuery query) {

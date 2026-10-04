@@ -18,6 +18,7 @@ import com.campushub.backend.demand.dto.PublishDemandCommand;
 import com.campushub.backend.demand.dto.UpdateDemandCommand;
 import com.campushub.backend.demand.repository.DemandRepository;
 import com.campushub.backend.notification.service.NotificationApplicationService;
+import com.campushub.backend.order.domain.Order;
 import com.campushub.backend.order.domain.OrderStatus;
 import com.campushub.backend.order.repository.OrderRepository;
 import com.campushub.backend.order.service.OrderApplicationService;
@@ -26,6 +27,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -406,15 +408,18 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
 
         // 检查该用户是否有已完成但未评价的订单，如果有则发送提醒
         if (notificationApplicationService != null && reviewRepository != null && orderRepository != null) {
-            java.util.List<com.campushub.backend.order.domain.Order> allOrders = orderRepository.findByParticipant(publisherId);
-            for (com.campushub.backend.order.domain.Order order : allOrders) {
-                if (order.getStatus() != OrderStatus.COMPLETED) {
-                    continue;
+            List<Long> completedOrderIds = orderRepository.findByParticipant(publisherId).stream()
+                .filter(order -> order.getStatus() == OrderStatus.COMPLETED)
+                .map(Order::getId)
+                .toList();
+            if (completedOrderIds.isEmpty()) {
+                return;
+            }
+            Set<Long> reviewedOrderIds = reviewRepository.findReviewedOrderIdsByAuthor(publisherId, completedOrderIds);
+            for (Long orderId : completedOrderIds) {
+                if (!reviewedOrderIds.contains(orderId)) {
+                    notificationApplicationService.notifyPendingReviewReminder(publisherId, orderId);
                 }
-                if (reviewRepository.findByOrderIdAndAuthorId(order.getId(), publisherId).isPresent()) {
-                    continue;
-                }
-                notificationApplicationService.notifyPendingReviewReminder(publisherId, order.getId());
             }
         }
     }
