@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.campushub.backend.order.domain.Order;
 import com.campushub.backend.order.domain.OrderStatus;
 import com.campushub.backend.order.domain.OrderStatusHistoryEntry;
+import com.campushub.backend.order.dto.OrderHistoryQuery;
 import com.campushub.backend.order.repository.entity.OrderEntity;
 import com.campushub.backend.order.repository.entity.OrderStatusLogEntity;
 import com.campushub.backend.order.repository.mapper.OrderMapper;
@@ -126,6 +127,37 @@ public class MyBatisOrderRepository implements OrderRepository {
         }
         return orderMapper.selectCount(new LambdaQueryWrapper<OrderEntity>()
             .eq(OrderEntity::getStatus, status.name()));
+    }
+
+    @Override
+    public List<Order> findHistoryPage(Long userId, OrderHistoryQuery query) {
+        if (userId == null || query == null) {
+            return List.of();
+        }
+        LambdaQueryWrapper<OrderEntity> wrapper = buildHistoryWrapper(userId);
+        wrapper.orderByDesc(OrderEntity::getCreatedAt)
+               .orderByDesc(OrderEntity::getId);
+        int size = query.pageQuery().size();
+        long offset = (long) (query.pageQuery().page() - 1) * size;
+        wrapper.last("LIMIT " + size + " OFFSET " + offset);
+        return orderMapper.selectList(wrapper).stream()
+            .map(e -> e.toDomain(Collections.emptyList()))
+            .toList();
+    }
+
+    @Override
+    public long countHistory(Long userId) {
+        if (userId == null) {
+            return 0L;
+        }
+        return orderMapper.selectCount(buildHistoryWrapper(userId));
+    }
+
+    private LambdaQueryWrapper<OrderEntity> buildHistoryWrapper(Long userId) {
+        LambdaQueryWrapper<OrderEntity> wrapper = new LambdaQueryWrapper<>();
+        wrapper.and(w -> w.eq(OrderEntity::getPublisherId, userId)
+            .or().eq(OrderEntity::getAccepterId, userId));
+        return wrapper;
     }
 
     @Override

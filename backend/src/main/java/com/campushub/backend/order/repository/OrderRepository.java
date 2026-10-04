@@ -2,6 +2,7 @@ package com.campushub.backend.order.repository;
 
 import com.campushub.backend.order.domain.Order;
 import com.campushub.backend.order.domain.OrderStatus;
+import com.campushub.backend.order.dto.OrderHistoryQuery;
 import java.util.List;
 import java.util.Optional;
 
@@ -41,6 +42,23 @@ public interface OrderRepository {
      * 按状态统计订单数（下推 SQL selectCount，用于 dashboard stats）。
      */
     long countByStatus(OrderStatus status);
+
+    /**
+     * 按用户与查询条件分页查询历史订单（publisher_id 或 accepter_id 命中 + 排序 + LIMIT/OFFSET 下推 SQL）。
+     *
+     * <p>不加载 statusHistory（调用方用 OrderSummaryResponse 不依赖历史）；避免 findByParticipant 的逐条 loadHistory N+1。</p>
+     *
+     * @param userId 用户 ID，为 null 时返回空列表
+     * @param query 查询条件，为 null 时返回空列表
+     */
+    List<Order> findHistoryPage(Long userId, OrderHistoryQuery query);
+
+    /**
+     * 按用户统计历史订单总数（publisher_id 或 accepter_id 命中，下推 SQL，用于分页 total）。
+     *
+     * @param userId 用户 ID，为 null 时返回 0
+     */
+    long countHistory(Long userId);
 
     void deleteById(Long orderId);
 }
