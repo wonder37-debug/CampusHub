@@ -30,10 +30,6 @@ public class NotificationApplicationServiceImpl implements NotificationApplicati
     private final OrderRepository orderRepository;
     private final DemandRepository demandRepository;
 
-    public NotificationApplicationServiceImpl(NotificationRepository notificationRepository) {
-        this(notificationRepository, null, null);
-    }
-
     @Autowired
     public NotificationApplicationServiceImpl(
         NotificationRepository notificationRepository,

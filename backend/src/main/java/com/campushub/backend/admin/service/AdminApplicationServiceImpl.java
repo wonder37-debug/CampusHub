@@ -38,7 +38,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -52,24 +51,25 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
     private final NotificationApplicationService notificationApplicationService;
     private final DemandApplicationService demandApplicationService;
 
-    @Autowired(required = false)
-    private ReviewRepository reviewRepository;
-
-    @Autowired(required = false)
-    private UserActionLogRepository userActionLogRepository;
+    private final ReviewRepository reviewRepository;
+    private final UserActionLogRepository userActionLogRepository;
 
     public AdminApplicationServiceImpl(
         UserRepository userRepository,
         DemandRepository demandRepository,
         OrderRepository orderRepository,
         NotificationApplicationService notificationApplicationService,
-        DemandApplicationService demandApplicationService
+        DemandApplicationService demandApplicationService,
+        ReviewRepository reviewRepository,
+        UserActionLogRepository userActionLogRepository
     ) {
         this.userRepository = userRepository;
         this.demandRepository = demandRepository;
         this.orderRepository = orderRepository;
         this.notificationApplicationService = notificationApplicationService;
         this.demandApplicationService = demandApplicationService;
+        this.reviewRepository = reviewRepository;
+        this.userActionLogRepository = userActionLogRepository;
     }
 
     @Override

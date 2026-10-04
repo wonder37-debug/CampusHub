@@ -43,23 +43,15 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
     private final ReviewRepository reviewRepository;
     private final OrderRepository orderRepository;
 
-    public DemandApplicationServiceImpl(
-        DemandRepository demandRepository,
-        UserRepository userRepository,
-        SensitiveWordChecker sensitiveWordChecker
-    ) {
-        this(demandRepository, userRepository, sensitiveWordChecker, null, null, null, null);
-    }
-
     @Autowired
     public DemandApplicationServiceImpl(
         DemandRepository demandRepository,
         UserRepository userRepository,
         SensitiveWordChecker sensitiveWordChecker,
-        @Autowired(required = false) NotificationApplicationService notificationApplicationService,
-        @Autowired(required = false) OrderApplicationService orderApplicationService,
-        @Autowired(required = false) ReviewRepository reviewRepository,
-        @Autowired(required = false) OrderRepository orderRepository
+        NotificationApplicationService notificationApplicationService,
+        OrderApplicationService orderApplicationService,
+        ReviewRepository reviewRepository,
+        OrderRepository orderRepository
     ) {
         this.demandRepository = demandRepository;
         this.userRepository = userRepository;
