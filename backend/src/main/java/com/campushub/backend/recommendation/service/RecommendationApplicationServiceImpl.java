@@ -22,6 +22,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -148,14 +149,21 @@ public class RecommendationApplicationServiceImpl implements RecommendationAppli
     }
 
     private Map<String, Long> buildAcceptedCategoryStats(Long userId) {
+        List<Long> demandIds = orderRepository.findByParticipant(userId).stream()
+            .filter(order -> userId.equals(order.getAccepterId()))
+            .map(Order::getDemandId)
+            .toList();
+        if (demandIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, Demand> demandById = demandRepository.findAllById(demandIds).stream()
+            .collect(Collectors.toMap(Demand::getId, d -> d));
         Map<String, Long> stats = new HashMap<>();
-        for (Order order : orderRepository.findByParticipant(userId)) {
-            if (!userId.equals(order.getAccepterId())) {
-                continue;
+        for (Long demandId : demandIds) {
+            Demand demand = demandById.get(demandId);
+            if (demand != null) {
+                stats.merge(demand.getCategory().name(), 1L, Long::sum);
             }
-            demandRepository.findById(order.getDemandId()).ifPresent(demand ->
-                stats.merge(demand.getCategory().name(), 1L, Long::sum)
-            );
         }
         return stats;
     }

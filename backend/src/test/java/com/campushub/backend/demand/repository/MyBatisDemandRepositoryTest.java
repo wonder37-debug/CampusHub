@@ -643,6 +643,23 @@ class MyBatisDemandRepositoryTest {
         assertThat(repository.findActivePublisherIdsByDate(null)).isEmpty();
     }
 
+    @Test
+    void findAllById_returns_matching_demands() {
+        Demand d1 = repository.save(newDemand("d1", DemandCategory.OTHER));
+        Demand d2 = repository.save(newDemand("d2", DemandCategory.EXPRESS));
+        repository.save(newDemand("d3", DemandCategory.OTHER));
+
+        List<Demand> result = repository.findAllById(List.of(d1.getId(), d2.getId()));
+
+        assertThat(result).extracting(Demand::getId).containsExactlyInAnyOrder(d1.getId(), d2.getId());
+    }
+
+    @Test
+    void findAllById_handles_null_and_empty() {
+        assertThat(repository.findAllById(null)).isEmpty();
+        assertThat(repository.findAllById(List.of())).isEmpty();
+    }
+
     private static Demand newDemand(String title, DemandCategory category) {
         Demand demand = new Demand();
         demand.setPublisherId(1L);
