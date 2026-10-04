@@ -18,3 +18,4 @@ CREATE TABLE ord_review (
 
 CREATE INDEX idx_review_target ON ord_review(target_id);
 CREATE INDEX idx_review_author ON ord_review(author_id);
+CREATE INDEX idx_review_created_at ON ord_review(created_at);

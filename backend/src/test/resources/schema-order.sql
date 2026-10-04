@@ -22,6 +22,7 @@ CREATE TABLE ord_order (
 
 CREATE INDEX idx_order_publisher ON ord_order(publisher_id);
 CREATE INDEX idx_order_accepter ON ord_order(accepter_id);
+CREATE INDEX idx_order_created_at ON ord_order(created_at);
 
 CREATE TABLE ord_order_status_log (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,

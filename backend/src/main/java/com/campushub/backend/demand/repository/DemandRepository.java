@@ -7,6 +7,7 @@ import com.campushub.backend.demand.dto.DemandReviewQuery;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -69,6 +70,11 @@ public interface DemandRepository {
      * 按状态统计需求数（下推 SQL selectCount，用于 dashboard stats）。
      */
     long countByStatus(DemandStatus status);
+
+    /**
+     * 按分类统计需求数（下推 SQL groupBy，用于 dashboard categoryDistribution）。
+     */
+    Map<String, Long> countByCategory();
 
     /**
      * 按推荐候选条件查询需求（status=PENDING + 排除自己 + keyword/category/campusZone/location/startTime 过滤下推 SQL）。

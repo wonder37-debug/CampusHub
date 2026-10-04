@@ -1,6 +1,7 @@
 package com.campushub.backend.demand.repository;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.campushub.backend.demand.domain.Demand;
 import com.campushub.backend.demand.domain.DemandSort;
 import com.campushub.backend.demand.domain.DemandStatus;
@@ -14,8 +15,10 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -212,6 +215,30 @@ public class MyBatisDemandRepository implements DemandRepository {
         }
         return demandMapper.selectCount(new LambdaQueryWrapper<DemandEntity>()
             .eq(DemandEntity::getStatus, status.name()));
+    }
+
+    @Override
+    public Map<String, Long> countByCategory() {
+        QueryWrapper<DemandEntity> wrapper = new QueryWrapper<>();
+        wrapper.select("category, count(*) as cnt").groupBy("category");
+        List<Map<String, Object>> maps = demandMapper.selectMaps(wrapper);
+        Map<String, Long> result = new HashMap<>();
+        for (Map<String, Object> m : maps) {
+            String category = null;
+            Object cnt = null;
+            for (Map.Entry<String, Object> e : m.entrySet()) {
+                String key = e.getKey();
+                if ("category".equalsIgnoreCase(key)) {
+                    category = (String) e.getValue();
+                } else if ("cnt".equalsIgnoreCase(key)) {
+                    cnt = e.getValue();
+                }
+            }
+            if (category != null && cnt != null) {
+                result.put(category, ((Number) cnt).longValue());
+            }
+        }
+        return result;
     }
 
     @Override

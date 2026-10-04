@@ -188,9 +188,18 @@ CREATE TABLE IF NOT EXISTS`ord_order` (
 
   KEY `idx_order_accepter` (`accepter_id`),
 
+  KEY `idx_order_created_at` (`created_at`),
+
   CONSTRAINT `chk_order_status` CHECK (`status` IN ('ACCEPTED','IN_PROGRESS','IN_ARBITRATION','COMPLETED','CANCELLED'))
 
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单主表';
+
+-- 幂等补充 idx_order_created_at（老版本 ord_order 表已存在但缺少该索引时添加；Spring sql.init always mode 重复执行安全）
+SET @idx_exists = (SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'ord_order' AND index_name = 'idx_order_created_at');
+SET @sql = IF(@idx_exists = 0, 'ALTER TABLE `ord_order` ADD INDEX `idx_order_created_at` (`created_at`)', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 
 
@@ -255,6 +264,13 @@ CREATE TABLE IF NOT EXISTS`ord_review` (
 
 
 CREATE INDEX idx_review_author ON ord_review(author_id);
+
+-- 幂等补充 idx_review_created_at（Spring sql.init always mode 重复执行安全）
+SET @idx_exists = (SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'ord_review' AND index_name = 'idx_review_created_at');
+SET @sql = IF(@idx_exists = 0, 'ALTER TABLE `ord_review` ADD INDEX `idx_review_created_at` (`created_at`)', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 
 
