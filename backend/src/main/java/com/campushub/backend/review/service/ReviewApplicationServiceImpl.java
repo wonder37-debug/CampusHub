@@ -91,19 +91,12 @@ public class ReviewApplicationServiceImpl implements ReviewApplicationService {
         if (query == null) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "review query must not be null");
         }
-        List<Review> received = reviewRepository.findByTargetId(targetUserId);
-        List<Review> given = reviewRepository.findByAuthorId(targetUserId);
-        List<Review> reviews = java.util.stream.Stream.concat(received.stream(), given.stream())
-            .sorted(Comparator.comparing(Review::getCreatedAt).reversed())
-            .toList();
+        List<Review> reviews = reviewRepository.findPage(targetUserId, query);
+        List<ReviewResponse> items = reviews.stream().map(ReviewResponse::from).toList();
+        long total = reviewRepository.count(targetUserId, query);
         int page = query.pageQuery().page();
         int size = query.pageQuery().size();
-        int fromIndex = Math.max(0, (page - 1) * size);
-        int toIndex = Math.min(reviews.size(), fromIndex + size);
-        List<ReviewResponse> items = fromIndex >= reviews.size()
-            ? List.of()
-            : reviews.subList(fromIndex, toIndex).stream().map(ReviewResponse::from).toList();
-        return new PageResponse<>(items, page, size, reviews.size());
+        return new PageResponse<>(items, page, size, total);
     }
 
     @Override
