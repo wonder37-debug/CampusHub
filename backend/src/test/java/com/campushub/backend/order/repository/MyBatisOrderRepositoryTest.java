@@ -497,6 +497,27 @@ class MyBatisOrderRepositoryTest {
         assertThat(repository.findAllByDemandIdIn(List.of())).isEmpty();
     }
 
+    @Test
+    void findAllById_returns_matching_orders_with_history() {
+        Order o1 = repository.save(newOrder(9501L, 10L, 20L));
+        o1.addHistory(null, OrderStatus.ACCEPTED, 20L, "接单", LocalDateTime.now());
+        repository.save(o1);
+        Order o2 = repository.save(newOrder(9502L, 11L, 21L));
+        repository.save(newOrder(9503L, 12L, 22L));
+
+        List<Order> result = repository.findAllById(List.of(o1.getId(), o2.getId(), 9999L));
+
+        assertThat(result).extracting(Order::getId).containsExactlyInAnyOrder(o1.getId(), o2.getId());
+        Order loaded1 = result.stream().filter(o -> o.getId().equals(o1.getId())).findFirst().orElseThrow();
+        assertThat(loaded1.getStatusHistory()).hasSize(1);
+    }
+
+    @Test
+    void findAllById_handles_null_and_empty() {
+        assertThat(repository.findAllById(null)).isEmpty();
+        assertThat(repository.findAllById(List.of())).isEmpty();
+    }
+
     /**
      * 工厂方法：为所有 NOT NULL 列（demand_id / publisher_id / accepter_id / status）
      * 提供默认值，避免 H2 抛出 NULL not allowed 异常。

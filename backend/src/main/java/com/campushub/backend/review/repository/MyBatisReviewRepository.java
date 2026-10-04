@@ -107,6 +107,18 @@ public class MyBatisReviewRepository implements ReviewRepository {
     }
 
     @Override
+    public List<Review> findAllByOrderIdIn(Collection<Long> orderIds) {
+        if (orderIds == null || orderIds.isEmpty()) {
+            return new ArrayList<>();
+        }
+        List<ReviewEntity> entities = reviewMapper.selectList(
+            new LambdaQueryWrapper<ReviewEntity>()
+                .in(ReviewEntity::getOrderId, orderIds)
+        );
+        return entities.stream().map(ReviewEntity::toDomain).toList();
+    }
+
+    @Override
     public List<Review> findPage(Long targetUserId, ReviewQuery query) {
         if (targetUserId == null || query == null) {
             return List.of();

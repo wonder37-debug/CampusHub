@@ -21,6 +21,7 @@ import com.campushub.backend.review.repository.ReviewRepository;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -124,17 +125,26 @@ public class ApiViewMapper {
     }
 
     public OrderView toOrderView(Order order, CurrentUser currentUser) {
-        Demand demand = demandRepository.findById(order.getDemandId()).orElse(null);
-        User requester = userRepository.findById(order.getPublisherId()).orElse(null);
-        User provider = userRepository.findById(order.getAccepterId()).orElse(null);
+        return toOrderView(order, currentUser, null, null, null, null, null);
+    }
+
+    public OrderView toOrderView(Order order, CurrentUser currentUser,
+            Map<Long, Demand> demandMap, Map<Long, User> userMap,
+            Map<Long, List<Review>> reviewByOrderIdMap, Set<Long> reviewedOrderIdsByCurrentUser,
+            Map<Long, Order> orderByDemandMap) {
+        Demand demand = resolveDemand(order.getDemandId(), demandMap);
+        User requester = resolveUser(order.getPublisherId(), userMap);
+        User provider = resolveUser(order.getAccepterId(), userMap);
         boolean canSeePublisher = demand == null || canSeeDemandPublisher(demand, currentUser);
         String anonymousCode = demand != null ? demand.getAnonymousCode() : null;
 
-        List<ReviewView> reviews = reviewRepository.findByOrderId(order.getId()).stream()
+        List<ReviewView> reviews = resolveReviews(order.getId(), reviewByOrderIdMap).stream()
             .map(review -> toReviewView(review, canSeePublisher, order.getPublisherId(), anonymousCode))
             .toList();
         boolean currentUserReviewed = currentUser != null
-            && reviewRepository.findByOrderIdAndAuthorId(order.getId(), currentUser.userId()).isPresent();
+            && (reviewedOrderIdsByCurrentUser != null
+                ? reviewedOrderIdsByCurrentUser.contains(order.getId())
+                : reviewRepository.findByOrderIdAndAuthorId(order.getId(), currentUser.userId()).isPresent());
 
         return new OrderView(
             order.getId(),
@@ -149,7 +159,7 @@ public class ApiViewMapper {
             order.getCreatedAt(),
             order.getUpdatedAt(),
             order.getCompletedAt(),
-            demand == null ? null : toDemandView(demand, currentUser),
+            demand == null ? null : toDemandView(demand, currentUser, userMap, orderByDemandMap),
             requester == null ? null : anonymizeUserSummary(UserSummaryView.from(requester), canSeePublisher, anonymousCode),
             provider == null ? null : UserSummaryView.from(provider),
             order.getStatusHistory().stream().map(this::toTimelineView).toList(),
@@ -158,11 +168,21 @@ public class ApiViewMapper {
             resolvePendingReviewTarget(order, currentUser, currentUserReviewed),
             resolveCompletionHint(order, currentUser),
             demand == null ? List.of() : demand.getImages(),
-            resolveContactInfo(demand,
-                orderRepository.findByDemandId(order.getDemandId()).orElse(null),
-                currentUser),
+            resolveContactInfo(demand, order, currentUser),
             resolveArbitrationResult(order)
         );
+    }
+
+    private Demand resolveDemand(Long id, Map<Long, Demand> map) {
+        if (id == null) return null;
+        if (map != null) return map.get(id);
+        return demandRepository.findById(id).orElse(null);
+    }
+
+    private List<Review> resolveReviews(Long orderId, Map<Long, List<Review>> map) {
+        if (orderId == null) return List.of();
+        if (map != null) return map.getOrDefault(orderId, List.of());
+        return reviewRepository.findByOrderId(orderId);
     }
 
     public ReviewView toReviewView(Review review) {

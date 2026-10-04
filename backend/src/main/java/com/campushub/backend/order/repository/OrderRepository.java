@@ -19,6 +19,8 @@ public interface OrderRepository {
 
     List<Order> findAllByDemandIdIn(Collection<Long> demandIds);
 
+    List<Order> findAllById(Collection<Long> ids);
+
     List<Order> findByParticipant(Long userId);
 
     List<Order> findAll();

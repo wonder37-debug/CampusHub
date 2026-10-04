@@ -229,6 +229,23 @@ class MyBatisReviewRepositoryTest {
         assertThat(repository.findReviewedOrderIdsByAuthor(10L, List.of())).isEmpty();
     }
 
+    @Test
+    void findAllByOrderIdIn_returns_matching_reviews() {
+        repository.save(newReview(9601L, 10L, 20L, 5));
+        repository.save(newReview(9602L, 11L, 20L, 4));
+        repository.save(newReview(9603L, 12L, 21L, 3));
+
+        List<Review> result = repository.findAllByOrderIdIn(List.of(9601L, 9602L, 9604L));
+
+        assertThat(result).extracting(Review::getOrderId).containsExactlyInAnyOrder(9601L, 9602L);
+    }
+
+    @Test
+    void findAllByOrderIdIn_handles_null_and_empty() {
+        assertThat(repository.findAllByOrderIdIn(null)).isEmpty();
+        assertThat(repository.findAllByOrderIdIn(List.of())).isEmpty();
+    }
+
     /**
      * 工厂方法：为所有 NOT NULL 列（order_id / author_id / target_id / rating / created_at）
      * 提供默认值，避免 H2 抛出 NULL not allowed 异常。

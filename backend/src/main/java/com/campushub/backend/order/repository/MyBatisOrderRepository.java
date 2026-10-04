@@ -95,6 +95,14 @@ public class MyBatisOrderRepository implements OrderRepository {
     }
 
     @Override
+    public List<Order> findAllById(Collection<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return new ArrayList<>();
+        }
+        return assembleWithBatchHistory(orderMapper.selectBatchIds(ids));
+    }
+
+    @Override
     public List<Order> findByParticipant(Long userId) {
         if (userId == null) {
             return new ArrayList<>();
