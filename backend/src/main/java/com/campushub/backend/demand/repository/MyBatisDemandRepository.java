@@ -10,11 +10,16 @@ import com.campushub.backend.demand.repository.entity.DemandEntity;
 import com.campushub.backend.demand.repository.mapper.DemandMapper;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 基于 MyBatis-Plus 的 {@link DemandRepository} 实现。
@@ -216,6 +221,29 @@ public class MyBatisDemandRepository implements DemandRepository {
         }
         LambdaQueryWrapper<DemandEntity> wrapper = buildCandidateWrapper(userId, query);
         return demandMapper.selectList(wrapper).stream().map(DemandEntity::toDomain).toList();
+    }
+
+    @Override
+    public Set<Long> findActivePublisherIdsByDate(LocalDate today) {
+        if (today == null) {
+            return Set.of();
+        }
+        LocalDateTime start = today.atStartOfDay();
+        LocalDateTime end = today.plusDays(1).atStartOfDay();
+        List<DemandEntity> entities = demandMapper.selectList(
+            new LambdaQueryWrapper<DemandEntity>()
+                .select(DemandEntity::getPublisherId)
+                .and(w -> w.ge(DemandEntity::getCreatedAt, start).lt(DemandEntity::getCreatedAt, end)
+                    .or().ge(DemandEntity::getUpdatedAt, start).lt(DemandEntity::getUpdatedAt, end)));
+        return entities.stream().map(DemandEntity::getPublisherId).filter(Objects::nonNull).collect(Collectors.toSet());
+    }
+
+    @Override
+    public List<Demand> findAllById(Collection<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return List.of();
+        }
+        return demandMapper.selectBatchIds(ids).stream().map(DemandEntity::toDomain).toList();
     }
 
     private LambdaQueryWrapper<DemandEntity> buildCandidateWrapper(Long userId, DemandQuery query) {

@@ -12,9 +12,11 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.jdbc.Sql;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -187,6 +189,44 @@ class MyBatisReviewRepositoryTest {
         assertThat(repository.findPage(30L, null)).isEmpty();
         assertThat(repository.count(null, new ReviewQuery(new PageQuery(1, 20)))).isZero();
         assertThat(repository.count(30L, null)).isZero();
+    }
+
+    @Test
+    void findActiveAuthorIdsByDate_returns_today_active() {
+        Review today = repository.save(newReview(9201L, 10L, 20L, 5));
+        today.setCreatedAt(LocalDateTime.now());
+        repository.save(today);
+        Review old = repository.save(newReview(9202L, 11L, 21L, 4));
+        old.setCreatedAt(LocalDateTime.now().minusDays(2));
+        repository.save(old);
+
+        Set<Long> result = repository.findActiveAuthorIdsByDate(LocalDate.now());
+
+        assertThat(result).contains(10L);
+        assertThat(result).doesNotContain(11L);
+    }
+
+    @Test
+    void findActiveAuthorIdsByDate_null_returns_empty() {
+        assertThat(repository.findActiveAuthorIdsByDate(null)).isEmpty();
+    }
+
+    @Test
+    void findReviewedOrderIdsByAuthor_returns_reviewed_order_ids() {
+        repository.save(newReview(9301L, 10L, 20L, 5)); // author=10 reviewed order 9301
+        repository.save(newReview(9302L, 10L, 21L, 4)); // author=10 reviewed order 9302
+        repository.save(newReview(9303L, 11L, 20L, 3)); // author=11 reviewed order 9303
+
+        Set<Long> result = repository.findReviewedOrderIdsByAuthor(10L, List.of(9301L, 9302L, 9303L, 9304L));
+
+        assertThat(result).containsExactlyInAnyOrder(9301L, 9302L);
+    }
+
+    @Test
+    void findReviewedOrderIdsByAuthor_handles_null_and_empty() {
+        assertThat(repository.findReviewedOrderIdsByAuthor(null, List.of(9301L))).isEmpty();
+        assertThat(repository.findReviewedOrderIdsByAuthor(10L, null)).isEmpty();
+        assertThat(repository.findReviewedOrderIdsByAuthor(10L, List.of())).isEmpty();
     }
 
     /**

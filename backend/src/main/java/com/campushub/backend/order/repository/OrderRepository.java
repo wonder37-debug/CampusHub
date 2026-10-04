@@ -3,8 +3,11 @@ package com.campushub.backend.order.repository;
 import com.campushub.backend.order.domain.Order;
 import com.campushub.backend.order.domain.OrderStatus;
 import com.campushub.backend.order.dto.OrderHistoryQuery;
+import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 public interface OrderRepository {
 
@@ -59,6 +62,15 @@ public interface OrderRepository {
      * @param userId 用户 ID，为 null 时返回 0
      */
     long countHistory(Long userId);
+
+    /**
+     * 查询给定 demand 集合中已有订单的 demand_id（用于推荐候选排除已被接单的 demand）。
+     *
+     * @param demandIds demand ID 集合，为 null/空时返回空集
+     */
+    Set<Long> findDemandIdsWithOrder(Collection<Long> demandIds);
+
+    Set<Long> findActiveParticipantIdsByDate(LocalDate today);
 
     void deleteById(Long orderId);
 }

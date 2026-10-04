@@ -14,9 +14,11 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.jdbc.Sql;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -381,6 +383,97 @@ class MyBatisOrderRepositoryTest {
         assertThat(repository.findHistoryPage(null, new OrderHistoryQuery(new PageQuery(1, 20)))).isEmpty();
         assertThat(repository.findHistoryPage(10L, null)).isEmpty();
         assertThat(repository.countHistory(null)).isZero();
+    }
+
+    @Test
+    void findByParticipant_loads_history_in_batch_with_correct_order() {
+        Order o1 = newOrder(8001L, 10L, 20L);
+        o1.addHistory(null, OrderStatus.ACCEPTED, 20L, "接单1", LocalDateTime.of(2026, 9, 1, 10, 0));
+        o1.addHistory(OrderStatus.ACCEPTED, OrderStatus.IN_PROGRESS, 20L, "出发1", LocalDateTime.of(2026, 9, 1, 10, 30));
+        repository.save(o1);
+        Order o2 = newOrder(8002L, 10L, 21L);
+        o2.addHistory(null, OrderStatus.ACCEPTED, 21L, "接单2", LocalDateTime.of(2026, 9, 2, 10, 0));
+        repository.save(o2);
+        repository.save(newOrder(8003L, 30L, 40L)); // 无关 user
+
+        List<Order> mine = repository.findByParticipant(10L);
+
+        assertThat(mine).hasSize(2);
+        Order loaded1 = mine.stream().filter(o -> o.getDemandId().equals(8001L)).findFirst().orElseThrow();
+        assertThat(loaded1.getStatusHistory()).hasSize(2);
+        assertThat(loaded1.getStatusHistory().get(0).toStatus()).isEqualTo(OrderStatus.ACCEPTED);
+        assertThat(loaded1.getStatusHistory().get(1).toStatus()).isEqualTo(OrderStatus.IN_PROGRESS);
+        Order loaded2 = mine.stream().filter(o -> o.getDemandId().equals(8002L)).findFirst().orElseThrow();
+        assertThat(loaded2.getStatusHistory()).hasSize(1);
+        assertThat(loaded2.getStatusHistory().get(0).toStatus()).isEqualTo(OrderStatus.ACCEPTED);
+    }
+
+    @Test
+    void findAll_loads_history_in_batch_for_all_orders() {
+        Order o1 = newOrder(8101L, 10L, 20L);
+        o1.addHistory(null, OrderStatus.ACCEPTED, 20L, "A", LocalDateTime.of(2026, 9, 1, 8, 0));
+        repository.save(o1);
+        Order o2 = newOrder(8102L, 11L, 21L);
+        o2.addHistory(null, OrderStatus.ACCEPTED, 21L, "B", LocalDateTime.of(2026, 9, 1, 9, 0));
+        o2.addHistory(OrderStatus.ACCEPTED, OrderStatus.COMPLETED, 11L, "C", LocalDateTime.of(2026, 9, 1, 12, 0));
+        repository.save(o2);
+
+        List<Order> all = repository.findAll();
+
+        assertThat(all).hasSize(2);
+        Order loaded1 = all.stream().filter(o -> o.getDemandId().equals(8101L)).findFirst().orElseThrow();
+        assertThat(loaded1.getStatusHistory()).hasSize(1);
+        Order loaded2 = all.stream().filter(o -> o.getDemandId().equals(8102L)).findFirst().orElseThrow();
+        assertThat(loaded2.getStatusHistory()).hasSize(2);
+        assertThat(loaded2.getStatusHistory().get(0).note()).isEqualTo("B");
+        assertThat(loaded2.getStatusHistory().get(1).note()).isEqualTo("C");
+    }
+
+    @Test
+    void findByParticipant_returns_empty_status_history_when_no_logs() {
+        repository.save(newOrder(8201L, 10L, 20L)); // 无 addHistory
+
+        List<Order> mine = repository.findByParticipant(10L);
+
+        assertThat(mine).hasSize(1);
+        assertThat(mine.get(0).getStatusHistory()).isNotNull().isEmpty();
+    }
+
+    @Test
+    void findDemandIdsWithOrder_returns_ids_with_order() {
+        repository.save(newOrder(9001L, 10L, 20L)); // demand 9001 有 order
+        repository.save(newOrder(9002L, 11L, 21L)); // demand 9002 有 order
+        // demand 9003 无 order（不入 demandIds 输入或入但无命中）
+
+        Set<Long> result = repository.findDemandIdsWithOrder(List.of(9001L, 9002L, 9003L));
+
+        assertThat(result).containsExactlyInAnyOrder(9001L, 9002L);
+    }
+
+    @Test
+    void findDemandIdsWithOrder_handles_null_and_empty() {
+        assertThat(repository.findDemandIdsWithOrder(null)).isEmpty();
+        assertThat(repository.findDemandIdsWithOrder(List.of())).isEmpty();
+    }
+
+    @Test
+    void findActiveParticipantIdsByDate_returns_today_active_publisher_and_accepter() {
+        Order today = repository.save(newOrder(9101L, 10L, 20L));
+        today.setCreatedAt(LocalDateTime.now());
+        repository.save(today);
+        Order old = repository.save(newOrder(9102L, 11L, 21L));
+        old.setCreatedAt(LocalDateTime.now().minusDays(2));
+        repository.save(old);
+
+        Set<Long> result = repository.findActiveParticipantIdsByDate(LocalDate.now());
+
+        assertThat(result).contains(10L, 20L);
+        assertThat(result).doesNotContain(11L, 21L);
+    }
+
+    @Test
+    void findActiveParticipantIdsByDate_null_returns_empty() {
+        assertThat(repository.findActiveParticipantIdsByDate(null)).isEmpty();
     }
 
     /**
