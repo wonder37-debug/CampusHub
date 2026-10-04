@@ -16,6 +16,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.jdbc.Sql;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -622,6 +623,24 @@ class MyBatisDemandRepositoryTest {
     @Test
     void findCandidatePage_returns_empty_when_query_null() {
         assertThat(repository.findCandidatePage(10L, null)).isEmpty();
+    }
+
+    @Test
+    void findActivePublisherIdsByDate_returns_today_active() {
+        Demand todayDemand = repository.save(newDemandWithCreated("今日", DemandCategory.OTHER, LocalDateTime.now()));
+        Demand oldDemand = repository.save(newDemandWithCreated("旧", DemandCategory.OTHER, LocalDateTime.now().minusDays(2)));
+        oldDemand.setPublisherId(2L);
+        repository.save(oldDemand);
+
+        Set<Long> result = repository.findActivePublisherIdsByDate(LocalDate.now());
+
+        assertThat(result).contains(todayDemand.getPublisherId());
+        assertThat(result).doesNotContain(oldDemand.getPublisherId());
+    }
+
+    @Test
+    void findActivePublisherIdsByDate_null_returns_empty() {
+        assertThat(repository.findActivePublisherIdsByDate(null)).isEmpty();
     }
 
     private static Demand newDemand(String title, DemandCategory category) {

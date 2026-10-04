@@ -4,8 +4,10 @@ import com.campushub.backend.demand.domain.Demand;
 import com.campushub.backend.demand.domain.DemandStatus;
 import com.campushub.backend.demand.dto.DemandQuery;
 import com.campushub.backend.demand.dto.DemandReviewQuery;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 public interface DemandRepository {
 
@@ -76,4 +78,6 @@ public interface DemandRepository {
      * @param query 查询条件，为 null 时返回空列表
      */
     List<Demand> findCandidatePage(Long userId, DemandQuery query);
+
+    Set<Long> findActivePublisherIdsByDate(LocalDate today);
 }

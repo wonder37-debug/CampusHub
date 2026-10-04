@@ -5,8 +5,13 @@ import com.campushub.backend.recommendation.domain.ActionType;
 import com.campushub.backend.recommendation.domain.UserActionLog;
 import com.campushub.backend.recommendation.repository.entity.UserActionLogEntity;
 import com.campushub.backend.recommendation.repository.mapper.UserActionLogMapper;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Repository;
 
 /**
@@ -64,5 +69,19 @@ public class MyBatisUserActionLogRepository implements UserActionLogRepository {
                 .eq(UserActionLogEntity::getActionType, actionType)
         );
         return entities.stream().map(UserActionLogEntity::toDomain).toList();
+    }
+
+    @Override
+    public Set<Long> findActiveUserIdsByDate(LocalDate today) {
+        if (today == null) {
+            return Set.of();
+        }
+        LocalDateTime start = today.atStartOfDay();
+        LocalDateTime end = today.plusDays(1).atStartOfDay();
+        List<UserActionLogEntity> entities = userActionLogMapper.selectList(
+            new LambdaQueryWrapper<UserActionLogEntity>()
+                .select(UserActionLogEntity::getUserId)
+                .ge(UserActionLogEntity::getCreatedAt, start).lt(UserActionLogEntity::getCreatedAt, end));
+        return entities.stream().map(UserActionLogEntity::getUserId).filter(Objects::nonNull).collect(Collectors.toSet());
     }
 }

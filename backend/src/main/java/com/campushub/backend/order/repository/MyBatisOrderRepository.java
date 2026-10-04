@@ -9,10 +9,13 @@ import com.campushub.backend.order.repository.entity.OrderEntity;
 import com.campushub.backend.order.repository.entity.OrderStatusLogEntity;
 import com.campushub.backend.order.repository.mapper.OrderMapper;
 import com.campushub.backend.order.repository.mapper.OrderStatusLogMapper;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -176,6 +179,28 @@ public class MyBatisOrderRepository implements OrderRepository {
                 .select(OrderEntity::getDemandId)
                 .in(OrderEntity::getDemandId, demandIds));
         return entities.stream().map(OrderEntity::getDemandId).collect(Collectors.toSet());
+    }
+
+    @Override
+    public Set<Long> findActiveParticipantIdsByDate(LocalDate today) {
+        if (today == null) {
+            return Set.of();
+        }
+        LocalDateTime start = today.atStartOfDay();
+        LocalDateTime end = today.plusDays(1).atStartOfDay();
+        List<OrderEntity> entities = orderMapper.selectList(
+            new LambdaQueryWrapper<OrderEntity>()
+                .select(OrderEntity::getPublisherId, OrderEntity::getAccepterId)
+                .and(w -> w.ge(OrderEntity::getCreatedAt, start).lt(OrderEntity::getCreatedAt, end)
+                    .or().ge(OrderEntity::getUpdatedAt, start).lt(OrderEntity::getUpdatedAt, end)
+                    .or().ge(OrderEntity::getCompletedAt, start).lt(OrderEntity::getCompletedAt, end)));
+        Set<Long> result = new HashSet<>();
+        for (OrderEntity e : entities) {
+            result.add(e.getPublisherId());
+            result.add(e.getAccepterId());
+        }
+        result.remove(null);
+        return result;
     }
 
     @Override

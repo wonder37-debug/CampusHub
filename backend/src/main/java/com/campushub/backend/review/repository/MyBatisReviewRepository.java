@@ -7,9 +7,14 @@ import com.campushub.backend.review.repository.entity.ReviewEntity;
 import com.campushub.backend.review.repository.mapper.ReviewMapper;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 基于 MyBatis-Plus 的 {@link ReviewRepository} 实现。
@@ -120,6 +125,20 @@ public class MyBatisReviewRepository implements ReviewRepository {
             return 0L;
         }
         return reviewMapper.selectCount(buildWrapper(targetUserId, query));
+    }
+
+    @Override
+    public Set<Long> findActiveAuthorIdsByDate(LocalDate today) {
+        if (today == null) {
+            return Set.of();
+        }
+        LocalDateTime start = today.atStartOfDay();
+        LocalDateTime end = today.plusDays(1).atStartOfDay();
+        List<ReviewEntity> entities = reviewMapper.selectList(
+            new LambdaQueryWrapper<ReviewEntity>()
+                .select(ReviewEntity::getAuthorId)
+                .ge(ReviewEntity::getCreatedAt, start).lt(ReviewEntity::getCreatedAt, end));
+        return entities.stream().map(ReviewEntity::getAuthorId).filter(Objects::nonNull).collect(Collectors.toSet());
     }
 
     private LambdaQueryWrapper<ReviewEntity> buildWrapper(Long targetUserId, ReviewQuery query) {

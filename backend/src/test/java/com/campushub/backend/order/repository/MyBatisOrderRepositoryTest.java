@@ -14,6 +14,7 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.jdbc.Sql;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -453,6 +454,26 @@ class MyBatisOrderRepositoryTest {
     void findDemandIdsWithOrder_handles_null_and_empty() {
         assertThat(repository.findDemandIdsWithOrder(null)).isEmpty();
         assertThat(repository.findDemandIdsWithOrder(List.of())).isEmpty();
+    }
+
+    @Test
+    void findActiveParticipantIdsByDate_returns_today_active_publisher_and_accepter() {
+        Order today = repository.save(newOrder(9101L, 10L, 20L));
+        today.setCreatedAt(LocalDateTime.now());
+        repository.save(today);
+        Order old = repository.save(newOrder(9102L, 11L, 21L));
+        old.setCreatedAt(LocalDateTime.now().minusDays(2));
+        repository.save(old);
+
+        Set<Long> result = repository.findActiveParticipantIdsByDate(LocalDate.now());
+
+        assertThat(result).contains(10L, 20L);
+        assertThat(result).doesNotContain(11L, 21L);
+    }
+
+    @Test
+    void findActiveParticipantIdsByDate_null_returns_empty() {
+        assertThat(repository.findActiveParticipantIdsByDate(null)).isEmpty();
     }
 
     /**

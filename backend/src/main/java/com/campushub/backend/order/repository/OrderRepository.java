@@ -3,6 +3,7 @@ package com.campushub.backend.order.repository;
 import com.campushub.backend.order.domain.Order;
 import com.campushub.backend.order.domain.OrderStatus;
 import com.campushub.backend.order.dto.OrderHistoryQuery;
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -68,6 +69,8 @@ public interface OrderRepository {
      * @param demandIds demand ID 集合，为 null/空时返回空集
      */
     Set<Long> findDemandIdsWithOrder(Collection<Long> demandIds);
+
+    Set<Long> findActiveParticipantIdsByDate(LocalDate today);
 
     void deleteById(Long orderId);
 }

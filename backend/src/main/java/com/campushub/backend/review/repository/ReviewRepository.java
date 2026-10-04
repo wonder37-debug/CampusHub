@@ -2,8 +2,10 @@ package com.campushub.backend.review.repository;
 
 import com.campushub.backend.review.domain.Review;
 import com.campushub.backend.review.dto.ReviewQuery;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 public interface ReviewRepository {
 
@@ -47,4 +49,6 @@ public interface ReviewRepository {
      * @param query 查询条件，为 null 时返回 0
      */
     long count(Long targetUserId, ReviewQuery query);
+
+    Set<Long> findActiveAuthorIdsByDate(LocalDate today);
 }
