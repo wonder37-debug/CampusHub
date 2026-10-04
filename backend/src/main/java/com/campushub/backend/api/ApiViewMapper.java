@@ -20,6 +20,8 @@ import com.campushub.backend.review.dto.ReviewResponse;
 import com.campushub.backend.review.repository.ReviewRepository;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -43,8 +45,12 @@ public class ApiViewMapper {
     }
 
     public DemandView toDemandView(Demand demand, CurrentUser currentUser) {
+        return toDemandView(demand, currentUser, null, null);
+    }
+
+    public DemandView toDemandView(Demand demand, CurrentUser currentUser, Map<Long, User> userMap, Map<Long, Order> orderMap) {
         boolean canSeePublisher = canSeeDemandPublisher(demand, currentUser);
-        User publisherUser = demand.getPublisherId() == null ? null : userRepository.findById(demand.getPublisherId()).orElse(null);
+        User publisherUser = demand.getPublisherId() == null ? null : resolveUser(demand.getPublisherId(), userMap);
         Long publisherId = canSeePublisher ? demand.getPublisherId() : null;
         String publisherDisplayName = canSeePublisher ? demand.getPublisherDisplayName() : demand.getAnonymousCode();
         UserSummaryView publisher = publisherUser == null
@@ -71,7 +77,7 @@ public class ApiViewMapper {
             ? null
             : resolvePublisherStudentIdMasked(publisherUser, publisherIdentityVisible);
 
-        Order relatedOrder = demand.getId() == null ? null : orderRepository.findByDemandId(demand.getId()).orElse(null);
+        Order relatedOrder = demand.getId() == null ? null : resolveOrder(demand.getId(), orderMap);
         boolean canAccept = canAcceptDemand(demand, relatedOrder, currentUser);
 
         return new DemandView(
@@ -106,18 +112,39 @@ public class ApiViewMapper {
         );
     }
 
+    private User resolveUser(Long id, Map<Long, User> map) {
+        if (id == null) return null;
+        if (map != null) return map.get(id);
+        return userRepository.findById(id).orElse(null);
+    }
+
+    private Order resolveOrder(Long demandId, Map<Long, Order> map) {
+        if (demandId == null) return null;
+        if (map != null) return map.get(demandId);
+        return orderRepository.findByDemandId(demandId).orElse(null);
+    }
+
     public OrderView toOrderView(Order order, CurrentUser currentUser) {
-        Demand demand = demandRepository.findById(order.getDemandId()).orElse(null);
-        User requester = userRepository.findById(order.getPublisherId()).orElse(null);
-        User provider = userRepository.findById(order.getAccepterId()).orElse(null);
+        return toOrderView(order, currentUser, null, null, null, null, null);
+    }
+
+    public OrderView toOrderView(Order order, CurrentUser currentUser,
+            Map<Long, Demand> demandMap, Map<Long, User> userMap,
+            Map<Long, List<Review>> reviewByOrderIdMap, Set<Long> reviewedOrderIdsByCurrentUser,
+            Map<Long, Order> orderByDemandMap) {
+        Demand demand = resolveDemand(order.getDemandId(), demandMap);
+        User requester = resolveUser(order.getPublisherId(), userMap);
+        User provider = resolveUser(order.getAccepterId(), userMap);
         boolean canSeePublisher = demand == null || canSeeDemandPublisher(demand, currentUser);
         String anonymousCode = demand != null ? demand.getAnonymousCode() : null;
 
-        List<ReviewView> reviews = reviewRepository.findByOrderId(order.getId()).stream()
+        List<ReviewView> reviews = resolveReviews(order.getId(), reviewByOrderIdMap).stream()
             .map(review -> toReviewView(review, canSeePublisher, order.getPublisherId(), anonymousCode))
             .toList();
         boolean currentUserReviewed = currentUser != null
-            && reviewRepository.findByOrderIdAndAuthorId(order.getId(), currentUser.userId()).isPresent();
+            && (reviewedOrderIdsByCurrentUser != null
+                ? reviewedOrderIdsByCurrentUser.contains(order.getId())
+                : reviewRepository.findByOrderIdAndAuthorId(order.getId(), currentUser.userId()).isPresent());
 
         return new OrderView(
             order.getId(),
@@ -132,7 +159,7 @@ public class ApiViewMapper {
             order.getCreatedAt(),
             order.getUpdatedAt(),
             order.getCompletedAt(),
-            demand == null ? null : toDemandView(demand, currentUser),
+            demand == null ? null : toDemandView(demand, currentUser, userMap, orderByDemandMap),
             requester == null ? null : anonymizeUserSummary(UserSummaryView.from(requester), canSeePublisher, anonymousCode),
             provider == null ? null : UserSummaryView.from(provider),
             order.getStatusHistory().stream().map(this::toTimelineView).toList(),
@@ -141,11 +168,21 @@ public class ApiViewMapper {
             resolvePendingReviewTarget(order, currentUser, currentUserReviewed),
             resolveCompletionHint(order, currentUser),
             demand == null ? List.of() : demand.getImages(),
-            resolveContactInfo(demand,
-                orderRepository.findByDemandId(order.getDemandId()).orElse(null),
-                currentUser),
+            resolveContactInfo(demand, order, currentUser),
             resolveArbitrationResult(order)
         );
+    }
+
+    private Demand resolveDemand(Long id, Map<Long, Demand> map) {
+        if (id == null) return null;
+        if (map != null) return map.get(id);
+        return demandRepository.findById(id).orElse(null);
+    }
+
+    private List<Review> resolveReviews(Long orderId, Map<Long, List<Review>> map) {
+        if (orderId == null) return List.of();
+        if (map != null) return map.getOrDefault(orderId, List.of());
+        return reviewRepository.findByOrderId(orderId);
     }
 
     public ReviewView toReviewView(Review review) {
@@ -433,8 +470,8 @@ public class ApiViewMapper {
                 && entry.operatorId().equals(userId)
                 && entry.fromStatus() == OrderStatus.IN_PROGRESS
                 && entry.toStatus() == OrderStatus.IN_PROGRESS
-                && ("鎺ュ崟鏂圭‘璁ゅ畬鎴愶紝绛夊緟闇€姹傛柟纭".equals(entry.note())
-                    || "闇€姹傛柟纭瀹屾垚锛岀瓑寰呮帴鍗曟柟纭".equals(entry.note())
+                && ("PROVIDER_CONFIRMED_COMPLETION".equals(entry.note())
+                    || "REQUESTER_CONFIRMED_COMPLETION".equals(entry.note())
                     || "已确认完成，等待对方确认。".equals(entry.note())));
     }
 }

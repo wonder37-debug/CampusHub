@@ -2,6 +2,8 @@ package com.campushub.backend.api;
 
 import com.campushub.backend.api.view.DemandView;
 import com.campushub.backend.api.view.OrderView;
+import com.campushub.backend.auth.domain.User;
+import com.campushub.backend.auth.repository.UserRepository;
 import com.campushub.backend.common.api.ApiResponse;
 import com.campushub.backend.common.api.PageResponse;
 import com.campushub.backend.common.exception.BusinessException;
@@ -9,6 +11,7 @@ import com.campushub.backend.common.exception.ErrorCode;
 import com.campushub.backend.common.model.PageQuery;
 import com.campushub.backend.common.security.CurrentUser;
 import com.campushub.backend.common.security.RequestUserExtractor;
+import com.campushub.backend.demand.domain.Demand;
 import com.campushub.backend.demand.domain.DemandSort;
 import com.campushub.backend.demand.dto.DemandQuery;
 import com.campushub.backend.demand.dto.DemandSummaryResponse;
@@ -16,6 +19,7 @@ import com.campushub.backend.demand.dto.PublishDemandCommand;
 import com.campushub.backend.demand.dto.UpdateDemandCommand;
 import com.campushub.backend.demand.repository.DemandRepository;
 import com.campushub.backend.demand.service.DemandApplicationService;
+import com.campushub.backend.order.domain.Order;
 import com.campushub.backend.order.dto.AcceptOrderCommand;
 import com.campushub.backend.order.repository.OrderRepository;
 import com.campushub.backend.order.service.OrderApplicationService;
@@ -27,6 +31,9 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -44,6 +51,7 @@ public class DemandController {
     private final OrderApplicationService orderApplicationService;
     private final RecommendationApplicationService recommendationApplicationService;
     private final DemandRepository demandRepository;
+    private final UserRepository userRepository;
     private final OrderRepository orderRepository;
     private final RequestUserExtractor requestUserExtractor;
     private final ApiViewMapper apiViewMapper;
@@ -53,6 +61,7 @@ public class DemandController {
         OrderApplicationService orderApplicationService,
         RecommendationApplicationService recommendationApplicationService,
         DemandRepository demandRepository,
+        UserRepository userRepository,
         OrderRepository orderRepository,
         RequestUserExtractor requestUserExtractor,
         ApiViewMapper apiViewMapper
@@ -61,6 +70,7 @@ public class DemandController {
         this.orderApplicationService = orderApplicationService;
         this.recommendationApplicationService = recommendationApplicationService;
         this.demandRepository = demandRepository;
+        this.userRepository = userRepository;
         this.orderRepository = orderRepository;
         this.requestUserExtractor = requestUserExtractor;
         this.apiViewMapper = apiViewMapper;
@@ -106,9 +116,21 @@ public class DemandController {
                 includeOwn && currentUser != null ? currentUser.userId() : null
             )
         );
-        List<DemandView> items = rawPage.items().stream()
-            .map(item -> demandRepository.findById(item.id()).orElseThrow())
-            .map(demand -> apiViewMapper.toDemandView(demand, currentUser))
+        List<Long> demandIds = rawPage.items().stream().map(DemandSummaryResponse::id).toList();
+        if (demandIds.isEmpty()) {
+            return ApiResponse.success(new PageResponse<>(List.of(), rawPage.page(), rawPage.size(), rawPage.total()));
+        }
+        Map<Long, Demand> demandMap = demandRepository.findAllById(demandIds).stream()
+            .collect(Collectors.toMap(Demand::getId, d -> d));
+        Set<Long> publisherIds = demandMap.values().stream().map(Demand::getPublisherId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<Long, User> userMap = publisherIds.isEmpty() ? Map.of()
+            : userRepository.findAllById(publisherIds).stream().collect(Collectors.toMap(User::getId, u -> u));
+        Map<Long, Order> orderMap = orderRepository.findAllByDemandIdIn(demandIds).stream()
+            .collect(Collectors.toMap(Order::getDemandId, o -> o));
+        List<DemandView> items = demandIds.stream()
+            .map(demandMap::get)
+            .filter(Objects::nonNull)
+            .map(demand -> apiViewMapper.toDemandView(demand, currentUser, userMap, orderMap))
             .toList();
         if (resolvedSort == DemandSort.RECOMMEND && currentUser != null) {
             items = reorderWithRecommendations(items, currentUser.userId(), q, category, campusZone, location, startTimeFrom, startTimeTo, page, size);

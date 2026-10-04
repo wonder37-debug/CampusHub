@@ -88,6 +88,21 @@ public class MyBatisOrderRepository implements OrderRepository {
     }
 
     @Override
+    public List<Order> findAllByDemandIdIn(Collection<Long> demandIds) {
+        if (demandIds == null || demandIds.isEmpty()) { return List.of(); }
+        return assembleWithBatchHistory(orderMapper.selectList(
+            new LambdaQueryWrapper<OrderEntity>().in(OrderEntity::getDemandId, demandIds)));
+    }
+
+    @Override
+    public List<Order> findAllById(Collection<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return new ArrayList<>();
+        }
+        return assembleWithBatchHistory(orderMapper.selectBatchIds(ids));
+    }
+
+    @Override
     public List<Order> findByParticipant(Long userId) {
         if (userId == null) {
             return new ArrayList<>();

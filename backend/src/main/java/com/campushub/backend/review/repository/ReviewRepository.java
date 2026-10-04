@@ -36,6 +36,11 @@ public interface ReviewRepository {
     List<Review> findByOrderId(Long orderId);
 
     /**
+     * 按订单 ID 集合批量查询评价（用于列表场景预加载，避免逐条 findByOrderId N+1）。
+     */
+    List<Review> findAllByOrderIdIn(Collection<Long> orderIds);
+
+    /**
      * 按用户与查询条件分页查询评价（target_id 或 author_id 命中 + 排序 + LIMIT/OFFSET 下推 SQL）。
      *
      * @param targetUserId 用户 ID，为 null 时返回空列表

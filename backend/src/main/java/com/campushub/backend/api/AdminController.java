@@ -8,16 +8,28 @@ import com.campushub.backend.admin.dto.AdminUserQuery;
 import com.campushub.backend.admin.service.AdminApplicationService;
 import com.campushub.backend.api.view.OrderView;
 import com.campushub.backend.api.view.UserSummaryView;
+import com.campushub.backend.auth.domain.User;
+import com.campushub.backend.auth.repository.UserRepository;
 import com.campushub.backend.common.api.ApiResponse;
 import com.campushub.backend.common.api.PageResponse;
 import com.campushub.backend.common.model.PageQuery;
 import com.campushub.backend.common.security.CurrentUser;
 import com.campushub.backend.common.security.RequestUserExtractor;
+import com.campushub.backend.demand.domain.Demand;
 import com.campushub.backend.demand.dto.DemandSummaryResponse;
+import com.campushub.backend.demand.repository.DemandRepository;
+import com.campushub.backend.order.domain.Order;
 import com.campushub.backend.order.dto.OrderSummaryResponse;
 import com.campushub.backend.order.repository.OrderRepository;
+import com.campushub.backend.review.domain.Review;
+import com.campushub.backend.review.repository.ReviewRepository;
 import jakarta.servlet.http.HttpServletRequest;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -34,17 +46,26 @@ public class AdminController {
     private final AdminApplicationService adminApplicationService;
     private final RequestUserExtractor requestUserExtractor;
     private final OrderRepository orderRepository;
+    private final DemandRepository demandRepository;
+    private final UserRepository userRepository;
+    private final ReviewRepository reviewRepository;
     private final ApiViewMapper apiViewMapper;
 
     public AdminController(
         AdminApplicationService adminApplicationService,
         RequestUserExtractor requestUserExtractor,
         OrderRepository orderRepository,
+        DemandRepository demandRepository,
+        UserRepository userRepository,
+        ReviewRepository reviewRepository,
         ApiViewMapper apiViewMapper
     ) {
         this.adminApplicationService = adminApplicationService;
         this.requestUserExtractor = requestUserExtractor;
         this.orderRepository = orderRepository;
+        this.demandRepository = demandRepository;
+        this.userRepository = userRepository;
+        this.reviewRepository = reviewRepository;
         this.apiViewMapper = apiViewMapper;
     }
 
@@ -131,15 +152,28 @@ public class AdminController {
     ) {
         CurrentUser currentUser = requestUserExtractor.requireCurrentUser(request);
         PageResponse<OrderSummaryResponse> rawPage = adminApplicationService.listArbitrationOrders(currentUser.userId(), page, size);
-        return ApiResponse.success(new PageResponse<>(
-            rawPage.items().stream()
-                .map(item -> orderRepository.findById(item.orderId()).orElseThrow())
-                .map(order -> apiViewMapper.toOrderView(order, currentUser))
-                .toList(),
-            rawPage.page(),
-            rawPage.size(),
-            rawPage.total()
-        ));
+        List<Long> orderIds = rawPage.items().stream().map(OrderSummaryResponse::orderId).toList();
+        if (orderIds.isEmpty()) {
+            return ApiResponse.success(new PageResponse<>(List.of(), rawPage.page(), rawPage.size(), rawPage.total()));
+        }
+        List<Order> orders = orderRepository.findAllById(orderIds);
+        Set<Long> demandIds = orders.stream().map(Order::getDemandId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<Long, Demand> demandMap = demandIds.isEmpty() ? Map.of()
+            : demandRepository.findAllById(demandIds).stream().collect(Collectors.toMap(Demand::getId, d -> d));
+        Set<Long> userIds = new HashSet<>();
+        orders.forEach(o -> { userIds.add(o.getPublisherId()); userIds.add(o.getAccepterId()); });
+        demandMap.values().forEach(d -> userIds.add(d.getPublisherId()));
+        Map<Long, User> userMap = userIds.isEmpty() ? Map.of()
+            : userRepository.findAllById(userIds).stream().collect(Collectors.toMap(User::getId, u -> u));
+        Map<Long, List<Review>> reviewByOrderIdMap = reviewRepository.findAllByOrderIdIn(orderIds).stream()
+            .collect(Collectors.groupingBy(Review::getOrderId));
+        Set<Long> reviewedOrderIds = reviewRepository.findReviewedOrderIdsByAuthor(currentUser.userId(), orderIds);
+        Map<Long, Order> orderByDemandMap = orders.stream()
+            .collect(Collectors.toMap(Order::getDemandId, o -> o));
+        List<OrderView> items = orders.stream()
+            .map(order -> apiViewMapper.toOrderView(order, currentUser, demandMap, userMap, reviewByOrderIdMap, reviewedOrderIds, orderByDemandMap))
+            .toList();
+        return ApiResponse.success(new PageResponse<>(items, rawPage.page(), rawPage.size(), rawPage.total()));
     }
 
     @PostMapping("/demands/{demandId}/review")

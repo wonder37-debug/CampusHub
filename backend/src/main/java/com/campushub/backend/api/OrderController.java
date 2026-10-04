@@ -2,23 +2,34 @@ package com.campushub.backend.api;
 
 import com.campushub.backend.api.view.OrderView;
 import com.campushub.backend.api.view.ReviewView;
+import com.campushub.backend.auth.domain.User;
 import com.campushub.backend.auth.repository.UserRepository;
 import com.campushub.backend.common.api.ApiResponse;
 import com.campushub.backend.common.api.PageResponse;
 import com.campushub.backend.common.model.PageQuery;
 import com.campushub.backend.common.security.CurrentUser;
 import com.campushub.backend.common.security.RequestUserExtractor;
+import com.campushub.backend.demand.domain.Demand;
+import com.campushub.backend.demand.repository.DemandRepository;
+import com.campushub.backend.order.domain.Order;
 import com.campushub.backend.order.dto.OrderHistoryQuery;
 import com.campushub.backend.order.dto.OrderSummaryResponse;
 import com.campushub.backend.order.dto.RequestOrderArbitrationCommand;
 import com.campushub.backend.order.dto.UpdateOrderStatusCommand;
 import com.campushub.backend.order.repository.OrderRepository;
 import com.campushub.backend.order.service.OrderApplicationService;
+import com.campushub.backend.review.domain.Review;
 import com.campushub.backend.review.dto.ReviewResponse;
 import com.campushub.backend.review.dto.SubmitReviewCommand;
+import com.campushub.backend.review.repository.ReviewRepository;
 import com.campushub.backend.review.service.ReviewApplicationService;
 import jakarta.servlet.http.HttpServletRequest;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -36,6 +47,8 @@ public class OrderController {
     private final OrderRepository orderRepository;
     private final ReviewApplicationService reviewApplicationService;
     private final UserRepository userRepository;
+    private final DemandRepository demandRepository;
+    private final ReviewRepository reviewRepository;
     private final RequestUserExtractor requestUserExtractor;
     private final ApiViewMapper apiViewMapper;
 
@@ -44,6 +57,8 @@ public class OrderController {
         OrderRepository orderRepository,
         ReviewApplicationService reviewApplicationService,
         UserRepository userRepository,
+        DemandRepository demandRepository,
+        ReviewRepository reviewRepository,
         RequestUserExtractor requestUserExtractor,
         ApiViewMapper apiViewMapper
     ) {
@@ -51,6 +66,8 @@ public class OrderController {
         this.orderRepository = orderRepository;
         this.reviewApplicationService = reviewApplicationService;
         this.userRepository = userRepository;
+        this.demandRepository = demandRepository;
+        this.reviewRepository = reviewRepository;
         this.requestUserExtractor = requestUserExtractor;
         this.apiViewMapper = apiViewMapper;
     }
@@ -66,9 +83,26 @@ public class OrderController {
             currentUser.userId(),
             new OrderHistoryQuery(new PageQuery(page, size))
         );
-        List<OrderView> items = rawPage.items().stream()
-            .map(item -> orderRepository.findById(item.orderId()).orElseThrow())
-            .map(order -> apiViewMapper.toOrderView(order, currentUser))
+        List<Long> orderIds = rawPage.items().stream().map(OrderSummaryResponse::orderId).toList();
+        if (orderIds.isEmpty()) {
+            return ApiResponse.success(new PageResponse<>(List.of(), rawPage.page(), rawPage.size(), rawPage.total()));
+        }
+        List<Order> orders = orderRepository.findAllById(orderIds);
+        Set<Long> demandIds = orders.stream().map(Order::getDemandId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<Long, Demand> demandMap = demandIds.isEmpty() ? Map.of()
+            : demandRepository.findAllById(demandIds).stream().collect(Collectors.toMap(Demand::getId, d -> d));
+        Set<Long> userIds = new HashSet<>();
+        orders.forEach(o -> { userIds.add(o.getPublisherId()); userIds.add(o.getAccepterId()); });
+        demandMap.values().forEach(d -> userIds.add(d.getPublisherId()));
+        Map<Long, User> userMap = userIds.isEmpty() ? Map.of()
+            : userRepository.findAllById(userIds).stream().collect(Collectors.toMap(User::getId, u -> u));
+        Map<Long, List<Review>> reviewByOrderIdMap = reviewRepository.findAllByOrderIdIn(orderIds).stream()
+            .collect(Collectors.groupingBy(Review::getOrderId));
+        Set<Long> reviewedOrderIds = reviewRepository.findReviewedOrderIdsByAuthor(currentUser.userId(), orderIds);
+        Map<Long, Order> orderByDemandMap = orders.stream()
+            .collect(Collectors.toMap(Order::getDemandId, o -> o));
+        List<OrderView> items = orders.stream()
+            .map(order -> apiViewMapper.toOrderView(order, currentUser, demandMap, userMap, reviewByOrderIdMap, reviewedOrderIds, orderByDemandMap))
             .toList();
         return ApiResponse.success(new PageResponse<>(items, rawPage.page(), rawPage.size(), rawPage.total()));
     }
