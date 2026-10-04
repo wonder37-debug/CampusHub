@@ -1,6 +1,7 @@
 package com.campushub.backend.review.repository;
 
 import com.campushub.backend.review.domain.Review;
+import com.campushub.backend.review.dto.ReviewQuery;
 import java.util.List;
 import java.util.Optional;
 
@@ -30,4 +31,20 @@ public interface ReviewRepository {
      * 查询某个订单下的全部评价记录。
      */
     List<Review> findByOrderId(Long orderId);
+
+    /**
+     * 按用户与查询条件分页查询评价（target_id 或 author_id 命中 + 排序 + LIMIT/OFFSET 下推 SQL）。
+     *
+     * @param targetUserId 用户 ID，为 null 时返回空列表
+     * @param query 查询条件，为 null 时返回空列表
+     */
+    List<Review> findPage(Long targetUserId, ReviewQuery query);
+
+    /**
+     * 按用户与查询条件统计匹配的评价总数（过滤下推 SQL，用于分页 total）。
+     *
+     * @param targetUserId 用户 ID，为 null 时返回 0
+     * @param query 查询条件，为 null 时返回 0
+     */
+    long count(Long targetUserId, ReviewQuery query);
 }

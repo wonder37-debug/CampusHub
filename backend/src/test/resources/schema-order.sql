@@ -20,6 +20,9 @@ CREATE TABLE ord_order (
   CONSTRAINT uk_order_demand UNIQUE (demand_id)
 );
 
+CREATE INDEX idx_order_publisher ON ord_order(publisher_id);
+CREATE INDEX idx_order_accepter ON ord_order(accepter_id);
+
 CREATE TABLE ord_order_status_log (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   order_id BIGINT NOT NULL,
@@ -29,3 +32,5 @@ CREATE TABLE ord_order_status_log (
   note VARCHAR(500),
   changed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX idx_order_status_log_order ON ord_order_status_log(order_id);

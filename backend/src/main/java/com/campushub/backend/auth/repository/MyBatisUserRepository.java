@@ -4,25 +4,24 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.campushub.backend.auth.domain.User;
 import com.campushub.backend.auth.domain.UserRole;
 import com.campushub.backend.auth.domain.UserStatus;
+import com.campushub.backend.auth.dto.UserQueryCriteria;
 import com.campushub.backend.auth.repository.entity.UserEntity;
 import com.campushub.backend.auth.repository.mapper.UserMapper;
-import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 
 /**
  * 基于 MyBatis-Plus 的 {@link UserRepository} 实现。
  *
- * <p>仅在 {@code local} profile 下激活，避免与默认的内存仓储冲突；
- * 实现严格遵循 {@code P4-数据库接口调用规范.md} 中对 DAO 层的契约：
+ * <p>默认仓储实现；实现严格遵循 {@code P4-数据库接口调用规范.md} 中对 DAO 层的契约：
  * 不在 DAO 层抛业务异常、查不到返回 {@link Optional#empty()}、
  * 唯一约束冲突由底层异常向上传递。</p>
  */
 @Repository
-@Profile("local")
 public class MyBatisUserRepository implements UserRepository {
 
     private final UserMapper userMapper;
@@ -106,6 +105,84 @@ public class MyBatisUserRepository implements UserRepository {
     }
 
     @Override
+    public List<User> findPage(UserQueryCriteria criteria) {
+        if (criteria == null) {
+            return List.of();
+        }
+        LambdaQueryWrapper<UserEntity> wrapper = buildWrapper(criteria);
+        applyUserSort(wrapper, criteria.sortBy(), criteria.sortDirection());
+        int size = criteria.pageQuery().size();
+        long offset = (long) (criteria.pageQuery().page() - 1) * size;
+        wrapper.last("LIMIT " + size + " OFFSET " + offset);
+        return userMapper.selectList(wrapper).stream().map(UserEntity::toDomain).toList();
+    }
+
+    @Override
+    public long count(UserQueryCriteria criteria) {
+        if (criteria == null) {
+            return 0L;
+        }
+        return userMapper.selectCount(buildWrapper(criteria));
+    }
+
+    private LambdaQueryWrapper<UserEntity> buildWrapper(UserQueryCriteria criteria) {
+        LambdaQueryWrapper<UserEntity> wrapper = new LambdaQueryWrapper<>();
+        String q = criteria.q();
+        if (q != null && !q.isBlank()) {
+            String keyword = q.trim();
+            String field = criteria.searchField();
+            if (field == null || field.isBlank()) {
+                wrapper.and(w -> w.like(UserEntity::getNickname, keyword)
+                    .or().like(UserEntity::getEmail, keyword)
+                    .or().like(UserEntity::getStudentId, keyword));
+            } else {
+                switch (field.toLowerCase(Locale.ROOT)) {
+                    case "nickname" -> wrapper.like(UserEntity::getNickname, keyword);
+                    case "email" -> wrapper.like(UserEntity::getEmail, keyword);
+                    case "studentid", "student_id" -> wrapper.like(UserEntity::getStudentId, keyword);
+                    default -> wrapper.and(w -> w.like(UserEntity::getNickname, keyword)
+                        .or().like(UserEntity::getEmail, keyword)
+                        .or().like(UserEntity::getStudentId, keyword));
+                }
+            }
+        }
+        String role = criteria.role();
+        if (role != null && !role.isBlank()) {
+            wrapper.eq(UserEntity::getRole, role.trim().toUpperCase(Locale.ROOT));
+        }
+        String status = criteria.status();
+        if (status != null && !status.isBlank()) {
+            wrapper.eq(UserEntity::getStatus, status.trim().toUpperCase(Locale.ROOT));
+        }
+        return wrapper;
+    }
+
+    private void applyUserSort(LambdaQueryWrapper<UserEntity> wrapper, String sortBy, String sortDirection) {
+        boolean descending = sortDirection == null || sortDirection.isBlank()
+            || !"asc".equalsIgnoreCase(sortDirection.trim());
+        String resolvedSortBy = sortBy == null ? "" : sortBy.trim().toLowerCase(Locale.ROOT);
+        switch (resolvedSortBy) {
+            case "creditscore", "credit_score" -> {
+                if (descending) wrapper.orderByDesc(UserEntity::getCreditScore);
+                else wrapper.orderByAsc(UserEntity::getCreditScore);
+            }
+            case "nickname" -> {
+                if (descending) wrapper.orderByDesc(UserEntity::getNickname);
+                else wrapper.orderByAsc(UserEntity::getNickname);
+            }
+            case "createdat", "created_at" -> {
+                if (descending) wrapper.orderByDesc(UserEntity::getCreatedAt);
+                else wrapper.orderByAsc(UserEntity::getCreatedAt);
+            }
+            default -> {
+                if (descending) wrapper.orderByDesc(UserEntity::getCreatedAt);
+                else wrapper.orderByAsc(UserEntity::getCreatedAt);
+            }
+        }
+        wrapper.orderByAsc(UserEntity::getId);
+    }
+
+    @Override
     public User save(User user) {
         if (user == null) {
             throw new IllegalArgumentException("user must not be null");
@@ -118,5 +195,10 @@ public class MyBatisUserRepository implements UserRepository {
             userMapper.updateById(entity);
         }
         return user;
+    }
+
+    @Override
+    public long count() {
+        return userMapper.selectCount(null);
     }
 }

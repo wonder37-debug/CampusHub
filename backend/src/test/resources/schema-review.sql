@@ -12,5 +12,9 @@ CREATE TABLE ord_review (
   rating SMALLINT NOT NULL,
   comment VARCHAR(1000),
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT uk_review_order_author UNIQUE (order_id, author_id)
+  CONSTRAINT uk_review_order_author UNIQUE (order_id, author_id),
+  CONSTRAINT chk_review_rating CHECK (rating BETWEEN 1 AND 5)
 );
+
+CREATE INDEX idx_review_target ON ord_review(target_id);
+CREATE INDEX idx_review_author ON ord_review(author_id);

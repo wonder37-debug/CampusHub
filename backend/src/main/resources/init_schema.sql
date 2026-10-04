@@ -144,6 +144,14 @@ CREATE TABLE IF NOT EXISTS`ord_demand` (
 
 
 
+CREATE INDEX idx_demand_publisher ON ord_demand(publisher_id);
+CREATE INDEX idx_demand_status ON ord_demand(status);
+CREATE INDEX idx_demand_category ON ord_demand(category);
+CREATE INDEX idx_demand_campus_zone ON ord_demand(campus_zone);
+CREATE INDEX idx_demand_created_at ON ord_demand(created_at);
+
+
+
 -- ==========================================================
 
 -- 3. 订单主表 (ord_order)
@@ -246,6 +254,10 @@ CREATE TABLE IF NOT EXISTS`ord_review` (
 
 
 
+CREATE INDEX idx_review_author ON ord_review(author_id);
+
+
+
 -- ==========================================================
 
 -- 6. 资产流水表 (ast_ledger)
@@ -269,6 +281,10 @@ CREATE TABLE IF NOT EXISTS`ast_ledger` (
   CONSTRAINT `chk_ledger_direction` CHECK (`direction` IN ('IN','OUT','FREEZE','UNFREEZE'))
 
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='不可变资产流水表';
+
+
+
+CREATE INDEX idx_ledger_user ON ast_ledger(user_id);
 
 
 

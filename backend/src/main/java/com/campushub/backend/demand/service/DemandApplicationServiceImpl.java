@@ -10,7 +10,6 @@ import com.campushub.backend.common.exception.ErrorCode;
 import com.campushub.backend.demand.domain.CampusZone;
 import com.campushub.backend.demand.domain.Demand;
 import com.campushub.backend.demand.domain.DemandCategory;
-import com.campushub.backend.demand.domain.DemandSort;
 import com.campushub.backend.demand.domain.DemandStatus;
 import com.campushub.backend.demand.dto.DemandDetailResponse;
 import com.campushub.backend.demand.dto.DemandQuery;
@@ -25,11 +24,9 @@ import com.campushub.backend.order.service.OrderApplicationService;
 import com.campushub.backend.review.repository.ReviewRepository;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
-import java.util.stream.Stream;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -123,28 +120,14 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
         if (query == null) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "demand query must not be null");
         }
-
-        LocalDateTime now = LocalDateTime.now();
-        Stream<Demand> filtered = demandRepository.findAll().stream()
-            .filter(demand -> isPubliclyVisible(demand, now)
-                || (query.currentUserId() != null && demand.getPublisherId() != null
-                    && demand.getPublisherId().equals(query.currentUserId())))
-            .filter(demand -> matchesKeyword(demand, query.q()))
-            .filter(demand -> matchesCategory(demand, query.category()))
-            .filter(demand -> matchesCampusZone(demand, query.campusZone()))
-            .filter(demand -> matchesLocation(demand, query.location()))
-            .filter(demand -> matchesStartTimeRange(demand, query.startTimeFrom(), query.startTimeTo()));
-
-        List<Demand> sorted = filtered.sorted(resolveComparator(query.sort())).toList();
+        List<Demand> demands = demandRepository.findPage(query);
+        List<DemandSummaryResponse> items = demands.stream()
+            .map(DemandSummaryResponse::from)
+            .toList();
+        long total = demandRepository.count(query);
         int page = query.pageQuery().page();
         int size = query.pageQuery().size();
-        int fromIndex = Math.max(0, (page - 1) * size);
-        int toIndex = Math.min(sorted.size(), fromIndex + size);
-        List<DemandSummaryResponse> items = fromIndex >= sorted.size()
-            ? List.of()
-            : sorted.subList(fromIndex, toIndex).stream().map(DemandSummaryResponse::from).toList();
-
-        return new PageResponse<>(items, page, size, sorted.size());
+        return new PageResponse<>(items, page, size, total);
     }
 
     @Override
@@ -397,62 +380,6 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
 
     private String trimToNull(String value) {
         return value == null || value.isBlank() ? null : value.trim();
-    }
-
-    private boolean isPubliclyVisible(Demand demand, LocalDateTime now) {
-        if (isExpired(demand, now)) {
-            return false;
-        }
-        return demand.getStatus() == DemandStatus.PENDING
-            || demand.getStatus() == DemandStatus.IN_PROGRESS
-            || demand.getStatus() == DemandStatus.COMPLETED;
-    }
-
-    private boolean isExpired(Demand demand, LocalDateTime now) {
-        return demand.getEndTime() != null && demand.getEndTime().isBefore(now);
-    }
-
-    private boolean matchesKeyword(Demand demand, String keyword) {
-        if (keyword == null || keyword.isBlank()) {
-            return true;
-        }
-        String normalized = keyword.trim().toLowerCase(Locale.ROOT);
-        return demand.getTitle().toLowerCase(Locale.ROOT).contains(normalized)
-            || (demand.getDescription() != null
-            && demand.getDescription().toLowerCase(Locale.ROOT).contains(normalized));
-    }
-
-    private boolean matchesCategory(Demand demand, String category) {
-        return category == null || category.isBlank() || demand.getCategory().name().equalsIgnoreCase(category);
-    }
-
-    private boolean matchesCampusZone(Demand demand, String campusZone) {
-        return campusZone == null || campusZone.isBlank() || demand.getCampusZone().name().equalsIgnoreCase(campusZone);
-    }
-
-    private boolean matchesLocation(Demand demand, String location) {
-        return location == null || location.isBlank()
-            || (demand.getLocation() != null
-            && demand.getLocation().toLowerCase(Locale.ROOT).contains(location.trim().toLowerCase(Locale.ROOT)));
-    }
-
-    private boolean matchesStartTimeRange(Demand demand, LocalDateTime from, LocalDateTime to) {
-        if (demand.getStartTime() == null) {
-            return from == null && to == null;
-        }
-        boolean afterFrom = from == null || !demand.getStartTime().isBefore(from);
-        boolean beforeTo = to == null || !demand.getStartTime().isAfter(to);
-        return afterFrom && beforeTo;
-    }
-
-    private Comparator<Demand> resolveComparator(DemandSort sort) {
-        return switch (sort) {
-            case REWARD -> Comparator.comparing(Demand::getReward, Comparator.nullsLast(BigDecimal::compareTo))
-                .reversed()
-                .thenComparing(Demand::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder()));
-            case DISTANCE, TIME, RECOMMEND ->
-                Comparator.comparing(Demand::getCreatedAt, Comparator.nullsLast(LocalDateTime::compareTo)).reversed();
-        };
     }
 
     private String generateAnonymousCode() {

@@ -12,7 +12,6 @@ import com.campushub.backend.notification.repository.NotificationRepository;
 import com.campushub.backend.order.domain.OrderStatus;
 import com.campushub.backend.order.repository.OrderRepository;
 import java.time.LocalDateTime;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -103,20 +102,14 @@ public class NotificationApplicationServiceImpl implements NotificationApplicati
         if (query == null) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "notification query must not be null");
         }
-
-        List<Notification> filtered = notificationRepository.findByUserId(userId).stream()
-            .filter(notification -> !query.unreadOnly() || !notification.isRead())
-            .sorted(Comparator.comparing(Notification::getCreatedAt).reversed())
+        List<Notification> notifications = notificationRepository.findPage(userId, query);
+        List<NotificationResponse> items = notifications.stream()
+            .map(this::toNotificationResponse)
             .toList();
-
+        long total = notificationRepository.count(userId, query);
         int page = query.pageQuery().page();
         int size = query.pageQuery().size();
-        int fromIndex = Math.max(0, (page - 1) * size);
-        int toIndex = Math.min(filtered.size(), fromIndex + size);
-        List<NotificationResponse> items = fromIndex >= filtered.size()
-            ? List.of()
-            : filtered.subList(fromIndex, toIndex).stream().map(this::toNotificationResponse).toList();
-        return new PageResponse<>(items, page, size, filtered.size());
+        return new PageResponse<>(items, page, size, total);
     }
 
     @Override

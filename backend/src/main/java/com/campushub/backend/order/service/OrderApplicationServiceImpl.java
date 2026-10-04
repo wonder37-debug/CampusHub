@@ -24,7 +24,6 @@ import com.campushub.backend.order.dto.UpdateOrderStatusCommand;
 import com.campushub.backend.order.repository.OrderRepository;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import org.springframework.stereotype.Service;
@@ -185,18 +184,12 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         if (query == null) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "order history query must not be null");
         }
-        List<Order> sorted = orderRepository.findByParticipant(operatorId).stream()
-            .sorted(Comparator.comparing(Order::getCreatedAt).reversed())
-            .toList();
-
+        List<Order> orders = orderRepository.findHistoryPage(operatorId, query);
+        List<OrderSummaryResponse> items = orders.stream().map(OrderSummaryResponse::from).toList();
+        long total = orderRepository.countHistory(operatorId);
         int page = query.pageQuery().page();
         int size = query.pageQuery().size();
-        int fromIndex = Math.max(0, (page - 1) * size);
-        int toIndex = Math.min(sorted.size(), fromIndex + size);
-        List<OrderSummaryResponse> items = fromIndex >= sorted.size()
-            ? List.of()
-            : sorted.subList(fromIndex, toIndex).stream().map(OrderSummaryResponse::from).toList();
-        return new PageResponse<>(items, page, size, sorted.size());
+        return new PageResponse<>(items, page, size, total);
     }
 
     @Override

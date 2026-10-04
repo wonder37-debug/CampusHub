@@ -26,3 +26,9 @@ CREATE TABLE ord_demand (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME
 );
+
+CREATE INDEX idx_demand_publisher ON ord_demand(publisher_id);
+CREATE INDEX idx_demand_status ON ord_demand(status);
+CREATE INDEX idx_demand_category ON ord_demand(category);
+CREATE INDEX idx_demand_campus_zone ON ord_demand(campus_zone);
+CREATE INDEX idx_demand_created_at ON ord_demand(created_at);

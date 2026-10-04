@@ -2,9 +2,9 @@ package com.campushub.backend.review.repository;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.campushub.backend.review.domain.Review;
+import com.campushub.backend.review.dto.ReviewQuery;
 import com.campushub.backend.review.repository.entity.ReviewEntity;
 import com.campushub.backend.review.repository.mapper.ReviewMapper;
-import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
@@ -14,7 +14,7 @@ import java.util.Optional;
 /**
  * 基于 MyBatis-Plus 的 {@link ReviewRepository} 实现。
  *
- * <p>仅在 {@code local} profile 下激活，避免与默认内存仓储冲突。</p>
+ * <p>默认仓储实现。</p>
  *
  * <p>并发防重底线：依赖 ord_review 上的唯一索引 {@code uk_review_order_author(order_id, author_id)}，
  * 同一订单同一作者重复评价将由数据库抛出 SQLException，Spring 体系转换为 {@link
@@ -24,7 +24,6 @@ import java.util.Optional;
  * 本仓储仅保证基本的查询与持久化正确。</p>
  */
 @Repository
-@Profile("local")
 public class MyBatisReviewRepository implements ReviewRepository {
 
     private final ReviewMapper reviewMapper;
@@ -99,5 +98,34 @@ public class MyBatisReviewRepository implements ReviewRepository {
                 .eq(ReviewEntity::getOrderId, orderId)
         );
         return entities.stream().map(ReviewEntity::toDomain).toList();
+    }
+
+    @Override
+    public List<Review> findPage(Long targetUserId, ReviewQuery query) {
+        if (targetUserId == null || query == null) {
+            return List.of();
+        }
+        LambdaQueryWrapper<ReviewEntity> wrapper = buildWrapper(targetUserId, query);
+        wrapper.orderByDesc(ReviewEntity::getCreatedAt)
+               .orderByDesc(ReviewEntity::getId);
+        int size = query.pageQuery().size();
+        long offset = (long) (query.pageQuery().page() - 1) * size;
+        wrapper.last("LIMIT " + size + " OFFSET " + offset);
+        return reviewMapper.selectList(wrapper).stream().map(ReviewEntity::toDomain).toList();
+    }
+
+    @Override
+    public long count(Long targetUserId, ReviewQuery query) {
+        if (targetUserId == null || query == null) {
+            return 0L;
+        }
+        return reviewMapper.selectCount(buildWrapper(targetUserId, query));
+    }
+
+    private LambdaQueryWrapper<ReviewEntity> buildWrapper(Long targetUserId, ReviewQuery query) {
+        LambdaQueryWrapper<ReviewEntity> wrapper = new LambdaQueryWrapper<>();
+        wrapper.and(w -> w.eq(ReviewEntity::getTargetId, targetUserId)
+            .or().eq(ReviewEntity::getAuthorId, targetUserId));
+        return wrapper;
     }
 }

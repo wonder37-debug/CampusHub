@@ -1,7 +1,9 @@
 package com.campushub.backend.review.repository;
 
 import com.baomidou.mybatisplus.test.autoconfigure.MybatisPlusTest;
+import com.campushub.backend.common.model.PageQuery;
 import com.campushub.backend.review.domain.Review;
+import com.campushub.backend.review.dto.ReviewQuery;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Import;
@@ -125,6 +127,68 @@ class MyBatisReviewRepositoryTest {
             .isInstanceOfAny(DuplicateKeyException.class, DataIntegrityViolationException.class);
     }
 
+    @Test
+    void findPage_returns_reviews_where_target_id_or_author_id_matches() {
+        repository.save(newReview(5001L, 10L, 30L, 5)); // targetId=30 命中（received）
+        repository.save(newReview(5002L, 30L, 40L, 4));  // authorId=30 命中（given）
+        repository.save(newReview(5003L, 11L, 40L, 3));  // 都不命中
+
+        List<Review> page = repository.findPage(30L, new ReviewQuery(new PageQuery(1, 20)));
+
+        assertThat(page).hasSize(2);
+        assertThat(page).extracting(Review::getOrderId).containsExactlyInAnyOrder(5001L, 5002L);
+        assertThat(repository.count(30L, new ReviewQuery(new PageQuery(1, 20)))).isEqualTo(2L);
+    }
+
+    @Test
+    void findPage_sorts_by_created_at_desc_then_id_desc() {
+        Review older = repository.save(newReviewWithCreated(5101L, 10L, 30L, 5, LocalDateTime.now().minusMinutes(10)));
+        Review newer = repository.save(newReviewWithCreated(5102L, 30L, 40L, 4, LocalDateTime.now().minusMinutes(1)));
+        Review sameInstant = repository.save(newReviewWithCreated(5103L, 12L, 30L, 3, newer.getCreatedAt()));
+
+        List<Review> page = repository.findPage(30L, new ReviewQuery(new PageQuery(1, 20)));
+
+        assertThat(page).hasSize(3);
+        assertThat(page.get(0).getId()).isEqualTo(sameInstant.getId());
+        assertThat(page.get(1).getId()).isEqualTo(newer.getId());
+        assertThat(page.get(2).getId()).isEqualTo(older.getId());
+    }
+
+    @Test
+    void findPage_applies_limit_and_offset_for_pagination() {
+        for (int i = 0; i < 5; i++) {
+            repository.save(newReviewWithCreated(5200L + i, 10L, 30L, 5, LocalDateTime.now().minusMinutes(5 - i)));
+        }
+        ReviewQuery page1 = new ReviewQuery(new PageQuery(1, 2));
+        ReviewQuery page2 = new ReviewQuery(new PageQuery(2, 2));
+        ReviewQuery page3 = new ReviewQuery(new PageQuery(3, 2));
+
+        assertThat(repository.findPage(30L, page1)).hasSize(2);
+        assertThat(repository.findPage(30L, page2)).hasSize(2);
+        assertThat(repository.findPage(30L, page3)).hasSize(1);
+        assertThat(repository.count(30L, page1)).isEqualTo(5L);
+    }
+
+    @Test
+    void count_matches_findPage_total_for_target_and_author() {
+        repository.save(newReview(5301L, 10L, 30L, 5)); // targetId=30
+        repository.save(newReview(5302L, 30L, 40L, 4)); // authorId=30
+        repository.save(newReview(5303L, 11L, 30L, 3)); // targetId=30
+
+        ReviewQuery query = new ReviewQuery(new PageQuery(1, 20));
+
+        assertThat(repository.count(30L, query)).isEqualTo(3L);
+        assertThat(repository.findPage(30L, query)).hasSize(3);
+    }
+
+    @Test
+    void findPage_and_count_return_empty_or_zero_when_targetUserId_or_query_null() {
+        assertThat(repository.findPage(null, new ReviewQuery(new PageQuery(1, 20)))).isEmpty();
+        assertThat(repository.findPage(30L, null)).isEmpty();
+        assertThat(repository.count(null, new ReviewQuery(new PageQuery(1, 20)))).isZero();
+        assertThat(repository.count(30L, null)).isZero();
+    }
+
     /**
      * 工厂方法：为所有 NOT NULL 列（order_id / author_id / target_id / rating / created_at）
      * 提供默认值，避免 H2 抛出 NULL not allowed 异常。
@@ -137,6 +201,12 @@ class MyBatisReviewRepositoryTest {
         review.setRating(rating);
         review.setComment("好评");
         review.setCreatedAt(LocalDateTime.now());
+        return review;
+    }
+
+    private static Review newReviewWithCreated(Long orderId, Long authorId, Long targetId, int rating, LocalDateTime createdAt) {
+        Review review = newReview(orderId, authorId, targetId, rating);
+        review.setCreatedAt(createdAt);
         return review;
     }
 }

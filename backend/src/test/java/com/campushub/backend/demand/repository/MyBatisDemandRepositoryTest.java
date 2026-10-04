@@ -1,10 +1,14 @@
 package com.campushub.backend.demand.repository;
 
 import com.baomidou.mybatisplus.test.autoconfigure.MybatisPlusTest;
+import com.campushub.backend.common.model.PageQuery;
 import com.campushub.backend.demand.domain.CampusZone;
 import com.campushub.backend.demand.domain.Demand;
 import com.campushub.backend.demand.domain.DemandCategory;
+import com.campushub.backend.demand.domain.DemandSort;
 import com.campushub.backend.demand.domain.DemandStatus;
+import com.campushub.backend.demand.dto.DemandQuery;
+import com.campushub.backend.demand.dto.DemandReviewQuery;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Import;
@@ -13,8 +17,11 @@ import org.springframework.test.context.jdbc.Sql;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -154,6 +161,469 @@ class MyBatisDemandRepositoryTest {
         assertThat(reloaded.getReward()).isEqualByComparingTo(new BigDecimal("15.50"));
     }
 
+    @Test
+    void findPage_returns_all_visible_sorted_by_created_desc_with_default_time_sort() {
+        Demand older = repository.save(newDemandWithCreated("旧需求", DemandCategory.OTHER, LocalDateTime.now().minusMinutes(10)));
+        Demand newer = repository.save(newDemandWithCreated("新需求", DemandCategory.OTHER, LocalDateTime.now().minusMinutes(1)));
+
+        DemandQuery query = new DemandQuery(null, null, null, null, null, null, DemandSort.TIME, new PageQuery(1, 20));
+
+        List<Demand> page = repository.findPage(query);
+        assertThat(page).hasSize(2);
+        assertThat(page.get(0).getId()).isEqualTo(newer.getId());
+        assertThat(repository.count(query)).isEqualTo(2L);
+    }
+
+    @Test
+    void findPage_applies_limit_and_offset_for_pagination() {
+        for (int i = 0; i < 5; i++) {
+            repository.save(newDemandWithCreated("需求" + i, DemandCategory.OTHER, LocalDateTime.now().minusMinutes(5 - i)));
+        }
+        DemandQuery page1 = new DemandQuery(null, null, null, null, null, null, DemandSort.TIME, new PageQuery(1, 2));
+        DemandQuery page2 = new DemandQuery(null, null, null, null, null, null, DemandSort.TIME, new PageQuery(2, 2));
+        DemandQuery page3 = new DemandQuery(null, null, null, null, null, null, DemandSort.TIME, new PageQuery(3, 2));
+
+        assertThat(repository.findPage(page1)).hasSize(2);
+        assertThat(repository.findPage(page2)).hasSize(2);
+        assertThat(repository.findPage(page3)).hasSize(1);
+        assertThat(repository.count(page1)).isEqualTo(5L);
+    }
+
+    @Test
+    void findPage_filters_by_keyword_on_title_or_description() {
+        Demand d1 = repository.save(newDemand("取快递帮拿", DemandCategory.EXPRESS));
+        Demand d2 = repository.save(newDemand("辅导高数", DemandCategory.STUDY_TUTORING));
+        d2.setDescription("线代答疑辅导");
+        repository.save(d2);
+        Demand d3 = repository.save(newDemand("无关标题", DemandCategory.OTHER));
+        d3.setDescription("无关描述");
+        repository.save(d3);
+
+        DemandQuery query = new DemandQuery("辅导", null, null, null, null, null, DemandSort.TIME, new PageQuery(1, 20));
+
+        assertThat(repository.findPage(query)).extracting(Demand::getId).containsExactly(d2.getId());
+        assertThat(repository.count(query)).isEqualTo(1L);
+    }
+
+    @Test
+    void findPage_filters_by_category_with_case_insensitive_match() {
+        Demand express = repository.save(newDemand("快递", DemandCategory.EXPRESS));
+        repository.save(newDemand("辅导", DemandCategory.STUDY_TUTORING));
+
+        DemandQuery query = new DemandQuery(null, "express", null, null, null, null, DemandSort.TIME, new PageQuery(1, 20));
+
+        assertThat(repository.findPage(query)).extracting(Demand::getId).containsExactly(express.getId());
+        assertThat(repository.count(query)).isEqualTo(1L);
+    }
+
+    @Test
+    void findPage_filters_by_campus_zone_with_case_insensitive_match() {
+        repository.save(newDemand("仙林", DemandCategory.OTHER));
+        Demand gulou = repository.save(newDemand("鼓楼", DemandCategory.OTHER));
+        gulou.setCampusZone(CampusZone.GULOU);
+        repository.save(gulou);
+
+        DemandQuery query = new DemandQuery(null, null, "gulou", null, null, null, DemandSort.TIME, new PageQuery(1, 20));
+
+        assertThat(repository.findPage(query)).extracting(Demand::getId).containsExactly(gulou.getId());
+    }
+
+    @Test
+    void findPage_filters_by_location_like() {
+        Demand d1 = repository.save(newDemand("d1", DemandCategory.OTHER));
+        d1.setLocation("仙林菜鸟驿站");
+        repository.save(d1);
+        Demand d2 = repository.save(newDemand("d2", DemandCategory.OTHER));
+        d2.setLocation("鼓楼教学楼");
+        repository.save(d2);
+
+        DemandQuery query = new DemandQuery(null, null, null, "菜鸟", null, null, DemandSort.TIME, new PageQuery(1, 20));
+
+        assertThat(repository.findPage(query)).extracting(Demand::getId).containsExactly(d1.getId());
+    }
+
+    @Test
+    void findPage_filters_by_start_time_range_and_excludes_null_start_time_when_range_given() {
+        Demand withStart = repository.save(newDemand("有开始", DemandCategory.OTHER));
+        withStart.setStartTime(LocalDateTime.of(2026, 9, 28, 10, 0));
+        repository.save(withStart);
+        Demand noStart = repository.save(newDemand("无开始", DemandCategory.OTHER));
+
+        LocalDateTime from = LocalDateTime.of(2026, 9, 28, 0, 0);
+        LocalDateTime to = LocalDateTime.of(2026, 9, 28, 23, 59);
+        DemandQuery ranged = new DemandQuery(null, null, null, null, from, to, DemandSort.TIME, new PageQuery(1, 20));
+        assertThat(repository.findPage(ranged)).extracting(Demand::getId).containsExactly(withStart.getId());
+
+        DemandQuery all = new DemandQuery(null, null, null, null, null, null, DemandSort.TIME, new PageQuery(1, 20));
+        assertThat(repository.findPage(all)).extracting(Demand::getId).contains(withStart.getId(), noStart.getId());
+    }
+
+    @Test
+    void findPage_excludes_reviewing_and_expired_but_includes_own_when_current_user_id_present() {
+        Demand pending = repository.save(newDemand("公开待接", DemandCategory.EXPRESS));
+        Demand reviewing = repository.save(newDemand("审核中", DemandCategory.EXPRESS));
+        reviewing.setStatus(DemandStatus.REVIEWING);
+        repository.save(reviewing);
+        Demand expired = repository.save(newDemand("已过期", DemandCategory.EXPRESS));
+        expired.setEndTime(LocalDateTime.now().minusDays(1));
+        repository.save(expired);
+
+        DemandQuery publicQuery = new DemandQuery(null, null, null, null, null, null, DemandSort.TIME, new PageQuery(1, 20));
+        List<Demand> publicPage = repository.findPage(publicQuery);
+        assertThat(publicPage).extracting(Demand::getId).contains(pending.getId());
+        assertThat(publicPage).extracting(Demand::getId).doesNotContain(reviewing.getId(), expired.getId());
+
+        DemandQuery ownQuery = new DemandQuery(null, null, null, null, null, null, DemandSort.TIME, new PageQuery(1, 20), pending.getPublisherId());
+        List<Demand> ownPage = repository.findPage(ownQuery);
+        assertThat(ownPage).extracting(Demand::getId).contains(reviewing.getId(), expired.getId());
+    }
+
+    @Test
+    void findPage_sorts_by_reward_desc_then_created_desc() {
+        Demand high = repository.save(newDemandWithCreated("高报酬", DemandCategory.OTHER, LocalDateTime.now().minusMinutes(5)));
+        high.setReward(new BigDecimal("50.00"));
+        repository.save(high);
+        Demand low = repository.save(newDemandWithCreated("低报酬", DemandCategory.OTHER, LocalDateTime.now().minusMinutes(1)));
+        low.setReward(new BigDecimal("10.00"));
+        repository.save(low);
+        Demand zero = repository.save(newDemandWithCreated("零报酬", DemandCategory.OTHER, LocalDateTime.now().minusMinutes(10)));
+        zero.setReward(BigDecimal.ZERO);
+        repository.save(zero);
+
+        DemandQuery query = new DemandQuery(null, null, null, null, null, null, DemandSort.REWARD, new PageQuery(1, 20));
+
+        assertThat(repository.findPage(query)).extracting(Demand::getId)
+            .containsExactly(high.getId(), low.getId(), zero.getId());
+    }
+
+    @Test
+    void findPage_recommend_sort_equals_created_at_desc() {
+        Demand older = repository.save(newDemandWithCreated("旧", DemandCategory.OTHER, LocalDateTime.now().minusMinutes(10)));
+        Demand newer = repository.save(newDemandWithCreated("新", DemandCategory.OTHER, LocalDateTime.now().minusMinutes(1)));
+
+        DemandQuery query = new DemandQuery(null, null, null, null, null, null, DemandSort.RECOMMEND, new PageQuery(1, 20));
+
+        assertThat(repository.findPage(query)).extracting(Demand::getId).containsExactly(newer.getId(), older.getId());
+    }
+
+    @Test
+    void count_matches_findPage_total_for_filtered_query() {
+        repository.save(newDemand("快递一", DemandCategory.EXPRESS));
+        repository.save(newDemand("辅导", DemandCategory.STUDY_TUTORING));
+        repository.save(newDemand("快递二", DemandCategory.EXPRESS));
+
+        DemandQuery query = new DemandQuery(null, "EXPRESS", null, null, null, null, DemandSort.TIME, new PageQuery(1, 20));
+
+        assertThat(repository.count(query)).isEqualTo(2L);
+        assertThat(repository.findPage(query)).hasSize(2);
+    }
+
+    @Test
+    void findPage_and_count_return_empty_when_query_null() {
+        assertThat(repository.findPage(null)).isEmpty();
+        assertThat(repository.count(null)).isEqualTo(0L);
+    }
+
+    @Test
+    void findPage_with_same_created_at_is_deterministic_across_pages() {
+        LocalDateTime sameTime = LocalDateTime.now();
+        Demand d1 = repository.save(newDemandWithCreated("d1", DemandCategory.OTHER, sameTime));
+        Demand d2 = repository.save(newDemandWithCreated("d2", DemandCategory.OTHER, sameTime));
+        Demand d3 = repository.save(newDemandWithCreated("d3", DemandCategory.OTHER, sameTime));
+        Demand d4 = repository.save(newDemandWithCreated("d4", DemandCategory.OTHER, sameTime));
+
+        DemandQuery page1 = new DemandQuery(null, null, null, null, null, null, DemandSort.TIME, new PageQuery(1, 2));
+        DemandQuery page2 = new DemandQuery(null, null, null, null, null, null, DemandSort.TIME, new PageQuery(2, 2));
+
+        List<Demand> first = repository.findPage(page1);
+        List<Demand> second = repository.findPage(page2);
+
+        List<Long> allIds = new ArrayList<>(first.stream().map(Demand::getId).toList());
+        allIds.addAll(second.stream().map(Demand::getId).toList());
+        assertThat(allIds).containsExactlyInAnyOrder(d1.getId(), d2.getId(), d3.getId(), d4.getId());
+        Set<Long> firstIds = first.stream().map(Demand::getId).collect(Collectors.toSet());
+        second.forEach(d -> assertThat(firstIds).doesNotContain(d.getId()));
+    }
+
+    @Test
+    void findReviewPage_returns_only_reviewing_demands() {
+        Demand reviewing = repository.save(newDemand("审核中", DemandCategory.OTHER));
+        reviewing.setStatus(DemandStatus.REVIEWING);
+        repository.save(reviewing);
+        Demand pending = repository.save(newDemand("待接", DemandCategory.OTHER));
+        pending.setStatus(DemandStatus.PENDING);
+        repository.save(pending);
+        Demand completed = repository.save(newDemand("已完成", DemandCategory.OTHER));
+        completed.setStatus(DemandStatus.COMPLETED);
+        repository.save(completed);
+
+        DemandReviewQuery query = new DemandReviewQuery(null, null, null, new PageQuery(1, 20));
+
+        assertThat(repository.findReviewPage(query)).extracting(Demand::getId).containsExactly(reviewing.getId());
+        assertThat(repository.countReview(query)).isEqualTo(1L);
+    }
+
+    @Test
+    void findReviewPage_keyword_matches_title_or_description_or_location() {
+        Demand byTitle = repository.save(newDemand("跑腿取快递", DemandCategory.OTHER));
+        byTitle.setStatus(DemandStatus.REVIEWING);
+        repository.save(byTitle);
+        Demand byDescription = repository.save(newDemand("无关标题", DemandCategory.OTHER));
+        byDescription.setStatus(DemandStatus.REVIEWING);
+        byDescription.setDescription("代取快递帮拿");
+        repository.save(byDescription);
+        Demand byLocation = repository.save(newDemand("另一需求", DemandCategory.OTHER));
+        byLocation.setStatus(DemandStatus.REVIEWING);
+        byLocation.setLocation("菜鸟驿站快递点");
+        repository.save(byLocation);
+        Demand noMatch = repository.save(newDemand("无关需求", DemandCategory.OTHER));
+        noMatch.setStatus(DemandStatus.REVIEWING);
+        noMatch.setDescription("无关描述");
+        noMatch.setLocation("无关地点");
+        repository.save(noMatch);
+
+        DemandReviewQuery query = new DemandReviewQuery("快递", null, null, new PageQuery(1, 20));
+
+        assertThat(repository.findReviewPage(query)).extracting(Demand::getId)
+            .containsExactlyInAnyOrder(byTitle.getId(), byDescription.getId(), byLocation.getId());
+        assertThat(repository.countReview(query)).isEqualTo(3L);
+    }
+
+    @Test
+    void findReviewPage_filters_by_category_case_insensitive() {
+        Demand express = repository.save(newDemand("快递", DemandCategory.EXPRESS));
+        express.setStatus(DemandStatus.REVIEWING);
+        repository.save(express);
+        Demand other = repository.save(newDemand("辅导", DemandCategory.STUDY_TUTORING));
+        other.setStatus(DemandStatus.REVIEWING);
+        repository.save(other);
+
+        DemandReviewQuery query = new DemandReviewQuery(null, "express", null, new PageQuery(1, 20));
+
+        assertThat(repository.findReviewPage(query)).extracting(Demand::getId).containsExactly(express.getId());
+        assertThat(repository.countReview(query)).isEqualTo(1L);
+    }
+
+    @Test
+    void findReviewPage_filters_by_campus_zone_case_insensitive() {
+        Demand xianlin = repository.save(newDemand("仙林", DemandCategory.OTHER));
+        xianlin.setStatus(DemandStatus.REVIEWING);
+        repository.save(xianlin);
+        Demand gulou = repository.save(newDemand("鼓楼", DemandCategory.OTHER));
+        gulou.setCampusZone(CampusZone.GULOU);
+        gulou.setStatus(DemandStatus.REVIEWING);
+        repository.save(gulou);
+
+        DemandReviewQuery query = new DemandReviewQuery(null, null, "xianlin", new PageQuery(1, 20));
+
+        assertThat(repository.findReviewPage(query)).hasSize(1);
+        assertThat(repository.countReview(query)).isEqualTo(1L);
+    }
+
+    @Test
+    void findReviewPage_sorts_by_created_desc_then_id_desc() {
+        Demand older = repository.save(newDemandWithCreated("旧", DemandCategory.OTHER, LocalDateTime.now().minusMinutes(10)));
+        older.setStatus(DemandStatus.REVIEWING);
+        repository.save(older);
+        Demand newer = repository.save(newDemandWithCreated("新", DemandCategory.OTHER, LocalDateTime.now().minusMinutes(1)));
+        newer.setStatus(DemandStatus.REVIEWING);
+        repository.save(newer);
+        Demand sameInstant = repository.save(newDemandWithCreated("同瞬", DemandCategory.OTHER, newer.getCreatedAt()));
+        sameInstant.setStatus(DemandStatus.REVIEWING);
+        repository.save(sameInstant);
+
+        DemandReviewQuery query = new DemandReviewQuery(null, null, null, new PageQuery(1, 20));
+
+        List<Demand> page = repository.findReviewPage(query);
+        assertThat(page).hasSize(3);
+        assertThat(page.get(0).getId()).isEqualTo(sameInstant.getId());
+        assertThat(page.get(1).getId()).isEqualTo(newer.getId());
+        assertThat(page.get(2).getId()).isEqualTo(older.getId());
+    }
+
+    @Test
+    void findReviewPage_applies_limit_and_offset_for_pagination() {
+        for (int i = 0; i < 5; i++) {
+            Demand d = repository.save(newDemandWithCreated("需求" + i, DemandCategory.OTHER, LocalDateTime.now().minusMinutes(5 - i)));
+            d.setStatus(DemandStatus.REVIEWING);
+            repository.save(d);
+        }
+        DemandReviewQuery page1 = new DemandReviewQuery(null, null, null, new PageQuery(1, 2));
+        DemandReviewQuery page2 = new DemandReviewQuery(null, null, null, new PageQuery(2, 2));
+        DemandReviewQuery page3 = new DemandReviewQuery(null, null, null, new PageQuery(3, 2));
+
+        assertThat(repository.findReviewPage(page1)).hasSize(2);
+        assertThat(repository.findReviewPage(page2)).hasSize(2);
+        assertThat(repository.findReviewPage(page3)).hasSize(1);
+        assertThat(repository.countReview(page1)).isEqualTo(5L);
+    }
+
+    @Test
+    void findReviewPage_combines_keyword_category_and_campus_zone() {
+        Demand match = repository.save(newDemand("跑腿快递", DemandCategory.EXPRESS));
+        match.setStatus(DemandStatus.REVIEWING);
+        repository.save(match);
+        Demand otherCategory = repository.save(newDemand("跑腿快递", DemandCategory.OTHER));
+        otherCategory.setStatus(DemandStatus.REVIEWING);
+        repository.save(otherCategory);
+        Demand otherZone = repository.save(newDemand("仙林快递", DemandCategory.EXPRESS));
+        otherZone.setCampusZone(CampusZone.GULOU);
+        otherZone.setStatus(DemandStatus.REVIEWING);
+        repository.save(otherZone);
+
+        DemandReviewQuery query = new DemandReviewQuery("快递", "EXPRESS", "XIANLIN", new PageQuery(1, 20));
+
+        assertThat(repository.findReviewPage(query)).extracting(Demand::getId).containsExactly(match.getId());
+        assertThat(repository.countReview(query)).isEqualTo(1L);
+    }
+
+    @Test
+    void countReview_matches_findReviewPage_total_for_filtered_query() {
+        Demand e1 = repository.save(newDemand("快递一", DemandCategory.EXPRESS));
+        e1.setStatus(DemandStatus.REVIEWING);
+        repository.save(e1);
+        Demand tut = repository.save(newDemand("辅导", DemandCategory.STUDY_TUTORING));
+        tut.setStatus(DemandStatus.REVIEWING);
+        repository.save(tut);
+        Demand e2 = repository.save(newDemand("快递二", DemandCategory.EXPRESS));
+        e2.setStatus(DemandStatus.REVIEWING);
+        repository.save(e2);
+
+        DemandReviewQuery query = new DemandReviewQuery(null, "EXPRESS", null, new PageQuery(1, 20));
+
+        assertThat(repository.countReview(query)).isEqualTo(2L);
+        assertThat(repository.findReviewPage(query)).hasSize(2);
+    }
+
+    @Test
+    void findReviewPage_and_countReview_return_empty_when_query_null() {
+        assertThat(repository.findReviewPage(null)).isEmpty();
+        assertThat(repository.countReview(null)).isEqualTo(0L);
+    }
+
+    @Test
+    void countAll_returns_zero_when_empty() {
+        assertThat(repository.countAll()).isZero();
+    }
+
+    @Test
+    void countAll_returns_total_after_inserts() {
+        repository.save(newDemand("d1", DemandCategory.OTHER));
+        repository.save(newDemand("d2", DemandCategory.EXPRESS));
+
+        assertThat(repository.countAll()).isEqualTo(2L);
+    }
+
+    @Test
+    void countByStatus_counts_matching_status_and_handles_null() {
+        Demand reviewing = repository.save(newDemand("r", DemandCategory.OTHER));
+        reviewing.setStatus(DemandStatus.REVIEWING);
+        repository.save(reviewing);
+        repository.save(newDemand("p", DemandCategory.OTHER)); // 默认 PENDING（见 2B.3b 工厂）
+
+        assertThat(repository.countByStatus(DemandStatus.REVIEWING)).isEqualTo(1L);
+        assertThat(repository.countByStatus(DemandStatus.PENDING)).isEqualTo(1L);
+        assertThat(repository.countByStatus(null)).isZero();
+    }
+
+    @Test
+    void findCandidatePage_returns_only_pending_demands() {
+        Demand pending = repository.save(newDemand("待接", DemandCategory.OTHER));
+        Demand inProgress = repository.save(newDemand("进行中", DemandCategory.OTHER));
+        inProgress.setStatus(DemandStatus.IN_PROGRESS);
+        repository.save(inProgress);
+        Demand completed = repository.save(newDemand("已完成", DemandCategory.OTHER));
+        completed.setStatus(DemandStatus.COMPLETED);
+        repository.save(completed);
+
+        List<Demand> candidates = repository.findCandidatePage(10L, new DemandQuery(null, null, null, null, null, null, DemandSort.TIME, new PageQuery(1, 20)));
+
+        assertThat(candidates).extracting(Demand::getId).containsExactly(pending.getId());
+    }
+
+    @Test
+    void findCandidatePage_excludes_own_demands() {
+        Demand own = repository.save(newDemand("自己的", DemandCategory.OTHER));
+        own.setPublisherId(10L);
+        repository.save(own);
+        Demand others = repository.save(newDemand("他人的", DemandCategory.OTHER));
+        others.setPublisherId(20L);
+        repository.save(others);
+
+        List<Demand> candidates = repository.findCandidatePage(10L, new DemandQuery(null, null, null, null, null, null, DemandSort.TIME, new PageQuery(1, 20)));
+
+        assertThat(candidates).extracting(Demand::getId).containsExactly(others.getId());
+    }
+
+    @Test
+    void findCandidatePage_filters_by_keyword() {
+        Demand match = repository.save(newDemand("取快递", DemandCategory.EXPRESS));
+        Demand noMatch = repository.save(newDemand("辅导高数", DemandCategory.STUDY_TUTORING));
+
+        List<Demand> candidates = repository.findCandidatePage(10L, new DemandQuery("快递", null, null, null, null, null, DemandSort.TIME, new PageQuery(1, 20)));
+
+        assertThat(candidates).extracting(Demand::getId).containsExactly(match.getId());
+    }
+
+    @Test
+    void findCandidatePage_filters_by_category_campus_zone_and_location() {
+        Demand match = repository.save(newDemand("快递", DemandCategory.EXPRESS));
+        match.setLocation("仙林菜鸟驿站");
+        repository.save(match);
+        Demand otherCategory = repository.save(newDemand("快递", DemandCategory.OTHER));
+        Demand otherZone = repository.save(newDemand("快递", DemandCategory.EXPRESS));
+        otherZone.setCampusZone(CampusZone.GULOU);
+        repository.save(otherZone);
+        Demand otherLocation = repository.save(newDemand("快递", DemandCategory.EXPRESS));
+        otherLocation.setLocation("鼓楼教学楼");
+        repository.save(otherLocation);
+
+        List<Demand> candidates = repository.findCandidatePage(10L, new DemandQuery(null, "EXPRESS", "XIANLIN", "菜鸟", null, null, DemandSort.TIME, new PageQuery(1, 20)));
+
+        assertThat(candidates).extracting(Demand::getId).containsExactly(match.getId());
+    }
+
+    @Test
+    void findCandidatePage_filters_by_start_time_range_excluding_null_start() {
+        Demand withStart = repository.save(newDemand("有开始", DemandCategory.OTHER));
+        withStart.setStartTime(LocalDateTime.of(2026, 9, 28, 10, 0));
+        repository.save(withStart);
+        Demand noStart = repository.save(newDemand("无开始", DemandCategory.OTHER));
+
+        LocalDateTime from = LocalDateTime.of(2026, 9, 28, 0, 0);
+        LocalDateTime to = LocalDateTime.of(2026, 9, 28, 23, 59);
+        List<Demand> ranged = repository.findCandidatePage(10L, new DemandQuery(null, null, null, null, from, to, DemandSort.TIME, new PageQuery(1, 20)));
+        assertThat(ranged).extracting(Demand::getId).containsExactly(withStart.getId());
+
+        List<Demand> all = repository.findCandidatePage(10L, new DemandQuery(null, null, null, null, null, null, DemandSort.TIME, new PageQuery(1, 20)));
+        assertThat(all).extracting(Demand::getId).contains(withStart.getId(), noStart.getId());
+    }
+
+    @Test
+    void findCandidatePage_combines_status_publisher_keyword_category() {
+        Demand match = repository.save(newDemand("快递帮拿", DemandCategory.EXPRESS));
+        match.setPublisherId(20L);
+        repository.save(match);
+        Demand own = repository.save(newDemand("快递帮拿", DemandCategory.EXPRESS));
+        own.setPublisherId(10L);
+        repository.save(own);
+        Demand otherCategory = repository.save(newDemand("快递帮拿", DemandCategory.OTHER));
+        otherCategory.setPublisherId(20L);
+        repository.save(otherCategory);
+        Demand noKeyword = repository.save(newDemand("无关", DemandCategory.EXPRESS));
+        noKeyword.setPublisherId(20L);
+        repository.save(noKeyword);
+
+        List<Demand> candidates = repository.findCandidatePage(10L, new DemandQuery("快递", "EXPRESS", null, null, null, null, DemandSort.TIME, new PageQuery(1, 20)));
+
+        assertThat(candidates).extracting(Demand::getId).containsExactly(match.getId());
+    }
+
+    @Test
+    void findCandidatePage_returns_empty_when_query_null() {
+        assertThat(repository.findCandidatePage(10L, null)).isEmpty();
+    }
+
     private static Demand newDemand(String title, DemandCategory category) {
         Demand demand = new Demand();
         demand.setPublisherId(1L);
@@ -168,6 +638,12 @@ class MyBatisDemandRepositoryTest {
         demand.setIsApproved(false);
         demand.setAnonymous(false);
         demand.setCreatedAt(LocalDateTime.now());
+        return demand;
+    }
+
+    private static Demand newDemandWithCreated(String title, DemandCategory category, LocalDateTime createdAt) {
+        Demand demand = newDemand(title, category);
+        demand.setCreatedAt(createdAt);
         return demand;
     }
 }

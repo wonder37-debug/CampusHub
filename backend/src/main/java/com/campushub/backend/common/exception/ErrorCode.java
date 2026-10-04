@@ -7,7 +7,8 @@ public enum ErrorCode {
     VALIDATION_FAILED(1002, HttpStatus.BAD_REQUEST),
     RESOURCE_NOT_FOUND(1003, HttpStatus.NOT_FOUND),
     PERMISSION_DENIED(1004, HttpStatus.FORBIDDEN),
-    BUSINESS_CONFLICT(1005, HttpStatus.CONFLICT);
+    BUSINESS_CONFLICT(1005, HttpStatus.CONFLICT),
+    INTERNAL_ERROR(5000, HttpStatus.INTERNAL_SERVER_ERROR);
 
     private final int code;
     private final HttpStatus httpStatus;

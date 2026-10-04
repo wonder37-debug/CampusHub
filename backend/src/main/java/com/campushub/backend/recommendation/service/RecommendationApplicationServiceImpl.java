@@ -6,7 +6,6 @@ import com.campushub.backend.common.exception.BusinessException;
 import com.campushub.backend.common.exception.ErrorCode;
 import com.campushub.backend.demand.domain.Demand;
 import com.campushub.backend.demand.domain.DemandSort;
-import com.campushub.backend.demand.domain.DemandStatus;
 import com.campushub.backend.demand.dto.DemandQuery;
 import com.campushub.backend.demand.dto.DemandSummaryResponse;
 import com.campushub.backend.demand.repository.DemandRepository;
@@ -21,9 +20,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
-import java.util.stream.Stream;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -138,15 +135,8 @@ public class RecommendationApplicationServiceImpl implements RecommendationAppli
     }
 
     private List<Demand> filterCandidateDemands(Long userId, DemandQuery query) {
-        return demandRepository.findAll().stream()
-            .filter(demand -> demand.getStatus() == DemandStatus.PENDING)
+        return demandRepository.findCandidatePage(userId, query).stream()
             .filter(demand -> orderRepository.findByDemandId(demand.getId()).isEmpty())
-            .filter(demand -> !demand.getPublisherId().equals(userId))
-            .filter(demand -> matchesKeyword(demand, query.q()))
-            .filter(demand -> matchesCategory(demand, query.category()))
-            .filter(demand -> matchesCampusZone(demand, query.campusZone()))
-            .filter(demand -> matchesLocation(demand, query.location()))
-            .filter(demand -> matchesStartTimeRange(demand, query.startTimeFrom(), query.startTimeTo()))
             .toList();
     }
 
@@ -269,38 +259,5 @@ public class RecommendationApplicationServiceImpl implements RecommendationAppli
         }
         userRepository.findById(userId)
             .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "user not found"));
-    }
-
-    private boolean matchesKeyword(Demand demand, String keyword) {
-        if (keyword == null || keyword.isBlank()) {
-            return true;
-        }
-        String normalized = keyword.trim().toLowerCase(Locale.ROOT);
-        return demand.getTitle().toLowerCase(Locale.ROOT).contains(normalized)
-            || (demand.getDescription() != null
-            && demand.getDescription().toLowerCase(Locale.ROOT).contains(normalized));
-    }
-
-    private boolean matchesCategory(Demand demand, String category) {
-        return category == null || category.isBlank() || demand.getCategory().name().equalsIgnoreCase(category);
-    }
-
-    private boolean matchesCampusZone(Demand demand, String campusZone) {
-        return campusZone == null || campusZone.isBlank() || demand.getCampusZone().name().equalsIgnoreCase(campusZone);
-    }
-
-    private boolean matchesLocation(Demand demand, String location) {
-        return location == null || location.isBlank()
-            || (demand.getLocation() != null
-            && demand.getLocation().toLowerCase(Locale.ROOT).contains(location.trim().toLowerCase(Locale.ROOT)));
-    }
-
-    private boolean matchesStartTimeRange(Demand demand, LocalDateTime from, LocalDateTime to) {
-        if (demand.getStartTime() == null) {
-            return from == null && to == null;
-        }
-        boolean afterFrom = from == null || !demand.getStartTime().isBefore(from);
-        boolean beforeTo = to == null || !demand.getStartTime().isAfter(to);
-        return afterFrom && beforeTo;
     }
 }

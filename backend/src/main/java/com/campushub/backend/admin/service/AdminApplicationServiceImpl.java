@@ -10,6 +10,7 @@ import com.campushub.backend.auth.domain.User;
 import com.campushub.backend.auth.domain.UserRole;
 import com.campushub.backend.auth.domain.UserStatus;
 import com.campushub.backend.auth.dto.UserProfileResponse;
+import com.campushub.backend.auth.dto.UserQueryCriteria;
 import com.campushub.backend.auth.repository.UserRepository;
 import com.campushub.backend.common.api.PageResponse;
 import com.campushub.backend.common.exception.BusinessException;
@@ -17,6 +18,7 @@ import com.campushub.backend.common.exception.ErrorCode;
 import com.campushub.backend.demand.domain.Demand;
 import com.campushub.backend.demand.domain.DemandStatus;
 import com.campushub.backend.demand.dto.DemandDetailResponse;
+import com.campushub.backend.demand.dto.DemandReviewQuery;
 import com.campushub.backend.demand.dto.DemandSummaryResponse;
 import com.campushub.backend.demand.repository.DemandRepository;
 import com.campushub.backend.demand.service.DemandApplicationService;
@@ -33,7 +35,6 @@ import com.campushub.backend.review.repository.ReviewRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -81,21 +82,15 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "admin user query must not be null");
         }
 
-        List<User> filtered = userRepository.findAll().stream()
-            .filter(user -> matchesUserKeyword(user, query.q(), query.searchField()))
-            .filter(user -> matchesUserRole(user, query.role()))
-            .filter(user -> matchesUserStatus(user, query.status()))
-            .sorted(resolveUserComparator(query.sortBy(), query.sortDirection()))
-            .toList();
-
+        UserQueryCriteria criteria = new UserQueryCriteria(
+            query.q(), query.searchField(), query.role(), query.status(),
+            query.sortBy(), query.sortDirection(), query.pageQuery());
+        List<User> users = userRepository.findPage(criteria);
+        List<UserProfileResponse> items = users.stream().map(UserProfileResponse::from).toList();
+        long total = userRepository.count(criteria);
         int page = query.pageQuery().page();
         int size = query.pageQuery().size();
-        int fromIndex = Math.max(0, (page - 1) * size);
-        int toIndex = Math.min(filtered.size(), fromIndex + size);
-        List<UserProfileResponse> items = fromIndex >= filtered.size()
-            ? List.of()
-            : filtered.subList(fromIndex, toIndex).stream().map(UserProfileResponse::from).toList();
-        return new PageResponse<>(items, page, size, filtered.size());
+        return new PageResponse<>(items, page, size, total);
     }
 
     @Override
@@ -157,21 +152,14 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "admin demand query must not be null");
         }
 
-        List<Demand> filtered = demandRepository.findByStatus(DemandStatus.REVIEWING).stream()
-            .filter(demand -> matchesDemandKeyword(demand, query.q()))
-            .filter(demand -> matchesDemandCategory(demand, query.category()))
-            .filter(demand -> matchesDemandCampusZone(demand, query.campusZone()))
-            .sorted(Comparator.comparing(Demand::getCreatedAt, Comparator.nullsLast(LocalDateTime::compareTo)).reversed())
-            .toList();
-
+        DemandReviewQuery reviewQuery = new DemandReviewQuery(
+            query.q(), query.category(), query.campusZone(), query.pageQuery());
+        List<Demand> demands = demandRepository.findReviewPage(reviewQuery);
+        List<DemandSummaryResponse> items = demands.stream().map(DemandSummaryResponse::from).toList();
+        long total = demandRepository.countReview(reviewQuery);
         int page = query.pageQuery().page();
         int size = query.pageQuery().size();
-        int fromIndex = Math.max(0, (page - 1) * size);
-        int toIndex = Math.min(filtered.size(), fromIndex + size);
-        List<DemandSummaryResponse> items = fromIndex >= filtered.size()
-            ? List.of()
-            : filtered.subList(fromIndex, toIndex).stream().map(DemandSummaryResponse::from).toList();
-        return new PageResponse<>(items, page, size, filtered.size());
+        return new PageResponse<>(items, page, size, total);
     }
 
     @Override
@@ -180,17 +168,10 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
         int resolvedPage = Math.max(page, 1);
         int resolvedSize = Math.max(size, 1);
 
-        List<Order> filtered = orderRepository.findAll().stream()
-            .filter(order -> order.getStatus() == OrderStatus.IN_ARBITRATION)
-            .sorted(Comparator.comparing(Order::getUpdatedAt, Comparator.nullsLast(LocalDateTime::compareTo)).reversed())
-            .toList();
-
-        int fromIndex = Math.max(0, (resolvedPage - 1) * resolvedSize);
-        int toIndex = Math.min(filtered.size(), fromIndex + resolvedSize);
-        List<OrderSummaryResponse> items = fromIndex >= filtered.size()
-            ? List.of()
-            : filtered.subList(fromIndex, toIndex).stream().map(OrderSummaryResponse::from).toList();
-        return new PageResponse<>(items, resolvedPage, resolvedSize, filtered.size());
+        List<Order> orders = orderRepository.findArbitrationPage(resolvedPage, resolvedSize);
+        List<OrderSummaryResponse> items = orders.stream().map(OrderSummaryResponse::from).toList();
+        long total = orderRepository.countArbitration();
+        return new PageResponse<>(items, resolvedPage, resolvedSize, total);
     }
 
     @Override
@@ -303,8 +284,11 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
         LocalDate today = LocalDate.now();
 
         long dailyActiveUsers = countDailyActiveUsers(demands, orders, today);
-        long pendingReviewDemands = demandRepository.findByStatus(DemandStatus.REVIEWING).size();
-        long completedOrders = orders.stream().filter(order -> order.getStatus() == OrderStatus.COMPLETED).count();
+        long totalUsers = userRepository.count();
+        long totalDemands = demandRepository.countAll();
+        long totalOrders = orderRepository.count();
+        long pendingReviewDemands = demandRepository.countByStatus(DemandStatus.REVIEWING);
+        long completedOrders = orderRepository.countByStatus(OrderStatus.COMPLETED);
         Map<String, Long> categoryDistribution = demands.stream()
             .collect(Collectors.groupingBy(demand -> demand.getCategory().name(), Collectors.counting()));
 
@@ -314,14 +298,8 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
             .toList();
 
         return new AdminDashboardResponse(
-            dailyActiveUsers,
-            users.size(),
-            demands.size(),
-            pendingReviewDemands,
-            orders.size(),
-            completedOrders,
-            categoryStats
-        );
+            dailyActiveUsers, totalUsers, totalDemands, pendingReviewDemands,
+            totalOrders, completedOrders, categoryStats);
     }
 
     private User requireAdmin(Long operatorId) {
@@ -346,78 +324,6 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
         }
         return orderRepository.findById(orderId)
             .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "order not found"));
-    }
-
-    private boolean matchesUserKeyword(User user, String keyword, String searchField) {
-        if (keyword == null || keyword.isBlank()) {
-            return true;
-        }
-        String normalized = keyword.trim().toLowerCase(Locale.ROOT);
-        if (searchField == null || searchField.isBlank()) {
-            return containsIgnoreCase(user.getNickname(), normalized)
-                || containsIgnoreCase(user.getEmail(), normalized)
-                || containsIgnoreCase(user.getStudentId(), normalized);
-        }
-        return switch (searchField.trim().toLowerCase(Locale.ROOT)) {
-            case "nickname" -> containsIgnoreCase(user.getNickname(), normalized);
-            case "email" -> containsIgnoreCase(user.getEmail(), normalized);
-            case "studentid", "student_id" -> containsIgnoreCase(user.getStudentId(), normalized);
-            default -> containsIgnoreCase(user.getNickname(), normalized)
-                || containsIgnoreCase(user.getEmail(), normalized)
-                || containsIgnoreCase(user.getStudentId(), normalized);
-        };
-    }
-
-    private boolean matchesDemandKeyword(Demand demand, String keyword) {
-        if (keyword == null || keyword.isBlank()) {
-            return true;
-        }
-        String normalized = keyword.trim().toLowerCase(Locale.ROOT);
-        return containsIgnoreCase(demand.getTitle(), normalized)
-            || containsIgnoreCase(demand.getDescription(), normalized)
-            || containsIgnoreCase(demand.getLocation(), normalized);
-    }
-
-    private boolean matchesDemandCategory(Demand demand, String category) {
-        return category == null || category.isBlank() || demand.getCategory().name().equalsIgnoreCase(category);
-    }
-
-    private boolean matchesDemandCampusZone(Demand demand, String campusZone) {
-        return campusZone == null || campusZone.isBlank() || demand.getCampusZone().name().equalsIgnoreCase(campusZone);
-    }
-
-    private boolean containsIgnoreCase(String value, String normalizedKeyword) {
-        return value != null && value.toLowerCase(Locale.ROOT).contains(normalizedKeyword);
-    }
-
-    private boolean matchesUserRole(User user, String role) {
-        if (role == null || role.isBlank()) {
-            return true;
-        }
-        return user.getRole().name().equalsIgnoreCase(role.trim());
-    }
-
-    private boolean matchesUserStatus(User user, String status) {
-        if (status == null || status.isBlank()) {
-            return true;
-        }
-        return user.getStatus().name().equalsIgnoreCase(status.trim());
-    }
-
-    private Comparator<User> resolveUserComparator(String sortBy, String sortDirection) {
-        boolean descending = sortDirection == null || sortDirection.isBlank() || !"asc".equalsIgnoreCase(sortDirection.trim());
-        Comparator<User> comparator = switch (sortBy == null ? "" : sortBy.trim().toLowerCase(Locale.ROOT)) {
-            case "creditscore", "credit_score" ->
-                Comparator.comparing(User::getCreditScore, Comparator.nullsLast(Integer::compareTo));
-            case "nickname" ->
-                Comparator.comparing(User::getNickname, Comparator.nullsLast(String::compareToIgnoreCase));
-            case "createdat", "created_at" ->
-                Comparator.comparing(User::getCreatedAt, Comparator.nullsLast(LocalDateTime::compareTo));
-            default ->
-                Comparator.comparing(User::getCreatedAt, Comparator.nullsLast(LocalDateTime::compareTo));
-        };
-        comparator = descending ? comparator.reversed() : comparator;
-        return comparator.thenComparing(User::getId, Comparator.nullsLast(Long::compareTo));
     }
 
     private long countDailyActiveUsers(List<Demand> demands, List<Order> orders, LocalDate today) {

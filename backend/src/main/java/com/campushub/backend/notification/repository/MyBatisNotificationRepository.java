@@ -2,9 +2,9 @@ package com.campushub.backend.notification.repository;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.campushub.backend.notification.domain.Notification;
+import com.campushub.backend.notification.dto.NotificationQuery;
 import com.campushub.backend.notification.repository.entity.NotificationEntity;
 import com.campushub.backend.notification.repository.mapper.NotificationMapper;
-import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
@@ -14,14 +14,13 @@ import java.util.Optional;
 /**
  * 基于 MyBatis-Plus 的 {@link NotificationRepository} 实现。
  *
- * <p>仅在 {@code local} profile 下激活，避免与默认内存仓储冲突。</p>
+ * <p>默认仓储实现。</p>
  *
  * <p>本仓储仅保证基本的查询与持久化正确。排序与分页由 Service 层
  * （{@link com.campushub.backend.notification.service.NotificationApplicationServiceImpl}）
  * 在内存中完成，DAO 层不做排序。</p>
  */
 @Repository
-@Profile("local")
 public class MyBatisNotificationRepository implements NotificationRepository {
 
     private final NotificationMapper notificationMapper;
@@ -67,5 +66,36 @@ public class MyBatisNotificationRepository implements NotificationRepository {
                 .eq(NotificationEntity::getUserId, userId)
         );
         return entities.stream().map(NotificationEntity::toDomain).toList();
+    }
+
+    @Override
+    public List<Notification> findPage(Long userId, NotificationQuery query) {
+        if (userId == null || query == null) {
+            return List.of();
+        }
+        LambdaQueryWrapper<NotificationEntity> wrapper = buildWrapper(userId, query);
+        wrapper.orderByDesc(NotificationEntity::getCreatedAt)
+               .orderByDesc(NotificationEntity::getId);
+        int size = query.pageQuery().size();
+        long offset = (long) (query.pageQuery().page() - 1) * size;
+        wrapper.last("LIMIT " + size + " OFFSET " + offset);
+        return notificationMapper.selectList(wrapper).stream().map(NotificationEntity::toDomain).toList();
+    }
+
+    @Override
+    public long count(Long userId, NotificationQuery query) {
+        if (userId == null || query == null) {
+            return 0L;
+        }
+        return notificationMapper.selectCount(buildWrapper(userId, query));
+    }
+
+    private LambdaQueryWrapper<NotificationEntity> buildWrapper(Long userId, NotificationQuery query) {
+        LambdaQueryWrapper<NotificationEntity> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(NotificationEntity::getUserId, userId);
+        if (query.unreadOnly()) {
+            wrapper.eq(NotificationEntity::getIsRead, false);
+        }
+        return wrapper;
     }
 }

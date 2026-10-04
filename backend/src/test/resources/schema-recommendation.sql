@@ -10,3 +10,5 @@ CREATE TABLE rec_user_action_log (
   category VARCHAR(32) NOT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX idx_action_user_cat ON rec_user_action_log(user_id, category);

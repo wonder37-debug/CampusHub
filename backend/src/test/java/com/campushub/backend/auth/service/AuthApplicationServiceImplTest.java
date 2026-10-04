@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.campushub.backend.BackendApplication;
 import com.campushub.backend.auth.domain.User;
 import com.campushub.backend.auth.domain.UserRole;
 import com.campushub.backend.auth.domain.UserStatus;
@@ -15,16 +16,25 @@ import com.campushub.backend.auth.dto.PasswordResetCommand;
 import com.campushub.backend.auth.dto.RegisterCommand;
 import com.campushub.backend.auth.dto.UpdateProfileCommand;
 import com.campushub.backend.auth.dto.UserProfileResponse;
-import com.campushub.backend.auth.repository.InMemoryUserRepository;
 import com.campushub.backend.auth.repository.UserRepository;
 import com.campushub.backend.common.exception.BusinessException;
 import com.campushub.backend.common.exception.ErrorCode;
-import com.campushub.backend.common.security.SimpleTokenService;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.test.annotation.DirtiesContext;
 
+@SpringBootTest(classes = {BackendApplication.class, AuthApplicationServiceImplTest.TestConfig.class}, properties = {
+    "app.demo-data.enabled=false",
+    "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.mail.MailSenderAutoConfiguration"
+})
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 class AuthApplicationServiceImplTest {
 
     private static final BCryptPasswordEncoder PASSWORD_ENCODER = new BCryptPasswordEncoder();
@@ -32,20 +42,28 @@ class AuthApplicationServiceImplTest {
         "example.edu.cn,campus.edu,test.edu.cn,edu.cn"
     );
 
+    @Autowired
     private UserRepository userRepository;
+
+    @Autowired
     private AuthApplicationService authApplicationService;
+
+    @Autowired
     private RecordingVerificationEmailSender verificationEmailSender;
 
     @BeforeEach
     void setUp() {
-        userRepository = new InMemoryUserRepository();
-        verificationEmailSender = new RecordingVerificationEmailSender();
-        authApplicationService = new AuthApplicationServiceImpl(
-            userRepository,
-            new InMemoryVerificationCodeService(CAMPUS_EMAIL_POLICY, verificationEmailSender),
-            new SimpleTokenService(),
-            CAMPUS_EMAIL_POLICY
-        );
+        verificationEmailSender.reset();
+    }
+
+    @TestConfiguration
+    static class TestConfig {
+
+        @Bean
+        @Primary
+        RecordingVerificationEmailSender recordingVerificationEmailSender() {
+            return new RecordingVerificationEmailSender();
+        }
     }
 
     @Test
@@ -291,7 +309,7 @@ class AuthApplicationServiceImplTest {
         assertNotNull(result.token());
     }
 
-    private static class RecordingVerificationEmailSender implements VerificationEmailSender {
+    static class RecordingVerificationEmailSender implements VerificationEmailSender {
         private String lastEmail;
         private String lastCode;
         private long lastExpiresInSeconds;
@@ -303,6 +321,13 @@ class AuthApplicationServiceImplTest {
             this.lastCode = verificationCode;
             this.lastExpiresInSeconds = expiresInSeconds;
             this.sendCount++;
+        }
+
+        void reset() {
+            this.lastEmail = null;
+            this.lastCode = null;
+            this.lastExpiresInSeconds = 0L;
+            this.sendCount = 0;
         }
     }
 }

@@ -1,9 +1,11 @@
 package com.campushub.backend.order.repository;
 
 import com.baomidou.mybatisplus.test.autoconfigure.MybatisPlusTest;
+import com.campushub.backend.common.model.PageQuery;
 import com.campushub.backend.order.domain.Order;
 import com.campushub.backend.order.domain.OrderStatus;
 import com.campushub.backend.order.domain.OrderStatusHistoryEntry;
+import com.campushub.backend.order.dto.OrderHistoryQuery;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Import;
@@ -165,6 +167,220 @@ class MyBatisOrderRepositoryTest {
         Order second = newOrder(4001L, 10L, 30L); // 同 demandId，不同接单人
         assertThatThrownBy(() -> repository.save(second))
             .isInstanceOfAny(DuplicateKeyException.class, DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void findArbitrationPage_returns_only_in_arbitration_orders() {
+        Order arbitration = repository.save(newOrder(5001L, 10L, 20L));
+        arbitration.setStatus(OrderStatus.IN_ARBITRATION);
+        repository.save(arbitration);
+        Order pending = repository.save(newOrder(5002L, 11L, 21L));
+        pending.setStatus(OrderStatus.IN_PROGRESS);
+        repository.save(pending);
+        Order completed = repository.save(newOrder(5003L, 12L, 22L));
+        completed.setStatus(OrderStatus.COMPLETED);
+        repository.save(completed);
+
+        List<Order> page = repository.findArbitrationPage(1, 20);
+
+        assertThat(page).extracting(Order::getId).containsExactly(arbitration.getId());
+        assertThat(repository.countArbitration()).isEqualTo(1L);
+    }
+
+    @Test
+    void findArbitrationPage_sorts_by_updated_at_desc_then_id_desc() {
+        Order older = repository.save(newOrder(5101L, 10L, 20L));
+        older.setStatus(OrderStatus.IN_ARBITRATION);
+        older.setUpdatedAt(LocalDateTime.of(2026, 9, 1, 10, 0));
+        repository.save(older);
+        Order newer = repository.save(newOrder(5102L, 11L, 21L));
+        newer.setStatus(OrderStatus.IN_ARBITRATION);
+        newer.setUpdatedAt(LocalDateTime.of(2026, 9, 2, 10, 0));
+        repository.save(newer);
+        Order sameInstant = repository.save(newOrder(5103L, 12L, 22L));
+        sameInstant.setStatus(OrderStatus.IN_ARBITRATION);
+        sameInstant.setUpdatedAt(newer.getUpdatedAt());
+        repository.save(sameInstant);
+
+        List<Order> page = repository.findArbitrationPage(1, 20);
+
+        assertThat(page).hasSize(3);
+        assertThat(page.get(0).getId()).isEqualTo(sameInstant.getId());
+        assertThat(page.get(1).getId()).isEqualTo(newer.getId());
+        assertThat(page.get(2).getId()).isEqualTo(older.getId());
+    }
+
+    @Test
+    void findArbitrationPage_places_null_updated_at_last() {
+        Order withTime = repository.save(newOrder(5201L, 10L, 20L));
+        withTime.setStatus(OrderStatus.IN_ARBITRATION);
+        withTime.setUpdatedAt(LocalDateTime.of(2026, 9, 1, 10, 0));
+        repository.save(withTime);
+        Order nullTime = repository.save(newOrder(5202L, 11L, 21L));
+        nullTime.setStatus(OrderStatus.IN_ARBITRATION);
+        repository.save(nullTime);
+
+        List<Order> page = repository.findArbitrationPage(1, 20);
+
+        assertThat(page).hasSize(2);
+        assertThat(page.get(0).getId()).isEqualTo(withTime.getId());
+        assertThat(page.get(1).getId()).isEqualTo(nullTime.getId());
+    }
+
+    @Test
+    void findArbitrationPage_applies_limit_and_offset_for_pagination() {
+        for (int i = 0; i < 5; i++) {
+            Order o = repository.save(newOrder(5300L + i, 10L, 20L));
+            o.setStatus(OrderStatus.IN_ARBITRATION);
+            o.setUpdatedAt(LocalDateTime.now().minusMinutes(5 - i));
+            repository.save(o);
+        }
+
+        assertThat(repository.findArbitrationPage(1, 2)).hasSize(2);
+        assertThat(repository.findArbitrationPage(2, 2)).hasSize(2);
+        assertThat(repository.findArbitrationPage(3, 2)).hasSize(1);
+        assertThat(repository.countArbitration()).isEqualTo(5L);
+    }
+
+    @Test
+    void findArbitrationPage_returns_orders_with_empty_status_history() {
+        Order arbitration = repository.save(newOrder(5401L, 10L, 20L));
+        arbitration.setStatus(OrderStatus.IN_ARBITRATION);
+        arbitration.addHistory(null, OrderStatus.ACCEPTED, 20L, "接单", LocalDateTime.now());
+        repository.save(arbitration);
+
+        List<Order> page = repository.findArbitrationPage(1, 20);
+
+        assertThat(page).hasSize(1);
+        assertThat(page.get(0).getStatusHistory()).isNotNull().isEmpty();
+    }
+
+    @Test
+    void countArbitration_counts_only_in_arbitration_orders() {
+        Order a1 = repository.save(newOrder(5501L, 10L, 20L));
+        a1.setStatus(OrderStatus.IN_ARBITRATION);
+        repository.save(a1);
+        Order a2 = repository.save(newOrder(5502L, 11L, 21L));
+        a2.setStatus(OrderStatus.IN_ARBITRATION);
+        repository.save(a2);
+        Order other = repository.save(newOrder(5503L, 12L, 22L));
+        other.setStatus(OrderStatus.COMPLETED);
+        repository.save(other);
+
+        assertThat(repository.countArbitration()).isEqualTo(2L);
+    }
+
+    @Test
+    void countArbitration_matches_findArbitrationPage_total() {
+        for (int i = 0; i < 3; i++) {
+            Order o = repository.save(newOrder(5600L + i, 10L, 20L));
+            o.setStatus(OrderStatus.IN_ARBITRATION);
+            repository.save(o);
+        }
+
+        assertThat(repository.countArbitration()).isEqualTo(3L);
+        assertThat(repository.findArbitrationPage(1, 20)).hasSize(3);
+    }
+
+    @Test
+    void count_returns_zero_when_empty() {
+        assertThat(repository.count()).isZero();
+    }
+
+    @Test
+    void count_returns_total_after_inserts() {
+        repository.save(newOrder(6001L, 10L, 20L));
+        repository.save(newOrder(6002L, 11L, 21L));
+
+        assertThat(repository.count()).isEqualTo(2L);
+    }
+
+    @Test
+    void countByStatus_counts_matching_status_and_handles_null() {
+        Order arbitration = repository.save(newOrder(6101L, 10L, 20L));
+        arbitration.setStatus(OrderStatus.IN_ARBITRATION);
+        repository.save(arbitration);
+        repository.save(newOrder(6102L, 11L, 21L)); // 默认 ACCEPTED
+
+        assertThat(repository.countByStatus(OrderStatus.IN_ARBITRATION)).isEqualTo(1L);
+        assertThat(repository.countByStatus(OrderStatus.ACCEPTED)).isEqualTo(1L);
+        assertThat(repository.countByStatus(null)).isZero();
+    }
+
+    @Test
+    void findHistoryPage_returns_orders_where_publisher_or_accepter_matches() {
+        Order asPublisher = repository.save(newOrder(7001L, 10L, 20L)); // publisherId=10 命中
+        Order asAccepter = repository.save(newOrder(7002L, 11L, 10L));  // accepterId=10 命中
+        repository.save(newOrder(7003L, 12L, 22L)); // 都不命中
+
+        List<Order> page = repository.findHistoryPage(10L, new OrderHistoryQuery(new PageQuery(1, 20)));
+
+        assertThat(page).hasSize(2);
+        assertThat(page).extracting(Order::getDemandId).containsExactlyInAnyOrder(7001L, 7002L);
+        assertThat(repository.countHistory(10L)).isEqualTo(2L);
+    }
+
+    @Test
+    void findHistoryPage_sorts_by_created_at_desc_then_id_desc() {
+        Order older = repository.save(newOrder(7101L, 10L, 20L));
+        older.setCreatedAt(LocalDateTime.of(2026, 9, 1, 10, 0));
+        repository.save(older);
+        Order newer = repository.save(newOrder(7102L, 10L, 21L));
+        newer.setCreatedAt(LocalDateTime.of(2026, 9, 2, 10, 0));
+        repository.save(newer);
+        Order sameInstant = repository.save(newOrder(7103L, 10L, 22L));
+        sameInstant.setCreatedAt(newer.getCreatedAt());
+        repository.save(sameInstant);
+
+        List<Order> page = repository.findHistoryPage(10L, new OrderHistoryQuery(new PageQuery(1, 20)));
+
+        assertThat(page).hasSize(3);
+        assertThat(page.get(0).getId()).isEqualTo(sameInstant.getId());
+        assertThat(page.get(1).getId()).isEqualTo(newer.getId());
+        assertThat(page.get(2).getId()).isEqualTo(older.getId());
+    }
+
+    @Test
+    void findHistoryPage_applies_limit_and_offset_for_pagination() {
+        for (int i = 0; i < 5; i++) {
+            Order o = repository.save(newOrder(7200L + i, 10L, 20L));
+            o.setCreatedAt(LocalDateTime.now().minusMinutes(5 - i));
+            repository.save(o);
+        }
+
+        assertThat(repository.findHistoryPage(10L, new OrderHistoryQuery(new PageQuery(1, 2)))).hasSize(2);
+        assertThat(repository.findHistoryPage(10L, new OrderHistoryQuery(new PageQuery(2, 2)))).hasSize(2);
+        assertThat(repository.findHistoryPage(10L, new OrderHistoryQuery(new PageQuery(3, 2)))).hasSize(1);
+        assertThat(repository.countHistory(10L)).isEqualTo(5L);
+    }
+
+    @Test
+    void findHistoryPage_returns_orders_with_empty_status_history() {
+        Order order = repository.save(newOrder(7301L, 10L, 20L));
+        order.addHistory(null, OrderStatus.ACCEPTED, 20L, "接单", LocalDateTime.now());
+        repository.save(order);
+
+        List<Order> page = repository.findHistoryPage(10L, new OrderHistoryQuery(new PageQuery(1, 20)));
+
+        assertThat(page).hasSize(1);
+        assertThat(page.get(0).getStatusHistory()).isNotNull().isEmpty();
+    }
+
+    @Test
+    void countHistory_matches_findHistoryPage_total() {
+        repository.save(newOrder(7401L, 10L, 20L));
+        repository.save(newOrder(7402L, 11L, 10L));
+        repository.save(newOrder(7403L, 10L, 21L));
+
+        assertThat(repository.countHistory(10L)).isEqualTo(3L);
+        assertThat(repository.findHistoryPage(10L, new OrderHistoryQuery(new PageQuery(1, 20)))).hasSize(3);
+    }
+
+    @Test
+    void findHistoryPage_and_countHistory_handle_null() {
+        assertThat(repository.findHistoryPage(null, new OrderHistoryQuery(new PageQuery(1, 20)))).isEmpty();
+        assertThat(repository.findHistoryPage(10L, null)).isEmpty();
+        assertThat(repository.countHistory(null)).isZero();
     }
 
     /**

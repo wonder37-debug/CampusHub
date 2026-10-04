@@ -4,10 +4,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.campushub.backend.BackendApplication;
 import com.campushub.backend.auth.domain.User;
 import com.campushub.backend.auth.domain.UserRole;
 import com.campushub.backend.auth.domain.UserStatus;
-import com.campushub.backend.auth.repository.InMemoryUserRepository;
 import com.campushub.backend.auth.repository.UserRepository;
 import com.campushub.backend.common.api.PageResponse;
 import com.campushub.backend.common.model.PageQuery;
@@ -17,61 +17,54 @@ import com.campushub.backend.demand.dto.DemandQuery;
 import com.campushub.backend.demand.dto.DemandSummaryResponse;
 import com.campushub.backend.demand.dto.PublishDemandCommand;
 import com.campushub.backend.demand.repository.DemandRepository;
-import com.campushub.backend.demand.repository.InMemoryDemandRepository;
-import com.campushub.backend.demand.service.DefaultSensitiveWordChecker;
 import com.campushub.backend.demand.service.DemandApplicationService;
-import com.campushub.backend.demand.service.DemandApplicationServiceImpl;
-import com.campushub.backend.notification.repository.InMemoryNotificationRepository;
-import com.campushub.backend.notification.service.NotificationApplicationService;
-import com.campushub.backend.notification.service.NotificationApplicationServiceImpl;
+import com.campushub.backend.notification.repository.NotificationRepository;
 import com.campushub.backend.order.dto.AcceptOrderCommand;
-import com.campushub.backend.order.repository.InMemoryOrderRepository;
 import com.campushub.backend.order.repository.OrderRepository;
 import com.campushub.backend.order.service.OrderApplicationService;
-import com.campushub.backend.order.service.OrderApplicationServiceImpl;
 import com.campushub.backend.recommendation.dto.RecommendationItemResponse;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.annotation.DirtiesContext;
 
+@SpringBootTest(classes = BackendApplication.class, properties = {
+    "app.demo-data.enabled=false",
+    "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.mail.MailSenderAutoConfiguration"
+})
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 class RecommendationApplicationServiceImplTest {
 
+    @Autowired
     private UserRepository userRepository;
+
+    @Autowired
     private DemandRepository demandRepository;
+
+    @Autowired
     private OrderRepository orderRepository;
+
+    @Autowired
+    private NotificationRepository notificationRepository;
+
+    @Autowired
     private DemandApplicationService demandApplicationService;
+
+    @Autowired
     private OrderApplicationService orderApplicationService;
+
+    @Autowired
     private RecommendationApplicationService recommendationApplicationService;
+
     private Long publisherId;
     private Long accepterId;
 
     @BeforeEach
     void setUp() {
-        userRepository = new InMemoryUserRepository();
-        demandRepository = new InMemoryDemandRepository();
-        orderRepository = new InMemoryOrderRepository();
-        NotificationApplicationService notificationApplicationService =
-            new NotificationApplicationServiceImpl(new InMemoryNotificationRepository());
-        demandApplicationService = new DemandApplicationServiceImpl(
-            demandRepository,
-            userRepository,
-            new DefaultSensitiveWordChecker()
-        );
-        orderApplicationService = new OrderApplicationServiceImpl(
-            orderRepository,
-            demandRepository,
-            userRepository,
-            notificationApplicationService
-        );
-        recommendationApplicationService = new RecommendationApplicationServiceImpl(
-            demandRepository,
-            orderRepository,
-            userRepository,
-            () -> true
-        );
-
         publisherId = userRepository.save(new User(
             null,
             "publisher@example.edu.cn",

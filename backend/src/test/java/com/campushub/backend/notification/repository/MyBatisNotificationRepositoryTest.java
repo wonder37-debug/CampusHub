@@ -3,9 +3,12 @@ package com.campushub.backend.notification.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.baomidou.mybatisplus.test.autoconfigure.MybatisPlusTest;
+import com.campushub.backend.common.model.PageQuery;
 import com.campushub.backend.notification.domain.Notification;
 import com.campushub.backend.notification.domain.NotificationType;
+import com.campushub.backend.notification.dto.NotificationQuery;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -96,6 +99,99 @@ class MyBatisNotificationRepositoryTest {
         assertThat(reloaded.getContent()).isEqualTo("状态已变更");
     }
 
+    @Test
+    void findPage_returns_user_notifications_sorted_by_created_desc() {
+        Notification older = repository.save(newNotificationWithCreated(10L, NotificationType.ORDER_ACCEPTED, LocalDateTime.now().minusMinutes(10)));
+        Notification newer = repository.save(newNotificationWithCreated(10L, NotificationType.REVIEW_RECEIVED, LocalDateTime.now().minusMinutes(1)));
+
+        List<Notification> page = repository.findPage(10L, new NotificationQuery(false, new PageQuery(1, 20)));
+
+        assertThat(page).hasSize(2);
+        assertThat(page.get(0).getId()).isEqualTo(newer.getId());
+        assertThat(repository.count(10L, new NotificationQuery(false, new PageQuery(1, 20)))).isEqualTo(2L);
+    }
+
+    @Test
+    void findPage_unread_only_returns_unread_notifications() {
+        Notification unread = repository.save(newNotification(10L, NotificationType.ORDER_ACCEPTED));
+        Notification read = repository.save(newNotification(10L, NotificationType.STATUS_CHANGED));
+        read.setRead(true);
+        repository.save(read);
+
+        List<Notification> page = repository.findPage(10L, new NotificationQuery(true, new PageQuery(1, 20)));
+
+        assertThat(page).extracting(Notification::getId).containsExactly(unread.getId());
+        assertThat(repository.count(10L, new NotificationQuery(true, new PageQuery(1, 20)))).isEqualTo(1L);
+    }
+
+    @Test
+    void findPage_unread_false_returns_all_including_read() {
+        repository.save(newNotification(10L, NotificationType.ORDER_ACCEPTED));
+        Notification read = repository.save(newNotification(10L, NotificationType.STATUS_CHANGED));
+        read.setRead(true);
+        repository.save(read);
+
+        List<Notification> page = repository.findPage(10L, new NotificationQuery(false, new PageQuery(1, 20)));
+
+        assertThat(page).hasSize(2);
+        assertThat(repository.count(10L, new NotificationQuery(false, new PageQuery(1, 20)))).isEqualTo(2L);
+    }
+
+    @Test
+    void findPage_applies_limit_and_offset_for_pagination() {
+        for (int i = 0; i < 5; i++) {
+            repository.save(newNotificationWithCreated(10L, NotificationType.ORDER_ACCEPTED, LocalDateTime.now().minusMinutes(5 - i)));
+        }
+        NotificationQuery page1 = new NotificationQuery(false, new PageQuery(1, 2));
+        NotificationQuery page2 = new NotificationQuery(false, new PageQuery(2, 2));
+        NotificationQuery page3 = new NotificationQuery(false, new PageQuery(3, 2));
+
+        assertThat(repository.findPage(10L, page1)).hasSize(2);
+        assertThat(repository.findPage(10L, page2)).hasSize(2);
+        assertThat(repository.findPage(10L, page3)).hasSize(1);
+        assertThat(repository.count(10L, page1)).isEqualTo(5L);
+    }
+
+    @Test
+    void count_matches_findPage_total_for_unread_and_all() {
+        repository.save(newNotification(10L, NotificationType.ORDER_ACCEPTED));
+        Notification read = repository.save(newNotification(10L, NotificationType.STATUS_CHANGED));
+        read.setRead(true);
+        repository.save(read);
+
+        assertThat(repository.count(10L, new NotificationQuery(true, new PageQuery(1, 20)))).isEqualTo(1L);
+        assertThat(repository.findPage(10L, new NotificationQuery(true, new PageQuery(1, 20)))).hasSize(1);
+        assertThat(repository.count(10L, new NotificationQuery(false, new PageQuery(1, 20)))).isEqualTo(2L);
+        assertThat(repository.findPage(10L, new NotificationQuery(false, new PageQuery(1, 20)))).hasSize(2);
+    }
+
+    @Test
+    void findPage_and_count_return_empty_when_userId_or_query_null() {
+        assertThat(repository.findPage(null, new NotificationQuery(false, new PageQuery(1, 20)))).isEmpty();
+        assertThat(repository.findPage(10L, null)).isEmpty();
+        assertThat(repository.count(null, new NotificationQuery(false, new PageQuery(1, 20)))).isEqualTo(0L);
+        assertThat(repository.count(10L, null)).isEqualTo(0L);
+    }
+
+    @Test
+    void findPage_with_same_created_at_is_deterministic_across_pages() {
+        LocalDateTime sameTime = LocalDateTime.now();
+        Notification n1 = repository.save(newNotificationWithCreated(10L, NotificationType.ORDER_ACCEPTED, sameTime));
+        Notification n2 = repository.save(newNotificationWithCreated(10L, NotificationType.REVIEW_RECEIVED, sameTime));
+        Notification n3 = repository.save(newNotificationWithCreated(10L, NotificationType.STATUS_CHANGED, sameTime));
+        Notification n4 = repository.save(newNotificationWithCreated(10L, NotificationType.ORDER_ACCEPTED, sameTime));
+
+        NotificationQuery page1 = new NotificationQuery(false, new PageQuery(1, 2));
+        NotificationQuery page2 = new NotificationQuery(false, new PageQuery(2, 2));
+
+        List<Notification> first = repository.findPage(10L, page1);
+        List<Notification> second = repository.findPage(10L, page2);
+
+        List<Long> allIds = new ArrayList<>(first.stream().map(Notification::getId).toList());
+        allIds.addAll(second.stream().map(Notification::getId).toList());
+        assertThat(allIds).containsExactlyInAnyOrder(n1.getId(), n2.getId(), n3.getId(), n4.getId());
+    }
+
     private static Notification newNotification(Long userId, NotificationType type) {
         Notification notification = new Notification();
         notification.setUserId(userId);
@@ -124,6 +220,12 @@ class MyBatisNotificationRepositoryTest {
         });
         notification.setRead(false);
         notification.setCreatedAt(LocalDateTime.now());
+        return notification;
+    }
+
+    private static Notification newNotificationWithCreated(Long userId, NotificationType type, LocalDateTime createdAt) {
+        Notification notification = newNotification(userId, type);
+        notification.setCreatedAt(createdAt);
         return notification;
     }
 }

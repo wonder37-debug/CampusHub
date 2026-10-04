@@ -12,3 +12,5 @@ CREATE TABLE sys_notification (
   related_id BIGINT,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX idx_notify_user_read ON sys_notification(user_id, is_read);
