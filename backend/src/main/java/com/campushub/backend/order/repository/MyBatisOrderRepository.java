@@ -11,7 +11,10 @@ import com.campushub.backend.order.repository.mapper.OrderMapper;
 import com.campushub.backend.order.repository.mapper.OrderStatusLogMapper;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -87,12 +90,12 @@ public class MyBatisOrderRepository implements OrderRepository {
             .eq(OrderEntity::getPublisherId, userId)
             .or()
             .eq(OrderEntity::getAccepterId, userId);
-        return assembleAll(orderMapper.selectList(wrapper));
+        return assembleWithBatchHistory(orderMapper.selectList(wrapper));
     }
 
     @Override
     public List<Order> findAll() {
-        return assembleAll(orderMapper.selectList(null));
+        return assembleWithBatchHistory(orderMapper.selectList(null));
     }
 
     @Override
@@ -170,15 +173,34 @@ public class MyBatisOrderRepository implements OrderRepository {
         orderMapper.deleteById(orderId);
     }
 
-    private List<Order> assembleAll(List<OrderEntity> entities) {
+    private List<Order> assembleWithBatchHistory(List<OrderEntity> entities) {
         if (entities == null || entities.isEmpty()) {
             return new ArrayList<>();
         }
+        List<Long> orderIds = entities.stream().map(OrderEntity::getId).filter(Objects::nonNull).toList();
+        Map<Long, List<OrderStatusHistoryEntry>> historyByOrderId = loadHistories(orderIds);
         List<Order> orders = new ArrayList<>(entities.size());
         for (OrderEntity entity : entities) {
-            orders.add(entity.toDomain(loadHistory(entity.getId())));
+            orders.add(entity.toDomain(historyByOrderId.getOrDefault(entity.getId(), Collections.emptyList())));
         }
         return orders;
+    }
+
+    private Map<Long, List<OrderStatusHistoryEntry>> loadHistories(List<Long> orderIds) {
+        if (orderIds == null || orderIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        List<OrderStatusLogEntity> logs = statusLogMapper.selectList(
+            new LambdaQueryWrapper<OrderStatusLogEntity>()
+                .in(OrderStatusLogEntity::getOrderId, orderIds)
+                .orderByAsc(OrderStatusLogEntity::getChangedAt)
+                .orderByAsc(OrderStatusLogEntity::getId)
+        );
+        Map<Long, List<OrderStatusHistoryEntry>> result = new HashMap<>();
+        for (OrderStatusLogEntity log : logs) {
+            result.computeIfAbsent(log.getOrderId(), k -> new ArrayList<>()).add(log.toDomain());
+        }
+        return result;
     }
 
     private List<OrderStatusHistoryEntry> loadHistory(Long orderId) {
