@@ -208,4 +208,50 @@ public class MyBatisDemandRepository implements DemandRepository {
         return demandMapper.selectCount(new LambdaQueryWrapper<DemandEntity>()
             .eq(DemandEntity::getStatus, status.name()));
     }
+
+    @Override
+    public List<Demand> findCandidatePage(Long userId, DemandQuery query) {
+        if (query == null) {
+            return List.of();
+        }
+        LambdaQueryWrapper<DemandEntity> wrapper = buildCandidateWrapper(userId, query);
+        return demandMapper.selectList(wrapper).stream().map(DemandEntity::toDomain).toList();
+    }
+
+    private LambdaQueryWrapper<DemandEntity> buildCandidateWrapper(Long userId, DemandQuery query) {
+        LambdaQueryWrapper<DemandEntity> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(DemandEntity::getStatus, DemandStatus.PENDING.name());
+        if (userId != null) {
+            wrapper.ne(DemandEntity::getPublisherId, userId);
+        }
+        String q = query.q();
+        if (q != null && !q.isBlank()) {
+            String keyword = q.trim();
+            wrapper.and(w -> w.like(DemandEntity::getTitle, keyword).or().like(DemandEntity::getDescription, keyword));
+        }
+        String category = query.category();
+        if (category != null && !category.isBlank()) {
+            wrapper.eq(DemandEntity::getCategory, category.trim().toUpperCase(Locale.ROOT));
+        }
+        String zone = query.campusZone();
+        if (zone != null && !zone.isBlank()) {
+            wrapper.eq(DemandEntity::getCampusZone, zone.trim().toUpperCase(Locale.ROOT));
+        }
+        String loc = query.location();
+        if (loc != null && !loc.isBlank()) {
+            wrapper.like(DemandEntity::getLocation, loc.trim());
+        }
+        LocalDateTime from = query.startTimeFrom();
+        LocalDateTime to = query.startTimeTo();
+        if (from != null || to != null) {
+            wrapper.isNotNull(DemandEntity::getStartTime);
+            if (from != null) {
+                wrapper.ge(DemandEntity::getStartTime, from);
+            }
+            if (to != null) {
+                wrapper.le(DemandEntity::getStartTime, to);
+            }
+        }
+        return wrapper;
+    }
 }

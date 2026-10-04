@@ -526,6 +526,104 @@ class MyBatisDemandRepositoryTest {
         assertThat(repository.countByStatus(null)).isZero();
     }
 
+    @Test
+    void findCandidatePage_returns_only_pending_demands() {
+        Demand pending = repository.save(newDemand("待接", DemandCategory.OTHER));
+        Demand inProgress = repository.save(newDemand("进行中", DemandCategory.OTHER));
+        inProgress.setStatus(DemandStatus.IN_PROGRESS);
+        repository.save(inProgress);
+        Demand completed = repository.save(newDemand("已完成", DemandCategory.OTHER));
+        completed.setStatus(DemandStatus.COMPLETED);
+        repository.save(completed);
+
+        List<Demand> candidates = repository.findCandidatePage(10L, new DemandQuery(null, null, null, null, null, null, DemandSort.TIME, new PageQuery(1, 20)));
+
+        assertThat(candidates).extracting(Demand::getId).containsExactly(pending.getId());
+    }
+
+    @Test
+    void findCandidatePage_excludes_own_demands() {
+        Demand own = repository.save(newDemand("自己的", DemandCategory.OTHER));
+        own.setPublisherId(10L);
+        repository.save(own);
+        Demand others = repository.save(newDemand("他人的", DemandCategory.OTHER));
+        others.setPublisherId(20L);
+        repository.save(others);
+
+        List<Demand> candidates = repository.findCandidatePage(10L, new DemandQuery(null, null, null, null, null, null, DemandSort.TIME, new PageQuery(1, 20)));
+
+        assertThat(candidates).extracting(Demand::getId).containsExactly(others.getId());
+    }
+
+    @Test
+    void findCandidatePage_filters_by_keyword() {
+        Demand match = repository.save(newDemand("取快递", DemandCategory.EXPRESS));
+        Demand noMatch = repository.save(newDemand("辅导高数", DemandCategory.STUDY_TUTORING));
+
+        List<Demand> candidates = repository.findCandidatePage(10L, new DemandQuery("快递", null, null, null, null, null, DemandSort.TIME, new PageQuery(1, 20)));
+
+        assertThat(candidates).extracting(Demand::getId).containsExactly(match.getId());
+    }
+
+    @Test
+    void findCandidatePage_filters_by_category_campus_zone_and_location() {
+        Demand match = repository.save(newDemand("快递", DemandCategory.EXPRESS));
+        match.setLocation("仙林菜鸟驿站");
+        repository.save(match);
+        Demand otherCategory = repository.save(newDemand("快递", DemandCategory.OTHER));
+        Demand otherZone = repository.save(newDemand("快递", DemandCategory.EXPRESS));
+        otherZone.setCampusZone(CampusZone.GULOU);
+        repository.save(otherZone);
+        Demand otherLocation = repository.save(newDemand("快递", DemandCategory.EXPRESS));
+        otherLocation.setLocation("鼓楼教学楼");
+        repository.save(otherLocation);
+
+        List<Demand> candidates = repository.findCandidatePage(10L, new DemandQuery(null, "EXPRESS", "XIANLIN", "菜鸟", null, null, DemandSort.TIME, new PageQuery(1, 20)));
+
+        assertThat(candidates).extracting(Demand::getId).containsExactly(match.getId());
+    }
+
+    @Test
+    void findCandidatePage_filters_by_start_time_range_excluding_null_start() {
+        Demand withStart = repository.save(newDemand("有开始", DemandCategory.OTHER));
+        withStart.setStartTime(LocalDateTime.of(2026, 9, 28, 10, 0));
+        repository.save(withStart);
+        Demand noStart = repository.save(newDemand("无开始", DemandCategory.OTHER));
+
+        LocalDateTime from = LocalDateTime.of(2026, 9, 28, 0, 0);
+        LocalDateTime to = LocalDateTime.of(2026, 9, 28, 23, 59);
+        List<Demand> ranged = repository.findCandidatePage(10L, new DemandQuery(null, null, null, null, from, to, DemandSort.TIME, new PageQuery(1, 20)));
+        assertThat(ranged).extracting(Demand::getId).containsExactly(withStart.getId());
+
+        List<Demand> all = repository.findCandidatePage(10L, new DemandQuery(null, null, null, null, null, null, DemandSort.TIME, new PageQuery(1, 20)));
+        assertThat(all).extracting(Demand::getId).contains(withStart.getId(), noStart.getId());
+    }
+
+    @Test
+    void findCandidatePage_combines_status_publisher_keyword_category() {
+        Demand match = repository.save(newDemand("快递帮拿", DemandCategory.EXPRESS));
+        match.setPublisherId(20L);
+        repository.save(match);
+        Demand own = repository.save(newDemand("快递帮拿", DemandCategory.EXPRESS));
+        own.setPublisherId(10L);
+        repository.save(own);
+        Demand otherCategory = repository.save(newDemand("快递帮拿", DemandCategory.OTHER));
+        otherCategory.setPublisherId(20L);
+        repository.save(otherCategory);
+        Demand noKeyword = repository.save(newDemand("无关", DemandCategory.EXPRESS));
+        noKeyword.setPublisherId(20L);
+        repository.save(noKeyword);
+
+        List<Demand> candidates = repository.findCandidatePage(10L, new DemandQuery("快递", "EXPRESS", null, null, null, null, DemandSort.TIME, new PageQuery(1, 20)));
+
+        assertThat(candidates).extracting(Demand::getId).containsExactly(match.getId());
+    }
+
+    @Test
+    void findCandidatePage_returns_empty_when_query_null() {
+        assertThat(repository.findCandidatePage(10L, null)).isEmpty();
+    }
+
     private static Demand newDemand(String title, DemandCategory category) {
         Demand demand = new Demand();
         demand.setPublisherId(1L);

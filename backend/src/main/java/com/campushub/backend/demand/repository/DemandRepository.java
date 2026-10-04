@@ -66,4 +66,14 @@ public interface DemandRepository {
      * 按状态统计需求数（下推 SQL selectCount，用于 dashboard stats）。
      */
     long countByStatus(DemandStatus status);
+
+    /**
+     * 按推荐候选条件查询需求（status=PENDING + 排除自己 + keyword/category/campusZone/location/startTime 过滤下推 SQL）。
+     *
+     * <p>不分页（返回全部候选），不排序（Service 层做 score 排序）；不加载跨仓储的 order 存在性（留 Service N+1，2C 修）。</p>
+     *
+     * @param userId 推荐目标用户 ID（排除自己发的 demand），为 null 时不加 publisher_id 条件
+     * @param query 查询条件，为 null 时返回空列表
+     */
+    List<Demand> findCandidatePage(Long userId, DemandQuery query);
 }
