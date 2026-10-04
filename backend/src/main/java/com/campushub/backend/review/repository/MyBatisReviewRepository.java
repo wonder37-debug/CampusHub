@@ -2,6 +2,7 @@ package com.campushub.backend.review.repository;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.campushub.backend.review.domain.Review;
+import com.campushub.backend.review.dto.ReviewQuery;
 import com.campushub.backend.review.repository.entity.ReviewEntity;
 import com.campushub.backend.review.repository.mapper.ReviewMapper;
 import org.springframework.stereotype.Repository;
@@ -97,5 +98,34 @@ public class MyBatisReviewRepository implements ReviewRepository {
                 .eq(ReviewEntity::getOrderId, orderId)
         );
         return entities.stream().map(ReviewEntity::toDomain).toList();
+    }
+
+    @Override
+    public List<Review> findPage(Long targetUserId, ReviewQuery query) {
+        if (targetUserId == null || query == null) {
+            return List.of();
+        }
+        LambdaQueryWrapper<ReviewEntity> wrapper = buildWrapper(targetUserId, query);
+        wrapper.orderByDesc(ReviewEntity::getCreatedAt)
+               .orderByDesc(ReviewEntity::getId);
+        int size = query.pageQuery().size();
+        long offset = (long) (query.pageQuery().page() - 1) * size;
+        wrapper.last("LIMIT " + size + " OFFSET " + offset);
+        return reviewMapper.selectList(wrapper).stream().map(ReviewEntity::toDomain).toList();
+    }
+
+    @Override
+    public long count(Long targetUserId, ReviewQuery query) {
+        if (targetUserId == null || query == null) {
+            return 0L;
+        }
+        return reviewMapper.selectCount(buildWrapper(targetUserId, query));
+    }
+
+    private LambdaQueryWrapper<ReviewEntity> buildWrapper(Long targetUserId, ReviewQuery query) {
+        LambdaQueryWrapper<ReviewEntity> wrapper = new LambdaQueryWrapper<>();
+        wrapper.and(w -> w.eq(ReviewEntity::getTargetId, targetUserId)
+            .or().eq(ReviewEntity::getAuthorId, targetUserId));
+        return wrapper;
     }
 }
