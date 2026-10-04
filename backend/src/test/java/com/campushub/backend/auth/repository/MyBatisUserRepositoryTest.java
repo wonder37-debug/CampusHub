@@ -335,6 +335,23 @@ class MyBatisUserRepositoryTest {
         assertThat(repository.count()).isEqualTo(3L);
     }
 
+    @Test
+    void findAllById_returns_matching_users() {
+        User u1 = repository.save(newUser("a@campus.edu", "2026001"));
+        User u2 = repository.save(newUser("b@campus.edu", "2026002"));
+        repository.save(newUser("c@campus.edu", "2026003"));
+
+        List<User> result = repository.findAllById(List.of(u1.getId(), u2.getId()));
+
+        assertThat(result).extracting(User::getId).containsExactlyInAnyOrder(u1.getId(), u2.getId());
+    }
+
+    @Test
+    void findAllById_handles_null_and_empty() {
+        assertThat(repository.findAllById(null)).isEmpty();
+        assertThat(repository.findAllById(List.of())).isEmpty();
+    }
+
     private static User newUser(String email, String studentId) {
         return newUser(email, studentId, UserRole.USER, UserStatus.ACTIVE);
     }

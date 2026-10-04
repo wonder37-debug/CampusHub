@@ -10,6 +10,7 @@ import com.campushub.backend.auth.repository.mapper.UserMapper;
 import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -37,6 +38,14 @@ public class MyBatisUserRepository implements UserRepository {
         }
         UserEntity entity = userMapper.selectById(id);
         return Optional.ofNullable(entity).map(UserEntity::toDomain);
+    }
+
+    @Override
+    public List<User> findAllById(Collection<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return List.of();
+        }
+        return userMapper.selectBatchIds(ids).stream().map(UserEntity::toDomain).toList();
     }
 
     @Override

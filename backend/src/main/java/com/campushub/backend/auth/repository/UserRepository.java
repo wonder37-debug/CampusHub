@@ -4,6 +4,7 @@ import com.campushub.backend.auth.domain.User;
 import com.campushub.backend.auth.domain.UserRole;
 import com.campushub.backend.auth.domain.UserStatus;
 import com.campushub.backend.auth.dto.UserQueryCriteria;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -13,6 +14,11 @@ public interface UserRepository {
      * 按主键查询用户，不存在时返回空。
      */
     Optional<User> findById(Long id);
+
+    /**
+     * 按主键集合批量查询用户，供列表场景预加载使用。
+     */
+    List<User> findAllById(Collection<Long> ids);
 
     /**
      * 按学号查询用户。数据库实现需保证学号唯一。

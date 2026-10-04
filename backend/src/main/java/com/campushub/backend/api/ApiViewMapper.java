@@ -20,6 +20,7 @@ import com.campushub.backend.review.dto.ReviewResponse;
 import com.campushub.backend.review.repository.ReviewRepository;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -43,8 +44,12 @@ public class ApiViewMapper {
     }
 
     public DemandView toDemandView(Demand demand, CurrentUser currentUser) {
+        return toDemandView(demand, currentUser, null, null);
+    }
+
+    public DemandView toDemandView(Demand demand, CurrentUser currentUser, Map<Long, User> userMap, Map<Long, Order> orderMap) {
         boolean canSeePublisher = canSeeDemandPublisher(demand, currentUser);
-        User publisherUser = demand.getPublisherId() == null ? null : userRepository.findById(demand.getPublisherId()).orElse(null);
+        User publisherUser = demand.getPublisherId() == null ? null : resolveUser(demand.getPublisherId(), userMap);
         Long publisherId = canSeePublisher ? demand.getPublisherId() : null;
         String publisherDisplayName = canSeePublisher ? demand.getPublisherDisplayName() : demand.getAnonymousCode();
         UserSummaryView publisher = publisherUser == null
@@ -71,7 +76,7 @@ public class ApiViewMapper {
             ? null
             : resolvePublisherStudentIdMasked(publisherUser, publisherIdentityVisible);
 
-        Order relatedOrder = demand.getId() == null ? null : orderRepository.findByDemandId(demand.getId()).orElse(null);
+        Order relatedOrder = demand.getId() == null ? null : resolveOrder(demand.getId(), orderMap);
         boolean canAccept = canAcceptDemand(demand, relatedOrder, currentUser);
 
         return new DemandView(
@@ -104,6 +109,18 @@ public class ApiViewMapper {
             demand.getCreatedAt(),
             demand.getUpdatedAt()
         );
+    }
+
+    private User resolveUser(Long id, Map<Long, User> map) {
+        if (id == null) return null;
+        if (map != null) return map.get(id);
+        return userRepository.findById(id).orElse(null);
+    }
+
+    private Order resolveOrder(Long demandId, Map<Long, Order> map) {
+        if (demandId == null) return null;
+        if (map != null) return map.get(demandId);
+        return orderRepository.findByDemandId(demandId).orElse(null);
     }
 
     public OrderView toOrderView(Order order, CurrentUser currentUser) {
