@@ -21,6 +21,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -135,8 +136,14 @@ public class RecommendationApplicationServiceImpl implements RecommendationAppli
     }
 
     private List<Demand> filterCandidateDemands(Long userId, DemandQuery query) {
-        return demandRepository.findCandidatePage(userId, query).stream()
-            .filter(demand -> orderRepository.findByDemandId(demand.getId()).isEmpty())
+        List<Demand> candidates = demandRepository.findCandidatePage(userId, query);
+        if (candidates.isEmpty()) {
+            return List.of();
+        }
+        Set<Long> demandIdsWithOrder = orderRepository.findDemandIdsWithOrder(
+            candidates.stream().map(Demand::getId).toList());
+        return candidates.stream()
+            .filter(demand -> !demandIdsWithOrder.contains(demand.getId()))
             .toList();
     }
 

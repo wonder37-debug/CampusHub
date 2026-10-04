@@ -17,6 +17,7 @@ import org.springframework.test.context.jdbc.Sql;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -435,6 +436,23 @@ class MyBatisOrderRepositoryTest {
 
         assertThat(mine).hasSize(1);
         assertThat(mine.get(0).getStatusHistory()).isNotNull().isEmpty();
+    }
+
+    @Test
+    void findDemandIdsWithOrder_returns_ids_with_order() {
+        repository.save(newOrder(9001L, 10L, 20L)); // demand 9001 有 order
+        repository.save(newOrder(9002L, 11L, 21L)); // demand 9002 有 order
+        // demand 9003 无 order（不入 demandIds 输入或入但无命中）
+
+        Set<Long> result = repository.findDemandIdsWithOrder(List.of(9001L, 9002L, 9003L));
+
+        assertThat(result).containsExactlyInAnyOrder(9001L, 9002L);
+    }
+
+    @Test
+    void findDemandIdsWithOrder_handles_null_and_empty() {
+        assertThat(repository.findDemandIdsWithOrder(null)).isEmpty();
+        assertThat(repository.findDemandIdsWithOrder(List.of())).isEmpty();
     }
 
     /**

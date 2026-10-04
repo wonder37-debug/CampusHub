@@ -10,12 +10,15 @@ import com.campushub.backend.order.repository.entity.OrderStatusLogEntity;
 import com.campushub.backend.order.repository.mapper.OrderMapper;
 import com.campushub.backend.order.repository.mapper.OrderStatusLogMapper;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -161,6 +164,18 @@ public class MyBatisOrderRepository implements OrderRepository {
         wrapper.and(w -> w.eq(OrderEntity::getPublisherId, userId)
             .or().eq(OrderEntity::getAccepterId, userId));
         return wrapper;
+    }
+
+    @Override
+    public Set<Long> findDemandIdsWithOrder(Collection<Long> demandIds) {
+        if (demandIds == null || demandIds.isEmpty()) {
+            return Set.of();
+        }
+        List<OrderEntity> entities = orderMapper.selectList(
+            new LambdaQueryWrapper<OrderEntity>()
+                .select(OrderEntity::getDemandId)
+                .in(OrderEntity::getDemandId, demandIds));
+        return entities.stream().map(OrderEntity::getDemandId).collect(Collectors.toSet());
     }
 
     @Override
