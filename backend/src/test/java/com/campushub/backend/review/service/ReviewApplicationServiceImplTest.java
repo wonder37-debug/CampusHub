@@ -224,7 +224,8 @@ class ReviewApplicationServiceImplTest {
                 List.of("快递"),
                 null,
                 null,
-                false
+                false,
+                null
             )
         );
         demandRepository.findById(demand.id()).ifPresent(saved -> {

@@ -11,6 +11,7 @@ import com.campushub.backend.demand.domain.CampusZone;
 import com.campushub.backend.demand.domain.Demand;
 import com.campushub.backend.demand.domain.DemandCategory;
 import com.campushub.backend.demand.domain.DemandStatus;
+import com.campushub.backend.demand.domain.InteractionMode;
 import com.campushub.backend.demand.dto.DemandDetailResponse;
 import com.campushub.backend.demand.dto.DemandQuery;
 import com.campushub.backend.demand.dto.DemandSummaryResponse;
@@ -78,6 +79,10 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
         // 自动完成超时订单 + 检查未评价订单并提醒
         checkPendingReviewsAndAutoComplete(publisherId);
 
+        DemandCategory category = parseCategory(command.category());
+        InteractionMode interactionMode = InteractionMode.resolve(category);
+        validateTargetParticipantCount(category, command.targetParticipantCount());
+
         LocalDateTime now = LocalDateTime.now();
         Demand demand = new Demand(
             null,
@@ -86,12 +91,14 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
             command.title().trim(),
             trimToNull(command.description()),
             trimToNull(command.note()),
-            parseCategory(command.category()),
+            category,
             parseCampusZone(command.campusZone()),
             trimToNull(command.location()),
             command.startTime(),
             command.endTime(),
-            normalizeReward(command.reward()),
+            reward,
+            interactionMode,
+            command.targetParticipantCount(),
             command.tags(),
             command.images(),
             trimToNull(command.contactInfo()),
@@ -155,7 +162,17 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
             demand.setNote(trimToNull(command.note()));
         }
         if (command.category() != null) {
-            demand.setCategory(parseCategory(command.category()));
+            DemandCategory newCategory = parseCategory(command.category());
+            demand.setCategory(newCategory);
+            demand.setInteractionMode(InteractionMode.resolve(newCategory));
+            if (newCategory == DemandCategory.TEAM_UP) {
+                Integer effectiveTarget = command.targetParticipantCount() != null
+                    ? command.targetParticipantCount()
+                    : demand.getTargetParticipantCount();
+                validateTargetParticipantCount(newCategory, effectiveTarget);
+            } else {
+                demand.setTargetParticipantCount(null);
+            }
         }
         if (command.campusZone() != null) {
             demand.setCampusZone(parseCampusZone(command.campusZone()));
@@ -195,6 +212,10 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
         if (command.anonymous() != null) {
             demand.setAnonymous(command.anonymous());
             demand.setAnonymousCode(Boolean.TRUE.equals(command.anonymous()) ? generateAnonymousCode() : null);
+        }
+        if (command.targetParticipantCount() != null) {
+            validateTargetParticipantCount(demand.getCategory(), command.targetParticipantCount());
+            demand.setTargetParticipantCount(command.targetParticipantCount());
         }
         demand.setUpdatedAt(LocalDateTime.now());
         return DemandDetailResponse.from(demandRepository.save(demand));
@@ -305,6 +326,17 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
     private void validateTags(List<String> tags) {
         if (tags != null && tags.size() > 20) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "tags size must not exceed 20");
+        }
+    }
+
+    private void validateTargetParticipantCount(DemandCategory category, Integer targetParticipantCount) {
+        if (category == DemandCategory.TEAM_UP) {
+            if (targetParticipantCount == null || targetParticipantCount < 1) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "TEAM_UP demand requires targetParticipantCount >= 1");
+            }
+            if (targetParticipantCount > 100) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "targetParticipantCount must not exceed 100");
+            }
         }
     }
 

@@ -173,10 +173,10 @@ onMounted(() => {
       <h2 class="section-title">别人对我的评价</h2>
 
       <div v-if="reviewsReceived.length" class="review-list">
-        <div v-for="review in reviewsReceived" :key="review.id" class="review-item" @click="navigateToOrder(review.orderId)">
+        <div v-for="review in reviewsReceived" :key="review.id" class="review-item" @click="navigateToOrder(review.orderId ?? '')">
           <div class="review-item-header">
             <span class="chip is-success">{{ review.rating }} 星</span>
-            <span class="review-order-title">{{ getReviewOrderTitle(review.orderId) }}</span>
+            <span class="review-order-title">{{ getReviewOrderTitle(review.orderId ?? '') }}</span>
             <span class="meta">{{ formatRelativeTime(review.createdAt) }}</span>
           </div>
           <div class="review-item-body">
@@ -196,10 +196,10 @@ onMounted(() => {
       <h2 class="section-title">我对别人的评价</h2>
 
       <div v-if="reviewsGiven.length" class="review-list">
-        <div v-for="review in reviewsGiven" :key="review.id" class="review-item" @click="navigateToOrder(review.orderId)">
+        <div v-for="review in reviewsGiven" :key="review.id" class="review-item" @click="navigateToOrder(review.orderId ?? '')">
           <div class="review-item-header">
             <span class="chip is-success">{{ review.rating }} 星</span>
-            <span class="review-order-title">{{ getReviewOrderTitle(review.orderId) }}</span>
+            <span class="review-order-title">{{ getReviewOrderTitle(review.orderId ?? '') }}</span>
             <span class="meta">{{ formatRelativeTime(review.createdAt) }}</span>
           </div>
           <div class="review-item-body">

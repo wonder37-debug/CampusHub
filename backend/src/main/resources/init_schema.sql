@@ -112,6 +112,10 @@ CREATE TABLE IF NOT EXISTS`ord_demand` (
 
   `reward` decimal(10,2) NOT NULL DEFAULT '0.00' COMMENT '悬赏金额',
 
+  `interaction_mode` varchar(32) NOT NULL DEFAULT 'DIRECT_ACCEPT' COMMENT '互动模式: DIRECT_ACCEPT/SELECT_ONE/SELECT_MANY/HELP',
+
+  `target_participant_count` int DEFAULT NULL COMMENT '目标参与人数(TEAM_UP必填)',
+
   `tags` varchar(500) DEFAULT NULL COMMENT '标签(逗号分隔)',
   `images` json DEFAULT NULL COMMENT '图片URL列表(JSON数组)',
   `contact_info` varchar(200) DEFAULT NULL COMMENT '联系方式(电话/微信/QQ/邮箱)',
@@ -136,11 +140,26 @@ CREATE TABLE IF NOT EXISTS`ord_demand` (
 
   `updated_at` datetime DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
 
-  CONSTRAINT `chk_demand_category` CHECK (`category` IN ('EXPRESS','ERRAND','STUDY_TUTORING','SECOND_HAND','TEAM_UP','OTHER')),
+  CONSTRAINT `chk_demand_category` CHECK (`category` IN ('EXPRESS','ERRAND','STUDY_TUTORING','SECOND_HAND','TEAM_UP','OTHER','HELP')),
 
-  CONSTRAINT `chk_demand_status` CHECK (`status` IN ('PENDING','REVIEWING','IN_PROGRESS','COMPLETED','CANCELLED','EXPIRED'))
+  CONSTRAINT `chk_demand_status` CHECK (`status` IN ('PENDING','REVIEWING','IN_PROGRESS','COMPLETED','CANCELLED','EXPIRED')),
+
+  CONSTRAINT `chk_demand_interaction` CHECK (`interaction_mode` IN ('DIRECT_ACCEPT','SELECT_ONE','SELECT_MANY','HELP'))
 
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='需求主表';
+
+-- 幂等补充 interaction_mode / target_participant_count 列（老版本 ord_demand 表已存在但缺少这两列时添加；Spring sql.init always mode 重复执行安全）
+SET @col_exists = (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'ord_demand' AND column_name = 'interaction_mode');
+SET @sql = IF(@col_exists = 0, 'ALTER TABLE `ord_demand` ADD COLUMN `interaction_mode` varchar(32) NOT NULL DEFAULT ''DIRECT_ACCEPT'' COMMENT ''互动模式: DIRECT_ACCEPT/SELECT_ONE/SELECT_MANY/HELP''', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @col_exists = (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'ord_demand' AND column_name = 'target_participant_count');
+SET @sql = IF(@col_exists = 0, 'ALTER TABLE `ord_demand` ADD COLUMN `target_participant_count` int DEFAULT NULL COMMENT ''目标参与人数(TEAM_UP必填)''', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 
 
@@ -258,7 +277,43 @@ CREATE TABLE IF NOT EXISTS`ord_order_status_log` (
 
 -- ==========================================================
 
--- 5. 评价表 (ord_review)
+-- 5. 需求响应表 (ord_demand_response)
+
+-- ==========================================================
+
+CREATE TABLE IF NOT EXISTS`ord_demand_response` (
+
+  `id` bigint NOT NULL AUTO_INCREMENT PRIMARY KEY,
+
+  `demand_id` bigint NOT NULL COMMENT '关联需求ID',
+
+  `author_id` bigint NOT NULL COMMENT '响应人ID',
+
+  `content` varchar(1000) NOT NULL COMMENT '留言/报名/回答内容',
+
+  `status` varchar(32) NOT NULL DEFAULT 'PENDING' COMMENT '状态: PENDING/SELECTED/REJECTED/WITHDRAWN',
+
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+
+  `updated_at` datetime DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+
+  UNIQUE KEY `uk_response_demand_author_active` (`demand_id`, `author_id`, `status`),
+
+  KEY `idx_response_demand` (`demand_id`),
+
+  KEY `idx_response_author` (`author_id`),
+
+  KEY `idx_response_status` (`status`),
+
+  CONSTRAINT `chk_response_status` CHECK (`status` IN ('PENDING','SELECTED','REJECTED','WITHDRAWN'))
+
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='需求响应表(留言/报名/回答)';
+
+
+
+-- ==========================================================
+
+-- 6. 评价表 (ord_review)
 
 -- ==========================================================
 
@@ -266,7 +321,9 @@ CREATE TABLE IF NOT EXISTS`ord_review` (
 
   `id` bigint NOT NULL AUTO_INCREMENT PRIMARY KEY,
 
-  `order_id` bigint NOT NULL COMMENT '关联订单ID',
+  `order_id` bigint DEFAULT NULL COMMENT '关联订单ID(Response评价时为空)',
+
+  `response_id` bigint DEFAULT NULL COMMENT '关联响应ID(Order评价时为空)',
 
   `author_id` bigint NOT NULL COMMENT '评价人ID',
 
@@ -278,13 +335,44 @@ CREATE TABLE IF NOT EXISTS`ord_review` (
 
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '评价时间',
 
-  UNIQUE KEY `uk_review_order_author` (`order_id`, `author_id`) COMMENT '单向只能评价一次',
+  UNIQUE KEY `uk_review_order_author` (`order_id`, `author_id`) COMMENT '同订单同作者单向只能评价一次',
+
+  UNIQUE KEY `uk_review_response_author` (`response_id`, `author_id`) COMMENT '同响应同作者单向只能评价一次',
 
   KEY `idx_review_target` (`target_id`) COMMENT '用于加速查询某人的所有评价算分',
 
-  CONSTRAINT `chk_review_rating` CHECK (`rating` BETWEEN 1 AND 5)
+  KEY `idx_review_author` (`author_id`),
 
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单评价表';
+  KEY `idx_review_created_at` (`created_at`),
+
+  CONSTRAINT `chk_review_rating` CHECK (`rating` BETWEEN 1 AND 5),
+
+  CONSTRAINT `chk_review_target` CHECK (`order_id` IS NOT NULL OR `response_id` IS NOT NULL)
+
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单/响应评价表';
+
+
+
+-- 幂等补充 response_id 列与 order_id nullable（老版本 ord_review 表已存在但缺少 response_id 列时添加）
+SET @col_exists = (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'ord_review' AND column_name = 'response_id');
+SET @sql = IF(@col_exists = 0, 'ALTER TABLE `ord_review` ADD COLUMN `response_id` bigint DEFAULT NULL COMMENT ''关联响应ID(Order评价时为空)''', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- 幂等放宽 order_id 为可空（老版本为 NOT NULL，Response 评价需要 order_id 可空）
+SET @col_is_nullable = (SELECT IS_NULLABLE FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'ord_review' AND column_name = 'order_id');
+SET @sql = IF(@col_is_nullable = 'NO', 'ALTER TABLE `ord_review` MODIFY COLUMN `order_id` bigint DEFAULT NULL COMMENT ''关联订单ID(Response评价时为空)''', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- 幂等创建 uk_review_response_author 唯一索引
+SET @idx_exists = (SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'ord_review' AND index_name = 'uk_review_response_author');
+SET @sql = IF(@idx_exists = 0, 'CREATE UNIQUE INDEX `uk_review_response_author` ON `ord_review`(`response_id`, `author_id`)', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 
 

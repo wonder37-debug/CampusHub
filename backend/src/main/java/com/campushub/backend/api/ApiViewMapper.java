@@ -95,6 +95,8 @@ public class ApiViewMapper {
             demand.getStartTime(),
             demand.getEndTime(),
             demand.getReward(),
+            demand.getInteractionMode() == null ? "DIRECT_ACCEPT" : demand.getInteractionMode().name(),
+            demand.getTargetParticipantCount(),
             demand.getTags(),
             demand.getStatus().name(),
             demand.isAnonymous(),

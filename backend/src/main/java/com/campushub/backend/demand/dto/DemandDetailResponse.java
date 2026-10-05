@@ -1,6 +1,7 @@
 package com.campushub.backend.demand.dto;
 
 import com.campushub.backend.demand.domain.Demand;
+import com.campushub.backend.demand.domain.InteractionMode;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -18,6 +19,8 @@ public record DemandDetailResponse(
     LocalDateTime startTime,
     LocalDateTime endTime,
     BigDecimal reward,
+    String interactionMode,
+    Integer targetParticipantCount,
     List<String> tags,
     List<String> images,
     String contactInfo,
@@ -34,6 +37,7 @@ public record DemandDetailResponse(
     public static DemandDetailResponse from(Demand demand) {
         Long visiblePublisherId = demand.isAnonymous() ? null : demand.getPublisherId();
         String visibleName = demand.isAnonymous() ? demand.getAnonymousCode() : demand.getPublisherDisplayName();
+        InteractionMode mode = demand.getInteractionMode() == null ? InteractionMode.DIRECT_ACCEPT : demand.getInteractionMode();
         return new DemandDetailResponse(
             demand.getId(),
             visiblePublisherId,
@@ -47,6 +51,8 @@ public record DemandDetailResponse(
             demand.getStartTime(),
             demand.getEndTime(),
             demand.getReward(),
+            mode.name(),
+            demand.getTargetParticipantCount(),
             demand.getTags(),
             demand.getImages(),
             demand.getContactInfo(),

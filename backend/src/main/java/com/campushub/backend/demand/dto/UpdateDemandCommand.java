@@ -16,6 +16,7 @@ public record UpdateDemandCommand(
     BigDecimal reward,
     List<String> tags,
     String contactInfo,
-    Boolean anonymous
+    Boolean anonymous,
+    Integer targetParticipantCount
 ) {
 }

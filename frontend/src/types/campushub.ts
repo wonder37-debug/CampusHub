@@ -1,10 +1,12 @@
-export const DEMAND_CATEGORY_OPTIONS = ['EXPRESS', 'ERRAND', 'STUDY_TUTORING', 'SECOND_HAND', 'TEAM_UP', 'OTHER'] as const
+export const DEMAND_CATEGORY_OPTIONS = ['EXPRESS', 'ERRAND', 'STUDY_TUTORING', 'SECOND_HAND', 'TEAM_UP', 'HELP', 'OTHER'] as const
 export const CAMPUS_ZONE_OPTIONS = ['GULOU', 'XIANLIN', 'SUZHOU'] as const
 export const DEMAND_SORT_MODES = ['time', 'reward', 'recommend'] as const
 export const USER_ROLE_OPTIONS = ['USER', 'ADMIN'] as const
 export const USER_STATUS_OPTIONS = ['ACTIVE', 'BANNED'] as const
 export const DEMAND_STATUS_OPTIONS = ['PENDING', 'REVIEWING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'EXPIRED'] as const
 export const ORDER_STATUS_OPTIONS = ['ACCEPTED', 'IN_PROGRESS', 'IN_ARBITRATION', 'COMPLETED', 'CANCELLED'] as const
+export const INTERACTION_MODE_OPTIONS = ['DIRECT_ACCEPT', 'SELECT_ONE', 'SELECT_MANY', 'HELP'] as const
+export const RESPONSE_STATUS_OPTIONS = ['PENDING', 'SELECTED', 'REJECTED', 'WITHDRAWN'] as const
 export const NOTIFICATION_TYPE_OPTIONS = [
   'ORDER_ACCEPTED',
   'STATUS_CHANGED',
@@ -24,6 +26,8 @@ export type UserRole = (typeof USER_ROLE_OPTIONS)[number]
 export type UserStatus = (typeof USER_STATUS_OPTIONS)[number]
 export type DemandStatus = (typeof DEMAND_STATUS_OPTIONS)[number]
 export type OrderStatus = (typeof ORDER_STATUS_OPTIONS)[number]
+export type InteractionMode = (typeof INTERACTION_MODE_OPTIONS)[number]
+export type ResponseStatus = (typeof RESPONSE_STATUS_OPTIONS)[number]
 export type NotificationType = (typeof NOTIFICATION_TYPE_OPTIONS)[number]
 
 export interface PublicUser {
@@ -54,6 +58,8 @@ export interface DemandRecord {
   startTime: string
   endTime: string
   reward: number
+  interactionMode: InteractionMode
+  targetParticipantCount?: number | null
   status: DemandStatus
   anonymous: boolean
   anonymousCode: string | null
@@ -128,9 +134,21 @@ export interface RecommendationRecord {
   demand: DemandRecord
 }
 
+export interface DemandResponseRecord {
+  id: string
+  demandId: string
+  authorId: string
+  authorName: string
+  content: string
+  status: ResponseStatus
+  createdAt: string
+  updatedAt: string
+}
+
 export interface ReviewRecord {
   id: string
-  orderId: string
+  orderId: string | null
+  responseId: string | null
   reviewerId: string
   reviewerName: string
   targetId: string
@@ -186,6 +204,7 @@ export interface DemandFormInput {
   images?: string[]
   contactInfo?: string
   anonymous: boolean
+  targetParticipantCount?: number | null
 }
 
 export interface ProfilePatchInput {

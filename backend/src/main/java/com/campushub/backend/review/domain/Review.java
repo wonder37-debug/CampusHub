@@ -6,6 +6,7 @@ public class Review {
 
     private Long id;
     private Long orderId;
+    private Long responseId;
     private Long authorId;
     private Long targetId;
     private int rating;
@@ -15,9 +16,10 @@ public class Review {
     public Review() {
     }
 
-    public Review(Long id, Long orderId, Long authorId, Long targetId, int rating, String comment, LocalDateTime createdAt) {
+    public Review(Long id, Long orderId, Long responseId, Long authorId, Long targetId, int rating, String comment, LocalDateTime createdAt) {
         this.id = id;
         this.orderId = orderId;
+        this.responseId = responseId;
         this.authorId = authorId;
         this.targetId = targetId;
         this.rating = rating;
@@ -39,6 +41,14 @@ public class Review {
 
     public void setOrderId(Long orderId) {
         this.orderId = orderId;
+    }
+
+    public Long getResponseId() {
+        return responseId;
+    }
+
+    public void setResponseId(Long responseId) {
+        this.responseId = responseId;
     }
 
     public Long getAuthorId() {

@@ -27,7 +27,8 @@ const errors = reactive({
   reward: '',
   startTime: '',
   endTime: '',
-  campusZone: ''
+  campusZone: '',
+  targetParticipantCount: ''
 })
 
 const form = reactive({
@@ -39,6 +40,7 @@ const form = reactive({
   startDateTime: '',
   endDateTime: '',
   reward: '10',
+  targetParticipantCount: '' as string,
   tags: '',
   images: [] as string[],
   contactInfo: '',
@@ -69,13 +71,17 @@ const isFormValid = computed(() => {
     !errors.startTime &&
     !errors.endTime &&
     !errors.campusZone &&
+    !errors.targetParticipantCount &&
     Boolean(form.title.trim()) &&
     Boolean(form.category) &&
     Boolean(form.campusZone) &&
     Boolean(form.location.trim()) &&
     Boolean(form.startDateTime) &&
     Boolean(form.endDateTime) &&
-    Boolean(String(form.reward ?? '').trim())
+    Boolean(String(form.reward ?? '').trim()) &&
+    (form.category !== 'TEAM_UP' ||
+      (form.targetParticipantCount.trim() !== '' &&
+        Number(form.targetParticipantCount) >= 1))
   )
 })
 
@@ -102,6 +108,7 @@ function runValidations(): void {
   errors.startTime = ''
   errors.endTime = ''
   errors.campusZone = ''
+  errors.targetParticipantCount = ''
 
   if (isEmpty(form.title)) {
     markRequiredError('title', '请填写标题')
@@ -138,6 +145,20 @@ function runValidations(): void {
     const amount = Number(rewardText)
     if (Number.isNaN(amount) || amount < 0) {
       markRequiredError('reward', '请输入有效的报酬（可为 0）')
+    }
+  }
+
+  if (form.category === 'TEAM_UP') {
+    const countText = String(form.targetParticipantCount ?? '').trim()
+    if (!countText) {
+      errors.targetParticipantCount = '请填写目标人数'
+    } else {
+      const count = Number(countText)
+      if (Number.isNaN(count) || !Number.isInteger(count) || count < 1) {
+        errors.targetParticipantCount = '目标人数需为不小于 1 的正整数'
+      } else if (count > 100) {
+        errors.targetParticipantCount = '目标人数不能超过 100'
+      }
     }
   }
 
@@ -205,6 +226,7 @@ onMounted(() => {
     form.startDateTime = draft.startDateTime ?? ''
     form.endDateTime = draft.endDateTime ?? ''
     form.reward = draft.reward ?? '10'
+    form.targetParticipantCount = draft.targetParticipantCount ?? ''
     form.tags = draft.tags ?? ''
     form.images = draft.images ?? []
     form.contactInfo = draft.contactInfo ?? ''
@@ -236,7 +258,8 @@ async function submitDemand(): Promise<void> {
       ...form,
       startTime: form.startDateTime,
       endTime: form.endDateTime,
-      images: form.images
+      images: form.images,
+      targetParticipantCount: form.category === 'TEAM_UP' ? Number(form.targetParticipantCount) || null : null
     }
     await store.createDemand(submitData)
     clearDemandDraft()
@@ -382,6 +405,21 @@ async function checkRewardBalance(): Promise<void> {
             <input id="demand-reward" v-model="form.reward" type="number" min="0" step="1" @blur="checkRewardBalance" @input="errors.reward = ''" />
             <p class="input-help" style="margin-top:4px;">可用余额：{{ formatMoney((store.currentUser?.balance ?? 0) - (store.currentUser?.frozenBalance ?? 0)) }}</p>
             <p v-if="rewardError || errors.reward" style="color: var(--danger); margin-top: 6px">{{ rewardError || errors.reward }}</p>
+          </div>
+
+          <div v-if="form.category === 'TEAM_UP'" class="field" style="grid-column: 1 / -1;">
+            <label for="demand-target-count">目标人数 <span class="required-mark">*</span></label>
+            <input
+              id="demand-target-count"
+              v-model="form.targetParticipantCount"
+              type="number"
+              min="1"
+              max="100"
+              step="1"
+              placeholder="需要几人"
+              @input="errors.targetParticipantCount = ''"
+            />
+            <p v-if="errors.targetParticipantCount" class="input-help" style="color: var(--danger)">{{ errors.targetParticipantCount }}</p>
           </div>
 
           <div class="field">

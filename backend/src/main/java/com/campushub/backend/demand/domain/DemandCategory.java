@@ -10,6 +10,7 @@ public enum DemandCategory {
     STUDY_TUTORING("学习辅导"),
     SECOND_HAND("二手交易"),
     TEAM_UP("活动组队"),
+    HELP("互助问答"),
     OTHER("其他");
 
     private final String label;

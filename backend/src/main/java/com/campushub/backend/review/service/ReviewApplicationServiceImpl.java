@@ -5,6 +5,12 @@ import com.campushub.backend.auth.repository.UserRepository;
 import com.campushub.backend.common.api.PageResponse;
 import com.campushub.backend.common.exception.BusinessException;
 import com.campushub.backend.common.exception.ErrorCode;
+import com.campushub.backend.demand.domain.Demand;
+import com.campushub.backend.demand.domain.DemandResponse;
+import com.campushub.backend.demand.domain.DemandStatus;
+import com.campushub.backend.demand.domain.ResponseStatus;
+import com.campushub.backend.demand.repository.DemandRepository;
+import com.campushub.backend.demand.repository.DemandResponseRepository;
 import com.campushub.backend.notification.service.NotificationApplicationService;
 import com.campushub.backend.order.domain.Order;
 import com.campushub.backend.order.domain.OrderStatus;
@@ -32,17 +38,23 @@ public class ReviewApplicationServiceImpl implements ReviewApplicationService {
     private final OrderRepository orderRepository;
     private final UserRepository userRepository;
     private final NotificationApplicationService notificationApplicationService;
+    private final DemandResponseRepository demandResponseRepository;
+    private final DemandRepository demandRepository;
 
     public ReviewApplicationServiceImpl(
         ReviewRepository reviewRepository,
         OrderRepository orderRepository,
         UserRepository userRepository,
-        NotificationApplicationService notificationApplicationService
+        NotificationApplicationService notificationApplicationService,
+        DemandResponseRepository demandResponseRepository,
+        DemandRepository demandRepository
     ) {
         this.reviewRepository = reviewRepository;
         this.orderRepository = orderRepository;
         this.userRepository = userRepository;
         this.notificationApplicationService = notificationApplicationService;
+        this.demandResponseRepository = demandResponseRepository;
+        this.demandRepository = demandRepository;
     }
 
     @Override
@@ -73,6 +85,7 @@ public class ReviewApplicationServiceImpl implements ReviewApplicationService {
         Review review = new Review(
             null,
             orderId,
+            null,
             operatorId,
             targetId,
             command.rating(),
@@ -82,6 +95,58 @@ public class ReviewApplicationServiceImpl implements ReviewApplicationService {
         review = reviewRepository.save(review);
         recalculateCreditScore(targetId);
         notificationApplicationService.notifyReviewReceived(targetId, orderId);
+        return ReviewResponse.from(review);
+    }
+
+    @Override
+    public ReviewResponse submitForResponse(Long operatorId, Long responseId, SubmitReviewCommand command) {
+        if (command == null) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "submit review command must not be null");
+        }
+        if (command.rating() < 1 || command.rating() > 5) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "rating must be between 1 and 5");
+        }
+        if (command.comment() != null && command.comment().length() > 1000) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "comment length must not exceed 1000");
+        }
+
+        DemandResponse response = demandResponseRepository.findById(responseId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "response not found"));
+        if (response.getStatus() != ResponseStatus.SELECTED) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "only selected response can be reviewed");
+        }
+
+        Demand demand = demandRepository.findById(response.getDemandId())
+            .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "demand not found"));
+        if (demand.getStatus() != DemandStatus.COMPLETED) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "only completed demand can be reviewed");
+        }
+
+        boolean isAuthor = response.getAuthorId().equals(operatorId);
+        boolean isPublisher = demand.getPublisherId() != null && demand.getPublisherId().equals(operatorId);
+        if (!isAuthor && !isPublisher) {
+            throw new BusinessException(ErrorCode.PERMISSION_DENIED, "only response author or demand publisher can review");
+        }
+
+        Long targetId = isAuthor ? demand.getPublisherId() : response.getAuthorId();
+        if (reviewRepository.findByResponseIdAndAuthorId(responseId, operatorId).isPresent()) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "review already submitted for this response");
+        }
+
+        Review review = new Review(
+            null,
+            null,
+            responseId,
+            operatorId,
+            targetId,
+            command.rating(),
+            trimToNull(command.comment()),
+            LocalDateTime.now()
+        );
+        review = reviewRepository.save(review);
+        recalculateCreditScore(targetId);
+        // Response 评价通知暂未发送：notifyReviewReceived 的 relatedId 语义为 orderId，
+        // 用于 responseId 会导致前端 REVIEW_RECEIVED 通知跳转错乱，待新增 NotificationType 后再补
         return ReviewResponse.from(review);
     }
 

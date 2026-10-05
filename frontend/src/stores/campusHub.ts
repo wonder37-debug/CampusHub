@@ -10,8 +10,10 @@ import type {
   DemandCategory,
   DemandFormInput,
   DemandRecord,
+  DemandResponseRecord,
   DemandStatus,
   EmailVerificationRecord,
+  InteractionMode,
   NotificationRecord,
   NotificationType,
   OrderRecord,
@@ -19,6 +21,7 @@ import type {
   OrderStatus,
   ProfilePatchInput,
   PublicUser,
+  ResponseStatus,
   ReviewRecord
 } from '@/types/campushub'
 import {
@@ -130,6 +133,8 @@ function mapDemandRecord(raw: any): DemandRecord {
     startTime: String(raw.startTime ?? now()),
     endTime: String(raw.endTime ?? now()),
     reward: Number(raw.reward ?? 0),
+    interactionMode: (String(raw.interactionMode ?? 'DIRECT_ACCEPT')) as InteractionMode,
+    targetParticipantCount: raw.targetParticipantCount == null ? null : Number(raw.targetParticipantCount),
     status: String(raw.status ?? 'PENDING') as DemandStatus,
     anonymous: Boolean(raw.anonymous ?? false),
     anonymousCode: raw.anonymousCode ?? null,
@@ -254,7 +259,8 @@ function mapReviewRecord(raw: any): ReviewRecord {
   const author = raw.author ?? {}
   return {
     id: String(raw.id ?? nextId('r')),
-    orderId: String(raw.orderId ?? ''),
+    orderId: raw.orderId == null ? null : String(raw.orderId),
+    responseId: raw.responseId == null ? null : String(raw.responseId),
     reviewerId: String(author.id ?? raw.authorId ?? ''),
     reviewerName: String(author.nickname ?? raw.reviewerName ?? '匿名'),
     targetId: String(raw.targetId ?? ''),
@@ -262,6 +268,19 @@ function mapReviewRecord(raw: any): ReviewRecord {
     rating: Number(raw.rating ?? 0),
     comment: String(raw.comment ?? ''),
     createdAt: String(raw.createdAt ?? now())
+  }
+}
+
+function mapDemandResponseRecord(raw: any): DemandResponseRecord {
+  return {
+    id: String(raw.id ?? nextId('resp')),
+    demandId: String(raw.demandId ?? ''),
+    authorId: String(raw.authorId ?? ''),
+    authorName: String(raw.authorName ?? '匿名'),
+    content: String(raw.content ?? ''),
+    status: String(raw.status ?? 'PENDING') as ResponseStatus,
+    createdAt: String(raw.createdAt ?? now()),
+    updatedAt: String(raw.updatedAt ?? raw.createdAt ?? now())
   }
 }
 
@@ -288,6 +307,7 @@ export const useCampusHubStore = defineStore('campusHub', {
     demands: [] as DemandRecord[],
     orders: [] as OrderRecord[],
     reviews: [] as ReviewRecord[],
+    demandResponses: [] as DemandResponseRecord[],
     notifications: [] as NotificationRecord[],
     adminUsers: [] as PublicUser[],
     adminDashboard: null as AdminDashboardSummary | null,
@@ -609,7 +629,8 @@ export const useCampusHubStore = defineStore('campusHub', {
             .filter(Boolean),
           images: form.images ?? [],
           contactInfo: form.contactInfo?.trim() || undefined,
-          anonymous: Boolean(form.anonymous)
+          anonymous: Boolean(form.anonymous),
+          targetParticipantCount: form.targetParticipantCount ?? null
         })
       }, this.token)
 
@@ -744,6 +765,74 @@ export const useCampusHubStore = defineStore('campusHub', {
         }
         throw err
       }
+    },
+
+    async createResponse(demandId: string, content: string): Promise<DemandResponseRecord> {
+      const response = await requestJson<any>(`/demands/${encodeURIComponent(demandId)}/responses`, {
+        method: 'POST',
+        body: JSON.stringify({ content: content.trim() })
+      }, this.token)
+      const mapped = mapDemandResponseRecord(response)
+      await this.fetchResponses(demandId)
+      await this.fetchNotifications()
+      return mapped
+    },
+
+    async fetchResponses(demandId: string): Promise<DemandResponseRecord[]> {
+      const list = await requestJson<any>(`/demands/${encodeURIComponent(demandId)}/responses`, {}, this.token)
+      const items = Array.isArray(list) ? list.map((raw: any) => mapDemandResponseRecord(raw)) : []
+      this.demandResponses = items
+      return items
+    },
+
+    async selectResponse(demandId: string, responseId: string): Promise<OrderRecord> {
+      const order = await requestJson<any>(`/demands/${encodeURIComponent(demandId)}/responses/${encodeURIComponent(responseId)}/select`, {
+        method: 'POST'
+      }, this.token)
+      const mapped = mapOrderRecord(order)
+      await this.fetchDemandDetail(demandId)
+      await this.fetchResponses(demandId)
+      await this.fetchOrders()
+      await this.fetchNotifications()
+      return mapped
+    },
+
+    async selectResponses(demandId: string, responseIds: string[]): Promise<DemandRecord> {
+      const demand = await requestJson<any>(`/demands/${encodeURIComponent(demandId)}/responses/select`, {
+        method: 'POST',
+        body: JSON.stringify({ responseIds })
+      }, this.token)
+      const mapped = mapDemandRecord(demand)
+      await this.fetchDemandDetail(demandId)
+      await this.fetchResponses(demandId)
+      await this.fetchNotifications()
+      return mapped
+    },
+
+    async acceptAnswer(demandId: string, responseId: string): Promise<DemandRecord> {
+      const demand = await requestJson<any>(`/demands/${encodeURIComponent(demandId)}/responses/${encodeURIComponent(responseId)}/accept-answer`, {
+        method: 'POST'
+      }, this.token)
+      const mapped = mapDemandRecord(demand)
+      await this.fetchDemandDetail(demandId)
+      await this.fetchResponses(demandId)
+      await this.fetchNotifications()
+      return mapped
+    },
+
+    async withdrawResponse(responseId: string): Promise<DemandResponseRecord> {
+      const response = await requestJson<any>(`/demands/responses/${encodeURIComponent(responseId)}/withdraw`, {
+        method: 'POST'
+      }, this.token)
+      return mapDemandResponseRecord(response)
+    },
+
+    async submitReviewForResponse(responseId: string, rating: number, comment: string): Promise<ReviewRecord> {
+      const review = await requestJson<any>(`/demands/responses/${encodeURIComponent(responseId)}/reviews`, {
+        method: 'POST',
+        body: JSON.stringify({ rating, comment: comment.trim() })
+      }, this.token)
+      return mapReviewRecord(review)
     },
 
     async startOrder(orderId: string): Promise<OrderRecord> {

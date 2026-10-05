@@ -9,6 +9,7 @@ export interface DemandDraft {
   startDateTime: string
   endDateTime: string
   reward: string
+  targetParticipantCount: string
   tags: string
   images: string[]
   contactInfo: string

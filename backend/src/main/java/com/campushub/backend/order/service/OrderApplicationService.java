@@ -12,6 +12,12 @@ public interface OrderApplicationService {
 
     OrderDetailResponse accept(Long operatorId, Long demandId, AcceptOrderCommand command);
 
+    /**
+     * SELECT_ONE 流程：发布者选中某个 Response 后，为该响应作者创建 Order。
+     * 复用现有 Order 状态机、评价与仲裁体系。
+     */
+    OrderDetailResponse createOrderForSelectedResponse(Long operatorId, Long demandId, Long accepterId, String note);
+
     OrderDetailResponse updateStatus(Long operatorId, Long orderId, UpdateOrderStatusCommand command);
 
     OrderDetailResponse getDetail(Long operatorId, Long orderId);

@@ -13,12 +13,16 @@ import com.campushub.backend.common.security.CurrentUser;
 import com.campushub.backend.common.security.RequestUserExtractor;
 import com.campushub.backend.demand.domain.Demand;
 import com.campushub.backend.demand.domain.DemandSort;
+import com.campushub.backend.demand.dto.CreateDemandResponseCommand;
 import com.campushub.backend.demand.dto.DemandQuery;
+import com.campushub.backend.demand.dto.DemandResponseDetail;
 import com.campushub.backend.demand.dto.DemandSummaryResponse;
 import com.campushub.backend.demand.dto.PublishDemandCommand;
+import com.campushub.backend.demand.dto.SelectResponsesCommand;
 import com.campushub.backend.demand.dto.UpdateDemandCommand;
 import com.campushub.backend.demand.repository.DemandRepository;
 import com.campushub.backend.demand.service.DemandApplicationService;
+import com.campushub.backend.demand.service.DemandResponseApplicationService;
 import com.campushub.backend.order.domain.Order;
 import com.campushub.backend.order.dto.AcceptOrderCommand;
 import com.campushub.backend.order.repository.OrderRepository;
@@ -49,6 +53,7 @@ public class DemandController {
 
     private final DemandApplicationService demandApplicationService;
     private final OrderApplicationService orderApplicationService;
+    private final DemandResponseApplicationService demandResponseApplicationService;
     private final RecommendationApplicationService recommendationApplicationService;
     private final DemandRepository demandRepository;
     private final UserRepository userRepository;
@@ -59,6 +64,7 @@ public class DemandController {
     public DemandController(
         DemandApplicationService demandApplicationService,
         OrderApplicationService orderApplicationService,
+        DemandResponseApplicationService demandResponseApplicationService,
         RecommendationApplicationService recommendationApplicationService,
         DemandRepository demandRepository,
         UserRepository userRepository,
@@ -68,6 +74,7 @@ public class DemandController {
     ) {
         this.demandApplicationService = demandApplicationService;
         this.orderApplicationService = orderApplicationService;
+        this.demandResponseApplicationService = demandResponseApplicationService;
         this.recommendationApplicationService = recommendationApplicationService;
         this.demandRepository = demandRepository;
         this.userRepository = userRepository;
@@ -234,5 +241,78 @@ public class DemandController {
                 .map(order -> apiViewMapper.toOrderView(order, currentUser))
                 .orElseThrow()
         );
+    }
+
+    @PostMapping("/{demandId}/responses")
+    public ApiResponse<DemandResponseDetail> createResponse(
+        HttpServletRequest request,
+        @PathVariable Long demandId,
+        @RequestBody CreateDemandResponseCommand command
+    ) {
+        CurrentUser currentUser = requestUserExtractor.requireCurrentUser(request);
+        return ApiResponse.success(demandResponseApplicationService.createResponse(currentUser.userId(), demandId, command));
+    }
+
+    @GetMapping("/{demandId}/responses")
+    public ApiResponse<List<DemandResponseDetail>> listResponses(
+        HttpServletRequest request,
+        @PathVariable Long demandId
+    ) {
+        requestUserExtractor.tryExtract(request);
+        return ApiResponse.success(demandResponseApplicationService.listResponses(demandId));
+    }
+
+    @PostMapping("/{demandId}/responses/{responseId}/select")
+    public ApiResponse<OrderView> selectResponse(
+        HttpServletRequest request,
+        @PathVariable Long demandId,
+        @PathVariable Long responseId
+    ) {
+        CurrentUser currentUser = requestUserExtractor.requireCurrentUser(request);
+        Long orderId = demandResponseApplicationService.selectResponse(currentUser.userId(), demandId, responseId).orderId();
+        return ApiResponse.success(
+            orderRepository.findById(orderId)
+                .map(order -> apiViewMapper.toOrderView(order, currentUser))
+                .orElseThrow()
+        );
+    }
+
+    @PostMapping("/{demandId}/responses/select")
+    public ApiResponse<DemandView> selectResponses(
+        HttpServletRequest request,
+        @PathVariable Long demandId,
+        @RequestBody SelectResponsesCommand command
+    ) {
+        CurrentUser currentUser = requestUserExtractor.requireCurrentUser(request);
+        demandResponseApplicationService.selectResponses(currentUser.userId(), demandId, command);
+        return ApiResponse.success(
+            demandRepository.findById(demandId)
+                .map(demand -> apiViewMapper.toDemandView(demand, currentUser))
+                .orElseThrow()
+        );
+    }
+
+    @PostMapping("/{demandId}/responses/{responseId}/accept-answer")
+    public ApiResponse<DemandView> acceptAnswer(
+        HttpServletRequest request,
+        @PathVariable Long demandId,
+        @PathVariable Long responseId
+    ) {
+        CurrentUser currentUser = requestUserExtractor.requireCurrentUser(request);
+        demandResponseApplicationService.acceptAnswer(currentUser.userId(), demandId, responseId);
+        return ApiResponse.success(
+            demandRepository.findById(demandId)
+                .map(demand -> apiViewMapper.toDemandView(demand, currentUser))
+                .orElseThrow()
+        );
+    }
+
+    @PostMapping("/responses/{responseId}/withdraw")
+    public ApiResponse<DemandResponseDetail> withdrawResponse(
+        HttpServletRequest request,
+        @PathVariable Long responseId
+    ) {
+        CurrentUser currentUser = requestUserExtractor.requireCurrentUser(request);
+        return ApiResponse.success(demandResponseApplicationService.withdrawResponse(currentUser.userId(), responseId));
     }
 }

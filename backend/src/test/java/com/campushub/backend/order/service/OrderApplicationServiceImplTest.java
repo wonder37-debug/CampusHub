@@ -312,7 +312,8 @@ class OrderApplicationServiceImplTest {
                 List.of(),
                 null,
                 null,
-                false
+                false,
+                null
             )
         );
         demandRepository.findById(secondDemand.id()).ifPresent(saved -> {
@@ -361,7 +362,8 @@ class OrderApplicationServiceImplTest {
                 List.of("快递"),
                 null,
                 null,
-                false
+                false,
+                null
             )
         );
         demandRepository.findById(demand.id()).ifPresent(saved -> {

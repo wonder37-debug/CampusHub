@@ -28,6 +28,7 @@ import com.campushub.backend.order.domain.OrderStatus;
 import com.campushub.backend.order.dto.OrderDetailResponse;
 import com.campushub.backend.order.dto.OrderSummaryResponse;
 import com.campushub.backend.order.repository.OrderRepository;
+import com.campushub.backend.order.service.RewardSettlementService;
 import com.campushub.backend.recommendation.repository.UserActionLogRepository;
 import com.campushub.backend.review.repository.ReviewRepository;
 import java.math.BigDecimal;
@@ -52,7 +53,7 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
     private final OrderRepository orderRepository;
     private final NotificationApplicationService notificationApplicationService;
     private final DemandApplicationService demandApplicationService;
-
+    private final RewardSettlementService rewardSettlementService;
     private final ReviewRepository reviewRepository;
     private final UserActionLogRepository userActionLogRepository;
 
@@ -62,6 +63,7 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
         OrderRepository orderRepository,
         NotificationApplicationService notificationApplicationService,
         DemandApplicationService demandApplicationService,
+        RewardSettlementService rewardSettlementService,
         ReviewRepository reviewRepository,
         UserActionLogRepository userActionLogRepository
     ) {
@@ -70,6 +72,7 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
         this.orderRepository = orderRepository;
         this.notificationApplicationService = notificationApplicationService;
         this.demandApplicationService = demandApplicationService;
+        this.rewardSettlementService = rewardSettlementService;
         this.reviewRepository = reviewRepository;
         this.userActionLogRepository = userActionLogRepository;
     }
@@ -354,17 +357,6 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
 
     private void transferReward(Demand demand, Order order) {
         BigDecimal reward = demand.getReward() == null ? BigDecimal.ZERO : demand.getReward();
-        if (reward.compareTo(BigDecimal.ZERO) <= 0) {
-            return;
-        }
-        if (!userRepository.deductBalance(order.getPublisherId(), reward)) {
-            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "发布者余额不足，无法结算悬赏");
-        }
-        if (!userRepository.unfreezeBalance(order.getPublisherId(), reward)) {
-            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "冻结金额不足，无法结算悬赏");
-        }
-        if (!userRepository.addBalance(order.getAccepterId(), reward)) {
-            throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "接单者不存在，无法结算悬赏");
-        }
+        rewardSettlementService.settleToAccepter(order.getPublisherId(), order.getAccepterId(), reward);
     }
 }
