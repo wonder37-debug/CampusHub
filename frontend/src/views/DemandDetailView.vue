@@ -53,6 +53,8 @@ const demand = computed(() => store.getDemandById(String(route.params.id)))
 const relatedOrder = computed(() => store.orders.find((order) => order.demandId === demand.value?.id))
 const canAccept = computed(() => {
   if (!demand.value) return false
+  // 仅 DIRECT_ACCEPT 走立即接单；SELECT_ONE/SELECT_MANY/HELP 走 Response 选择/采纳
+  if ((demand.value.interactionMode ?? 'DIRECT_ACCEPT') !== 'DIRECT_ACCEPT') return false
   if (typeof demand.value.canAccept === 'boolean') return demand.value.canAccept
   if (relatedOrder.value) return false
   if (demand.value.status !== 'PENDING') return false
@@ -477,7 +479,7 @@ async function withdrawResponse(responseId: string): Promise<void> {
   message.value = ''
   error.value = ''
   try {
-    await store.withdrawResponse(responseId)
+    await store.withdrawResponse(demand.value?.id ?? '', responseId)
     message.value = '已撤回'
   } catch (e) {
     error.value = handleError(e, '撤回失败')

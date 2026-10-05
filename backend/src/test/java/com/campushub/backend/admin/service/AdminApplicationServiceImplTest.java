@@ -369,6 +369,7 @@ class AdminApplicationServiceImplTest {
                 null,
                 null,
                 false,
+                null,
                 null
             )
         );

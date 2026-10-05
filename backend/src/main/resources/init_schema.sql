@@ -293,11 +293,13 @@ CREATE TABLE IF NOT EXISTS`ord_demand_response` (
 
   `status` varchar(32) NOT NULL DEFAULT 'PENDING' COMMENT '状态: PENDING/SELECTED/REJECTED/WITHDRAWN',
 
+  `active_flag` int GENERATED ALWAYS AS (CASE WHEN `status` IN ('PENDING','SELECTED') THEN 1 ELSE NULL END) VIRTUAL COMMENT '活跃标志: PENDING/SELECTED=1, 其余=NULL, 仅用于唯一约束',
+
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
 
   `updated_at` datetime DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
 
-  UNIQUE KEY `uk_response_demand_author_active` (`demand_id`, `author_id`, `status`),
+  UNIQUE KEY `uk_response_demand_author_active` (`demand_id`, `author_id`, `active_flag`),
 
   KEY `idx_response_demand` (`demand_id`),
 
@@ -308,6 +310,22 @@ CREATE TABLE IF NOT EXISTS`ord_demand_response` (
   CONSTRAINT `chk_response_status` CHECK (`status` IN ('PENDING','SELECTED','REJECTED','WITHDRAWN'))
 
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='需求响应表(留言/报名/回答)';
+
+-- 幂等补充 active_flag 生成列（老版本 ord_demand_response 已存在但缺少该列时添加）
+SET @col_exists = (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'ord_demand_response' AND column_name = 'active_flag');
+SET @sql = IF(@col_exists = 0, 'ALTER TABLE `ord_demand_response` ADD COLUMN `active_flag` int GENERATED ALWAYS AS (CASE WHEN `status` IN (''PENDING'',''SELECTED'') THEN 1 ELSE NULL END) VIRTUAL COMMENT ''活跃标志: PENDING/SELECTED=1, 其余=NULL, 仅用于唯一约束''', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- 幂等替换唯一索引：从 (demand_id, author_id, status) 改为 (demand_id, author_id, active_flag)
+-- 旧索引以 status 为列、新索引以 active_flag 为列，通过 information_schema 区分
+SET @old_idx = (SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'ord_demand_response' AND index_name = 'uk_response_demand_author_active' AND column_name = 'status');
+SET @new_idx = (SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'ord_demand_response' AND index_name = 'uk_response_demand_author_active' AND column_name = 'active_flag');
+SET @sql = IF(@old_idx > 0 AND @new_idx = 0, 'ALTER TABLE `ord_demand_response` DROP INDEX `uk_response_demand_author_active`, ADD UNIQUE KEY `uk_response_demand_author_active` (`demand_id`, `author_id`, `active_flag`)', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 
 

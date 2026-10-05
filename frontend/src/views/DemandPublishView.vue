@@ -28,7 +28,8 @@ const errors = reactive({
   startTime: '',
   endTime: '',
   campusZone: '',
-  targetParticipantCount: ''
+  targetParticipantCount: '',
+  interactionMode: ''
 })
 
 const form = reactive({
@@ -41,6 +42,7 @@ const form = reactive({
   endDateTime: '',
   reward: '10',
   targetParticipantCount: '' as string,
+  interactionMode: '' as string,
   tags: '',
   images: [] as string[],
   contactInfo: '',
@@ -72,6 +74,7 @@ const isFormValid = computed(() => {
     !errors.endTime &&
     !errors.campusZone &&
     !errors.targetParticipantCount &&
+    !errors.interactionMode &&
     Boolean(form.title.trim()) &&
     Boolean(form.category) &&
     Boolean(form.campusZone) &&
@@ -81,7 +84,9 @@ const isFormValid = computed(() => {
     Boolean(String(form.reward ?? '').trim()) &&
     (form.category !== 'TEAM_UP' ||
       (form.targetParticipantCount.trim() !== '' &&
-        Number(form.targetParticipantCount) >= 1))
+        Number(form.targetParticipantCount) >= 1)) &&
+    (form.category !== 'OTHER' ||
+      ['DIRECT_ACCEPT', 'SELECT_ONE', 'SELECT_MANY'].includes(form.interactionMode))
   )
 })
 
@@ -109,6 +114,7 @@ function runValidations(): void {
   errors.endTime = ''
   errors.campusZone = ''
   errors.targetParticipantCount = ''
+  errors.interactionMode = ''
 
   if (isEmpty(form.title)) {
     markRequiredError('title', '请填写标题')
@@ -159,6 +165,14 @@ function runValidations(): void {
       } else if (count > 100) {
         errors.targetParticipantCount = '目标人数不能超过 100'
       }
+    }
+  }
+
+  if (form.category === 'OTHER') {
+    if (!form.interactionMode) {
+      errors.interactionMode = '请选择互动模式'
+    } else if (!['DIRECT_ACCEPT', 'SELECT_ONE', 'SELECT_MANY'].includes(form.interactionMode)) {
+      errors.interactionMode = '互动模式无效'
     }
   }
 
@@ -227,6 +241,7 @@ onMounted(() => {
     form.endDateTime = draft.endDateTime ?? ''
     form.reward = draft.reward ?? '10'
     form.targetParticipantCount = draft.targetParticipantCount ?? ''
+    form.interactionMode = draft.interactionMode ?? ''
     form.tags = draft.tags ?? ''
     form.images = draft.images ?? []
     form.contactInfo = draft.contactInfo ?? ''
@@ -259,7 +274,8 @@ async function submitDemand(): Promise<void> {
       startTime: form.startDateTime,
       endTime: form.endDateTime,
       images: form.images,
-      targetParticipantCount: form.category === 'TEAM_UP' ? Number(form.targetParticipantCount) || null : null
+      targetParticipantCount: form.category === 'TEAM_UP' ? Number(form.targetParticipantCount) || null : null,
+      interactionMode: form.category === 'OTHER' ? form.interactionMode : null
     }
     await store.createDemand(submitData)
     clearDemandDraft()
@@ -420,6 +436,17 @@ async function checkRewardBalance(): Promise<void> {
               @input="errors.targetParticipantCount = ''"
             />
             <p v-if="errors.targetParticipantCount" class="input-help" style="color: var(--danger)">{{ errors.targetParticipantCount }}</p>
+          </div>
+
+          <div v-if="form.category === 'OTHER'" class="field" style="grid-column: 1 / -1;">
+            <label for="demand-interaction-mode">互动模式 <span class="required-mark">*</span></label>
+            <select id="demand-interaction-mode" v-model="form.interactionMode" @change="errors.interactionMode = ''">
+              <option value="">请选择</option>
+              <option value="DIRECT_ACCEPT">直接接单</option>
+              <option value="SELECT_ONE">选择一人</option>
+              <option value="SELECT_MANY">组队选择</option>
+            </select>
+            <p v-if="errors.interactionMode" class="input-help" style="color: var(--danger)">{{ errors.interactionMode }}</p>
           </div>
 
           <div class="field">

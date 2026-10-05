@@ -225,6 +225,7 @@ class ReviewApplicationServiceImplTest {
                 null,
                 null,
                 false,
+                null,
                 null
             )
         );

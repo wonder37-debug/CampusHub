@@ -205,6 +205,7 @@ export interface DemandFormInput {
   contactInfo?: string
   anonymous: boolean
   targetParticipantCount?: number | null
+  interactionMode?: string | null
 }
 
 export interface ProfilePatchInput {

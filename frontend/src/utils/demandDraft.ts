@@ -10,6 +10,7 @@ export interface DemandDraft {
   endDateTime: string
   reward: string
   targetParticipantCount: string
+  interactionMode: string
   tags: string
   images: string[]
   contactInfo: string

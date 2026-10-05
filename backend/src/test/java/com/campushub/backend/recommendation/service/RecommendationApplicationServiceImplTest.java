@@ -188,6 +188,7 @@ class RecommendationApplicationServiceImplTest {
                 null,
                 null,
                 false,
+                null,
                 null
             )
         );

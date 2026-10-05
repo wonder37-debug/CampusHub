@@ -18,6 +18,7 @@ public record PublishDemandCommand(
     List<String> images,
     String contactInfo,
     boolean anonymous,
-    Integer targetParticipantCount
+    Integer targetParticipantCount,
+    String interactionMode
 ) {
 }

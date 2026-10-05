@@ -23,5 +23,10 @@ public interface DemandResponseRepository {
 
     long countSelectedByDemandId(Long demandId);
 
+    /**
+     * 统计 Demand 下的全部 Response 数量（含所有状态），用于 update 时禁止修改互动模式字段。
+     */
+    long countByDemandId(Long demandId);
+
     List<DemandResponse> findByIdIn(Collection<Long> ids);
 }

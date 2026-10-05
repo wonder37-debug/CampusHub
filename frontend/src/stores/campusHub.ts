@@ -630,7 +630,8 @@ export const useCampusHubStore = defineStore('campusHub', {
           images: form.images ?? [],
           contactInfo: form.contactInfo?.trim() || undefined,
           anonymous: Boolean(form.anonymous),
-          targetParticipantCount: form.targetParticipantCount ?? null
+          targetParticipantCount: form.targetParticipantCount ?? null,
+          interactionMode: form.interactionMode ?? null
         })
       }, this.token)
 
@@ -820,11 +821,13 @@ export const useCampusHubStore = defineStore('campusHub', {
       return mapped
     },
 
-    async withdrawResponse(responseId: string): Promise<DemandResponseRecord> {
+    async withdrawResponse(demandId: string, responseId: string): Promise<DemandResponseRecord> {
       const response = await requestJson<any>(`/demands/responses/${encodeURIComponent(responseId)}/withdraw`, {
         method: 'POST'
       }, this.token)
-      return mapDemandResponseRecord(response)
+      const mapped = mapDemandResponseRecord(response)
+      await this.fetchResponses(demandId)
+      return mapped
     },
 
     async submitReviewForResponse(responseId: string, rating: number, comment: string): Promise<ReviewRecord> {

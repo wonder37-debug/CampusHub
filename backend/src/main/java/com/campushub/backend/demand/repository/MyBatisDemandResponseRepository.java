@@ -124,6 +124,15 @@ public class MyBatisDemandResponseRepository implements DemandResponseRepository
     }
 
     @Override
+    public long countByDemandId(Long demandId) {
+        if (demandId == null) {
+            return 0L;
+        }
+        return demandResponseMapper.selectCount(new LambdaQueryWrapper<DemandResponseEntity>()
+                .eq(DemandResponseEntity::getDemandId, demandId));
+    }
+
+    @Override
     public List<DemandResponse> findByIdIn(Collection<Long> ids) {
         if (ids == null || ids.isEmpty()) {
             return new ArrayList<>();

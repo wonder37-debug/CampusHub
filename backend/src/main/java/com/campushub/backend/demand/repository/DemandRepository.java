@@ -24,6 +24,12 @@ public interface DemandRepository {
     Optional<Demand> findById(Long demandId);
 
     /**
+     * 按主键查询需求并加行锁（FOR UPDATE），用于发布者选择/采纳操作的并发控制。
+     * 必须在事务中调用，锁持续到事务结束（含状态更新与 reward 结算）。
+     */
+    Optional<Demand> findByIdForUpdate(Long demandId);
+
+    /**
      * 查询全量需求。当前由服务层完成筛选、排序与推荐逻辑。
      */
     List<Demand> findAll();

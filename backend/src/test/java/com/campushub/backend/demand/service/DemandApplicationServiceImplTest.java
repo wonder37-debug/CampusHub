@@ -92,6 +92,7 @@ class DemandApplicationServiceImplTest {
                 null,
                 null,
                 true,
+                null,
                 null
             )
         );
@@ -122,6 +123,7 @@ class DemandApplicationServiceImplTest {
                     null,
                     null,
                     false,
+                    null,
                     null
                 )
             )
@@ -148,6 +150,7 @@ class DemandApplicationServiceImplTest {
                 null,
                 null,
                 false,
+                null,
                 null
             )
         );
@@ -167,6 +170,7 @@ class DemandApplicationServiceImplTest {
                 null,
                 null,
                 false,
+                null,
                 null
             )
         );
@@ -208,6 +212,7 @@ class DemandApplicationServiceImplTest {
                 null,
                 null,
                 false,
+                null,
                 null
             )
         );
@@ -227,6 +232,7 @@ class DemandApplicationServiceImplTest {
                 null,
                 null,
                 false,
+                null,
                 null
             )
         );
@@ -266,6 +272,7 @@ class DemandApplicationServiceImplTest {
                 null,
                 null,
                 true,
+                null,
                 null
             )
         );
@@ -294,6 +301,7 @@ class DemandApplicationServiceImplTest {
                 null,
                 null,
                 false,
+                null,
                 null
             )
         );
@@ -313,6 +321,7 @@ class DemandApplicationServiceImplTest {
                 null,
                 null,
                 false,
+                null,
                 null
             )
         );
@@ -339,7 +348,8 @@ class DemandApplicationServiceImplTest {
                 null,
                 null,
                 false,
-                3
+                3,
+                null
             )
         );
 
@@ -348,7 +358,7 @@ class DemandApplicationServiceImplTest {
             () -> demandApplicationService.update(
                 999L,
                 published.id(),
-                new UpdateDemandCommand("改标题", null, null, null, null, null, null, null, null, null, null, null, null)
+                new UpdateDemandCommand("改标题", null, null, null, null, null, null, null, null, null, null, null, null, null)
             )
         );
 
@@ -373,6 +383,7 @@ class DemandApplicationServiceImplTest {
                 null,
                 null,
                 false,
+                null,
                 null
             )
         );
@@ -393,6 +404,7 @@ class DemandApplicationServiceImplTest {
                 List.of("新标签"),
                 null,
                 true,
+                null,
                 null
             )
         );
@@ -441,7 +453,7 @@ class DemandApplicationServiceImplTest {
             () -> demandApplicationService.update(
                 publisherId,
                 saved.getId(),
-                new UpdateDemandCommand("改不了", null, null, null, null, null, null, null, null, null, null, null, null)
+                new UpdateDemandCommand("改不了", null, null, null, null, null, null, null, null, null, null, null, null, null)
             )
         );
 

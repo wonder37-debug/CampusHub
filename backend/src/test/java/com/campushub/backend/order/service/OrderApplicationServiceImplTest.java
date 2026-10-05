@@ -313,6 +313,7 @@ class OrderApplicationServiceImplTest {
                 null,
                 null,
                 false,
+                null,
                 null
             )
         );
@@ -363,6 +364,7 @@ class OrderApplicationServiceImplTest {
                 null,
                 null,
                 false,
+                null,
                 null
             )
         );

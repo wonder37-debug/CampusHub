@@ -8,6 +8,7 @@ import com.campushub.backend.common.exception.ErrorCode;
 import com.campushub.backend.demand.domain.Demand;
 import com.campushub.backend.demand.domain.DemandResponse;
 import com.campushub.backend.demand.domain.DemandStatus;
+import com.campushub.backend.demand.domain.InteractionMode;
 import com.campushub.backend.demand.domain.ResponseStatus;
 import com.campushub.backend.demand.repository.DemandRepository;
 import com.campushub.backend.demand.repository.DemandResponseRepository;
@@ -118,6 +119,11 @@ public class ReviewApplicationServiceImpl implements ReviewApplicationService {
 
         Demand demand = demandRepository.findById(response.getDemandId())
             .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "demand not found"));
+        // Response Review 仅允许 SELECT_MANY；DIRECT_ACCEPT/SELECT_ONE 走 Order Review，HELP 不评价
+        if (demand.getInteractionMode() != InteractionMode.SELECT_MANY) {
+            throw new BusinessException(ErrorCode.PERMISSION_DENIED,
+                "response review only allowed for SELECT_MANY, current mode: " + demand.getInteractionMode());
+        }
         if (demand.getStatus() != DemandStatus.COMPLETED) {
             throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "only completed demand can be reviewed");
         }

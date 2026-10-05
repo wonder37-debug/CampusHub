@@ -28,17 +28,18 @@ public enum InteractionMode {
     }
 
     /**
-     * 根据需求分类推导默认互动模式。
+     * 根据需求分类推导默认互动模式。OTHER 返回 null，表示需由用户在 publish 时传入 interactionMode。
      */
     public static InteractionMode resolve(DemandCategory category) {
         if (category == null) {
             return DIRECT_ACCEPT;
         }
         return switch (category) {
-            case EXPRESS, ERRAND, OTHER -> DIRECT_ACCEPT;
+            case EXPRESS, ERRAND -> DIRECT_ACCEPT;
             case SECOND_HAND, STUDY_TUTORING -> SELECT_ONE;
             case TEAM_UP -> SELECT_MANY;
             case HELP -> HELP;
+            case OTHER -> null;
         };
     }
 }

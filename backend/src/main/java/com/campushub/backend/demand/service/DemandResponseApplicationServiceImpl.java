@@ -111,9 +111,10 @@ public class DemandResponseApplicationServiceImpl implements DemandResponseAppli
 
     @Override
     public OrderDetailResponse selectResponse(Long operatorId, Long demandId, Long responseId) {
-        Demand demand = findDemand(demandId);
+        Demand demand = findDemandForUpdate(demandId);
         requireInteractionMode(demand, InteractionMode.SELECT_ONE);
         requirePublisher(demand, operatorId);
+        requireDemandPending(demand);
 
         DemandResponse response = findResponse(responseId);
         requireResponseBelongsToDemand(response, demandId);
@@ -142,9 +143,10 @@ public class DemandResponseApplicationServiceImpl implements DemandResponseAppli
         if (command == null || command.responseIds() == null || command.responseIds().isEmpty()) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "responseIds must not be empty");
         }
-        Demand demand = findDemand(demandId);
+        Demand demand = findDemandForUpdate(demandId);
         requireInteractionMode(demand, InteractionMode.SELECT_MANY);
         requirePublisher(demand, operatorId);
+        requireDemandPending(demand);
         if (demand.getTargetParticipantCount() == null || demand.getTargetParticipantCount() < 1) {
             throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "TEAM_UP demand missing targetParticipantCount");
         }
@@ -183,9 +185,10 @@ public class DemandResponseApplicationServiceImpl implements DemandResponseAppli
 
     @Override
     public DemandDetailResponse acceptAnswer(Long operatorId, Long demandId, Long responseId) {
-        Demand demand = findDemand(demandId);
+        Demand demand = findDemandForUpdate(demandId);
         requireInteractionMode(demand, InteractionMode.HELP);
         requirePublisher(demand, operatorId);
+        requireDemandPending(demand);
 
         DemandResponse response = findResponse(responseId);
         requireResponseBelongsToDemand(response, demandId);
@@ -258,12 +261,16 @@ public class DemandResponseApplicationServiceImpl implements DemandResponseAppli
     }
 
     private Map<Long, String> loadAuthorNames(List<DemandResponse> responses) {
+        List<Long> authorIds = responses.stream()
+            .map(DemandResponse::getAuthorId)
+            .distinct()
+            .toList();
+        if (authorIds.isEmpty()) {
+            return Map.of();
+        }
         Map<Long, String> names = new HashMap<>();
-        for (DemandResponse r : responses) {
-            if (!names.containsKey(r.getAuthorId())) {
-                names.put(r.getAuthorId(), userRepository.findById(r.getAuthorId())
-                    .map(User::getNickname).orElse("未知用户"));
-            }
+        for (User user : userRepository.findAllById(authorIds)) {
+            names.put(user.getId(), user.getNickname());
         }
         return names;
     }
@@ -274,6 +281,21 @@ public class DemandResponseApplicationServiceImpl implements DemandResponseAppli
         }
         return demandRepository.findById(demandId)
             .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "demand not found"));
+    }
+
+    private Demand findDemandForUpdate(Long demandId) {
+        if (demandId == null) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "demandId must not be null");
+        }
+        return demandRepository.findByIdForUpdate(demandId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "demand not found"));
+    }
+
+    private void requireDemandPending(Demand demand) {
+        if (demand.getStatus() != DemandStatus.PENDING) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT,
+                "only PENDING demand can be selected, current status: " + demand.getStatus());
+        }
     }
 
     private DemandResponse findResponse(Long responseId) {

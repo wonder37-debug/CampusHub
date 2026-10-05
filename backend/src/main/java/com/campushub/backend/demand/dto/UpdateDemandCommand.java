@@ -17,6 +17,7 @@ public record UpdateDemandCommand(
     List<String> tags,
     String contactInfo,
     Boolean anonymous,
-    Integer targetParticipantCount
+    Integer targetParticipantCount,
+    String interactionMode
 ) {
 }
