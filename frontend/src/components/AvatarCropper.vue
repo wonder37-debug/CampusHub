@@ -723,7 +723,7 @@ onUnmounted(() => {
 /* ── 侧栏 ── */
 .crop-sidebar {
   flex-shrink: 0;
-  width: 140px;
+  width: 160px;
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -806,6 +806,7 @@ onUnmounted(() => {
 
 .zoom-slider {
   flex: 1;
+  min-width: 0;
   height: 4px;
   -webkit-appearance: none;
   appearance: none;
