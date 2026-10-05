@@ -1039,10 +1039,12 @@ export const useCampusHubStore = defineStore('campusHub', {
         const profile = mapUserSummary(payload)
         this.currentProfile = profile
         this.currentUserId = profile.id || this.currentUserId
-      } catch {
+    } catch (err: any) {
+      if (err?.status === 401) {
         this.currentProfile = null
       }
-    },
+    }
+  },
 
     async fetchAdminUsers(query = '', searchField = '', sortBy = '', sortDirection = ''): Promise<void> {
       try {

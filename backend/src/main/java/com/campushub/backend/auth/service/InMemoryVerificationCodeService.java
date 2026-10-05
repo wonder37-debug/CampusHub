@@ -5,9 +5,9 @@ import com.campushub.backend.common.exception.BusinessException;
 import com.campushub.backend.common.exception.ErrorCode;
 import java.time.Duration;
 import java.time.Instant;
+import java.security.SecureRandom;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
@@ -21,7 +21,7 @@ public class InMemoryVerificationCodeService implements VerificationCodeService 
 
     private final CampusEmailPolicy campusEmailPolicy;
     private final VerificationEmailSender verificationEmailSender;
-    private final Random random = new Random();
+    private final SecureRandom random = new SecureRandom();
     private final Map<String, VerificationRecord> records = new ConcurrentHashMap<>();
 
     public InMemoryVerificationCodeService(

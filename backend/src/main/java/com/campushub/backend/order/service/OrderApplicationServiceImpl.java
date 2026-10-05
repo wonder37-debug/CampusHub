@@ -26,9 +26,12 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@Transactional(rollbackFor = Exception.class)
 public class OrderApplicationServiceImpl implements OrderApplicationService {
 
     private static final String PROVIDER_CONFIRMED_NOTE = "PROVIDER_CONFIRMED_COMPLETION";
@@ -89,7 +92,7 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
 
         try {
             order = orderRepository.save(order);
-        } catch (IllegalStateException exception) {
+        } catch (DuplicateKeyException exception) {
             throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "demand has already been accepted");
         }
 

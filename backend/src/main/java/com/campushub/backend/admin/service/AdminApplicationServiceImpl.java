@@ -39,8 +39,10 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@Transactional(rollbackFor = Exception.class)
 public class AdminApplicationServiceImpl implements AdminApplicationService {
 
     private static final int MAX_ADMIN_REASON_LENGTH = 500;

@@ -3,6 +3,8 @@ package com.campushub.backend.api;
 import com.campushub.backend.common.api.ApiResponse;
 import com.campushub.backend.common.exception.BusinessException;
 import com.campushub.backend.common.exception.ErrorCode;
+import com.campushub.backend.common.security.RequestUserExtractor;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
@@ -27,6 +29,7 @@ import java.util.*;
 public class FileUploadController {
 
     private final Path uploadRoot;
+    private final RequestUserExtractor requestUserExtractor;
 
     /** Allowed image extensions */
     private static final Set<String> ALLOWED_EXTENSIONS = Set.of("jpg", "jpeg", "png", "webp");
@@ -37,8 +40,9 @@ public class FileUploadController {
     /** Max files per upload request */
     private static final int MAX_FILES_PER_REQUEST = 6;
 
-    public FileUploadController(@Value("${app.upload.dir:uploads}") String uploadDir) {
+    public FileUploadController(@Value("${app.upload.dir:uploads}") String uploadDir, RequestUserExtractor requestUserExtractor) {
         this.uploadRoot = Paths.get(uploadDir).toAbsolutePath().normalize();
+        this.requestUserExtractor = requestUserExtractor;
         try {
             Files.createDirectories(this.uploadRoot);
         } catch (IOException e) {
@@ -51,7 +55,8 @@ public class FileUploadController {
      * Returns a list of accessible URLs.
      */
     @PostMapping("/upload/images")
-    public ApiResponse<Map<String, Object>> uploadImages(@RequestParam("files") List<MultipartFile> files) {
+    public ApiResponse<Map<String, Object>> uploadImages(@RequestParam("files") List<MultipartFile> files, HttpServletRequest request) {
+        requestUserExtractor.requireCurrentUser(request);
         if (files == null || files.isEmpty()) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "请选择至少一张图片");
         }
@@ -121,6 +126,9 @@ public class FileUploadController {
             @PathVariable String filename) {
         try {
             Path filePath = uploadRoot.resolve(year).resolve(month).resolve(filename).normalize();
+            if (!filePath.startsWith(uploadRoot)) {
+                return ResponseEntity.notFound().build();
+            }
             Resource resource = new UrlResource(filePath.toUri());
 
             if (!resource.exists() || !resource.isReadable()) {

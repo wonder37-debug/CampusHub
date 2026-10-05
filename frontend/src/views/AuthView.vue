@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 
 import { useCampusHubStore } from '@/stores/campusHub'
@@ -30,6 +30,15 @@ const forgotCodeSending = ref(false)
 const forgotPasswordSubmitting = ref(false)
 const forgotCodeMessage = ref('')
 let forgotCountdownTimer: number | undefined
+
+onBeforeUnmount(() => {
+  if (countdownTimer !== undefined) {
+    clearInterval(countdownTimer)
+  }
+  if (forgotCountdownTimer !== undefined) {
+    clearInterval(forgotCountdownTimer)
+  }
+})
 
 const loginForm = reactive({
   studentId: '',

@@ -84,25 +84,28 @@ async function processFiles(files: File[]) {
   // Upload via store
   uploading.value = true
   uploadProgress.value = 0
+  let progressInterval: ReturnType<typeof setInterval> | undefined
   try {
     const { useCampusHubStore } = await import('@/stores/campusHub')
     const store = useCampusHubStore()
 
     // Simulate progress (real progress from fetch would need XMLHttpRequest)
-    const progressInterval = setInterval(() => {
+    progressInterval = setInterval(() => {
       if (uploadProgress.value < 90) {
         uploadProgress.value += 10
       }
     }, 150)
 
     const urls = await store.uploadImages(toUpload)
-    clearInterval(progressInterval)
     uploadProgress.value = 100
 
     emit('update:modelValue', [...props.modelValue, ...urls])
   } catch (e: any) {
     errorMsg.value = e.message || '上传失败'
   } finally {
+    if (progressInterval !== undefined) {
+      clearInterval(progressInterval)
+    }
     uploading.value = false
     setTimeout(() => { uploadProgress.value = 0 }, 500)
   }
