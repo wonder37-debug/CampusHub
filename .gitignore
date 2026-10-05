@@ -48,3 +48,6 @@ AGENTS.md
 
 # 图片上传目录，每人本地自行测试
 uploads/
+
+# Playwright MCP 测试产物
+.playwright-mcp/

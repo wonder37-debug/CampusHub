@@ -144,11 +144,36 @@ CREATE TABLE IF NOT EXISTS`ord_demand` (
 
 
 
-CREATE INDEX idx_demand_publisher ON ord_demand(publisher_id);
-CREATE INDEX idx_demand_status ON ord_demand(status);
-CREATE INDEX idx_demand_category ON ord_demand(category);
-CREATE INDEX idx_demand_campus_zone ON ord_demand(campus_zone);
-CREATE INDEX idx_demand_created_at ON ord_demand(created_at);
+-- 幂等创建索引（Spring sql.init always mode 重复执行安全）
+SET @idx_exists = (SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'ord_demand' AND index_name = 'idx_demand_publisher');
+SET @sql = IF(@idx_exists = 0, 'CREATE INDEX idx_demand_publisher ON ord_demand(publisher_id)', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @idx_exists = (SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'ord_demand' AND index_name = 'idx_demand_status');
+SET @sql = IF(@idx_exists = 0, 'CREATE INDEX idx_demand_status ON ord_demand(status)', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @idx_exists = (SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'ord_demand' AND index_name = 'idx_demand_category');
+SET @sql = IF(@idx_exists = 0, 'CREATE INDEX idx_demand_category ON ord_demand(category)', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @idx_exists = (SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'ord_demand' AND index_name = 'idx_demand_campus_zone');
+SET @sql = IF(@idx_exists = 0, 'CREATE INDEX idx_demand_campus_zone ON ord_demand(campus_zone)', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @idx_exists = (SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'ord_demand' AND index_name = 'idx_demand_created_at');
+SET @sql = IF(@idx_exists = 0, 'CREATE INDEX idx_demand_created_at ON ord_demand(created_at)', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 
 
@@ -263,7 +288,12 @@ CREATE TABLE IF NOT EXISTS`ord_review` (
 
 
 
-CREATE INDEX idx_review_author ON ord_review(author_id);
+-- 幂等创建索引（Spring sql.init always mode 重复执行安全）
+SET @idx_exists = (SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'ord_review' AND index_name = 'idx_review_author');
+SET @sql = IF(@idx_exists = 0, 'CREATE INDEX idx_review_author ON ord_review(author_id)', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 -- 幂等补充 idx_review_created_at（Spring sql.init always mode 重复执行安全）
 SET @idx_exists = (SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'ord_review' AND index_name = 'idx_review_created_at');
@@ -300,7 +330,12 @@ CREATE TABLE IF NOT EXISTS`ast_ledger` (
 
 
 
-CREATE INDEX idx_ledger_user ON ast_ledger(user_id);
+-- 幂等创建索引（Spring sql.init always mode 重复执行安全）
+SET @idx_exists = (SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'ast_ledger' AND index_name = 'idx_ledger_user');
+SET @sql = IF(@idx_exists = 0, 'CREATE INDEX idx_ledger_user ON ast_ledger(user_id)', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 
 
