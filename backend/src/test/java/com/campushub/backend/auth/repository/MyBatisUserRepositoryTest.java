@@ -13,6 +13,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.test.context.ActiveProfiles;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -352,6 +353,119 @@ class MyBatisUserRepositoryTest {
         assertThat(repository.findAllById(List.of())).isEmpty();
     }
 
+    @Test
+    void freezeBalance_increments_frozen_when_available_balance_sufficient() {
+        User user = repository.save(newUserWithBalance("freeze@campus.edu", "20268001", "100.00", "10.00"));
+
+        boolean result = repository.freezeBalance(user.getId(), new BigDecimal("30.00"));
+
+        assertThat(result).isTrue();
+        User reloaded = repository.findById(user.getId()).orElseThrow();
+        assertThat(reloaded.getBalance()).isEqualByComparingTo("100.00");
+        assertThat(reloaded.getFrozenBalance()).isEqualByComparingTo("40.00");
+    }
+
+    @Test
+    void freezeBalance_returns_false_and_keeps_state_when_balance_insufficient() {
+        User user = repository.save(newUserWithBalance("insuff@campus.edu", "20268002", "50.00", "40.00"));
+
+        boolean result = repository.freezeBalance(user.getId(), new BigDecimal("20.00"));
+
+        assertThat(result).isFalse();
+        User reloaded = repository.findById(user.getId()).orElseThrow();
+        assertThat(reloaded.getBalance()).isEqualByComparingTo("50.00");
+        assertThat(reloaded.getFrozenBalance()).isEqualByComparingTo("40.00");
+    }
+
+    @Test
+    void freezeBalance_returns_false_for_non_positive_amount_or_null_user() {
+        User user = repository.save(newUserWithBalance("zero@campus.edu", "20268003", "100.00", "0.00"));
+
+        assertThat(repository.freezeBalance(user.getId(), BigDecimal.ZERO)).isFalse();
+        assertThat(repository.freezeBalance(user.getId(), new BigDecimal("-5.00"))).isFalse();
+        assertThat(repository.freezeBalance(user.getId(), null)).isFalse();
+        assertThat(repository.freezeBalance(null, new BigDecimal("5.00"))).isFalse();
+        assertThat(repository.freezeBalance(9999L, new BigDecimal("5.00"))).isFalse();
+
+        assertThat(repository.findById(user.getId()).orElseThrow().getFrozenBalance())
+            .isEqualByComparingTo("0.00");
+    }
+
+    @Test
+    void unfreezeBalance_decrements_frozen_when_sufficient() {
+        User user = repository.save(newUserWithBalance("unfreeze@campus.edu", "20268004", "100.00", "40.00"));
+
+        boolean result = repository.unfreezeBalance(user.getId(), new BigDecimal("15.00"));
+
+        assertThat(result).isTrue();
+        User reloaded = repository.findById(user.getId()).orElseThrow();
+        assertThat(reloaded.getBalance()).isEqualByComparingTo("100.00");
+        assertThat(reloaded.getFrozenBalance()).isEqualByComparingTo("25.00");
+    }
+
+    @Test
+    void unfreezeBalance_returns_false_when_frozen_insufficient() {
+        User user = repository.save(newUserWithBalance("unf-insuff@campus.edu", "20268005", "100.00", "10.00"));
+
+        boolean result = repository.unfreezeBalance(user.getId(), new BigDecimal("30.00"));
+
+        assertThat(result).isFalse();
+        assertThat(repository.findById(user.getId()).orElseThrow().getFrozenBalance())
+            .isEqualByComparingTo("10.00");
+    }
+
+    @Test
+    void addBalance_increments_balance_unconditionally() {
+        User user = repository.save(newUserWithBalance("add@campus.edu", "20268006", "100.00", "0.00"));
+
+        boolean result = repository.addBalance(user.getId(), new BigDecimal("33.50"));
+
+        assertThat(result).isTrue();
+        User reloaded = repository.findById(user.getId()).orElseThrow();
+        assertThat(reloaded.getBalance()).isEqualByComparingTo("133.50");
+        assertThat(reloaded.getFrozenBalance()).isEqualByComparingTo("0.00");
+    }
+
+    @Test
+    void deductBalance_decrements_balance_when_sufficient() {
+        User user = repository.save(newUserWithBalance("deduct@campus.edu", "20268007", "100.00", "0.00"));
+
+        boolean result = repository.deductBalance(user.getId(), new BigDecimal("40.00"));
+
+        assertThat(result).isTrue();
+        assertThat(repository.findById(user.getId()).orElseThrow().getBalance())
+            .isEqualByComparingTo("60.00");
+    }
+
+    @Test
+    void deductBalance_returns_false_when_balance_insufficient() {
+        User user = repository.save(newUserWithBalance("deduct-insuff@campus.edu", "20268008", "30.00", "0.00"));
+
+        boolean result = repository.deductBalance(user.getId(), new BigDecimal("40.00"));
+
+        assertThat(result).isFalse();
+        assertThat(repository.findById(user.getId()).orElseThrow().getBalance())
+            .isEqualByComparingTo("30.00");
+    }
+
+    @Test
+    void atomic_operations_are_independent_per_call_and_do_not_leak_state() {
+        User publisher = repository.save(newUserWithBalance("atom-pub@campus.edu", "20268009", "100.00", "0.00"));
+        User accepter = repository.save(newUserWithBalance("atom-acc@campus.edu", "20268010", "50.00", "0.00"));
+
+        assertThat(repository.freezeBalance(publisher.getId(), new BigDecimal("30.00"))).isTrue();
+        assertThat(repository.deductBalance(publisher.getId(), new BigDecimal("30.00"))).isTrue();
+        assertThat(repository.unfreezeBalance(publisher.getId(), new BigDecimal("30.00"))).isTrue();
+        assertThat(repository.addBalance(accepter.getId(), new BigDecimal("30.00"))).isTrue();
+
+        User pubReloaded = repository.findById(publisher.getId()).orElseThrow();
+        User accReloaded = repository.findById(accepter.getId()).orElseThrow();
+        assertThat(pubReloaded.getBalance()).isEqualByComparingTo("70.00");
+        assertThat(pubReloaded.getFrozenBalance()).isEqualByComparingTo("0.00");
+        assertThat(accReloaded.getBalance()).isEqualByComparingTo("80.00");
+        assertThat(accReloaded.getFrozenBalance()).isEqualByComparingTo("0.00");
+    }
+
     private static User newUser(String email, String studentId) {
         return newUser(email, studentId, UserRole.USER, UserStatus.ACTIVE);
     }
@@ -378,6 +492,13 @@ class MyBatisUserRepositoryTest {
     private static User newUserWithCredit(String email, String studentId, int creditScore) {
         User user = newUser(email, studentId);
         user.setCreditScore(creditScore);
+        return user;
+    }
+
+    private static User newUserWithBalance(String email, String studentId, String balance, String frozen) {
+        User user = newUser(email, studentId);
+        user.setBalance(new BigDecimal(balance));
+        user.setFrozenBalance(new BigDecimal(frozen));
         return user;
     }
 }

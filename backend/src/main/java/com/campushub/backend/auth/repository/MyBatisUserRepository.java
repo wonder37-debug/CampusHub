@@ -9,6 +9,7 @@ import com.campushub.backend.auth.repository.entity.UserEntity;
 import com.campushub.backend.auth.repository.mapper.UserMapper;
 import org.springframework.stereotype.Repository;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -209,5 +210,41 @@ public class MyBatisUserRepository implements UserRepository {
     @Override
     public long count() {
         return userMapper.selectCount(null);
+    }
+
+    @Override
+    public boolean freezeBalance(Long userId, BigDecimal amount) {
+        if (userId == null || !isPositiveAmount(amount)) {
+            return false;
+        }
+        return userMapper.freezeBalance(userId, amount) > 0;
+    }
+
+    @Override
+    public boolean unfreezeBalance(Long userId, BigDecimal amount) {
+        if (userId == null || !isPositiveAmount(amount)) {
+            return false;
+        }
+        return userMapper.unfreezeBalance(userId, amount) > 0;
+    }
+
+    @Override
+    public boolean addBalance(Long userId, BigDecimal amount) {
+        if (userId == null || !isPositiveAmount(amount)) {
+            return false;
+        }
+        return userMapper.addBalance(userId, amount) > 0;
+    }
+
+    @Override
+    public boolean deductBalance(Long userId, BigDecimal amount) {
+        if (userId == null || !isPositiveAmount(amount)) {
+            return false;
+        }
+        return userMapper.deductBalance(userId, amount) > 0;
+    }
+
+    private static boolean isPositiveAmount(BigDecimal amount) {
+        return amount != null && amount.compareTo(BigDecimal.ZERO) > 0;
     }
 }

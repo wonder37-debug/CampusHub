@@ -206,10 +206,13 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
         if (demand.getPublisherId() == null) {
             return;
         }
-        User publisher = userRepository.findById(demand.getPublisherId())
-            .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "publisher not found"));
         BigDecimal reward = demand.getReward() == null ? BigDecimal.ZERO : demand.getReward();
-        unfreezeBalance(publisher, reward);
+        if (reward.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+        if (!userRepository.unfreezeBalance(demand.getPublisherId(), reward)) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "冻结金额不足，无法解冻悬赏金额");
+        }
     }
 
     @Override
@@ -233,11 +236,8 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
         if (demand.getReward() == null || demand.getReward().compareTo(BigDecimal.ZERO) <= 0 || demand.getPublisherId() == null) {
             return;
         }
-        User publisher = userRepository.findById(demand.getPublisherId()).orElse(null);
-        if (publisher != null) {
-            BigDecimal frozen = publisher.getFrozenBalance() == null ? BigDecimal.ZERO : publisher.getFrozenBalance();
-            publisher.setFrozenBalance(frozen.subtract(demand.getReward()).max(BigDecimal.ZERO));
-            userRepository.save(publisher);
+        if (!userRepository.unfreezeBalance(demand.getPublisherId(), demand.getReward())) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "冻结金额不足，无法解冻悬赏金额");
         }
     }
 
@@ -323,16 +323,21 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
     }
 
     private void freezeBalance(User user, BigDecimal amount) {
-        BigDecimal currentFrozen = user.getFrozenBalance() == null ? BigDecimal.ZERO : user.getFrozenBalance();
-        user.setFrozenBalance(currentFrozen.add(amount));
-        userRepository.save(user);
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+        if (!userRepository.freezeBalance(user.getId(), amount)) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "余额不足，无法冻结悬赏金额");
+        }
     }
 
     void unfreezeBalance(User user, BigDecimal amount) {
-        BigDecimal currentFrozen = user.getFrozenBalance() == null ? BigDecimal.ZERO : user.getFrozenBalance();
-        BigDecimal newFrozen = currentFrozen.subtract(amount).max(BigDecimal.ZERO);
-        user.setFrozenBalance(newFrozen);
-        userRepository.save(user);
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+        if (!userRepository.unfreezeBalance(user.getId(), amount)) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "冻结金额不足，无法解冻");
+        }
     }
 
     private void guardForbiddenWords(String title, String description) {

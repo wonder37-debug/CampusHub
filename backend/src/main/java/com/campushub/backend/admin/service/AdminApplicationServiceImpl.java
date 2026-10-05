@@ -357,20 +357,14 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
         if (reward.compareTo(BigDecimal.ZERO) <= 0) {
             return;
         }
-
-        User publisher = userRepository.findById(order.getPublisherId()).orElse(null);
-        User accepter = userRepository.findById(order.getAccepterId()).orElse(null);
-        if (publisher != null) {
-            BigDecimal publisherBalance = publisher.getBalance() == null ? BigDecimal.ZERO : publisher.getBalance();
-            BigDecimal publisherFrozen = publisher.getFrozenBalance() == null ? BigDecimal.ZERO : publisher.getFrozenBalance();
-            publisher.setBalance(publisherBalance.subtract(reward).max(BigDecimal.ZERO));
-            publisher.setFrozenBalance(publisherFrozen.subtract(reward).max(BigDecimal.ZERO));
-            userRepository.save(publisher);
+        if (!userRepository.deductBalance(order.getPublisherId(), reward)) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "发布者余额不足，无法结算悬赏");
         }
-        if (accepter != null) {
-            BigDecimal accepterBalance = accepter.getBalance() == null ? BigDecimal.ZERO : accepter.getBalance();
-            accepter.setBalance(accepterBalance.add(reward));
-            userRepository.save(accepter);
+        if (!userRepository.unfreezeBalance(order.getPublisherId(), reward)) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "冻结金额不足，无法结算悬赏");
+        }
+        if (!userRepository.addBalance(order.getAccepterId(), reward)) {
+            throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "接单者不存在，无法结算悬赏");
         }
     }
 }

@@ -4,6 +4,7 @@ import com.campushub.backend.auth.domain.User;
 import com.campushub.backend.auth.domain.UserRole;
 import com.campushub.backend.auth.domain.UserStatus;
 import com.campushub.backend.auth.dto.UserQueryCriteria;
+import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -73,4 +74,43 @@ public interface UserRepository {
      * 统计用户总数（下推 SQL selectCount，用于 dashboard stats）。
      */
     long count();
+
+    /**
+     * 原子冻结余额：{@code frozen_balance += amount}，仅当 {@code balance - frozen_balance >= amount} 时生效。
+     *
+     * <p>通过数据库行锁保证并发安全，避免「读-修改-写」模式下的 lost update。
+     * 调用方应在返回 {@code false} 时抛出业务异常以触发事务回滚。</p>
+     *
+     * @param userId 用户 ID，不能为空
+     * @param amount 冻结金额，必须为正数
+     * @return {@code true} 表示冻结成功；{@code false} 表示余额不足或用户不存在
+     */
+    boolean freezeBalance(Long userId, BigDecimal amount);
+
+    /**
+     * 原子解冻金额：{@code frozen_balance -= amount}，仅当 {@code frozen_balance >= amount} 时生效。
+     *
+     * @param userId 用户 ID，不能为空
+     * @param amount 解冻金额，必须为正数
+     * @return {@code true} 表示解冻成功；{@code false} 表示冻结金额不足或用户不存在
+     */
+    boolean unfreezeBalance(Long userId, BigDecimal amount);
+
+    /**
+     * 原子增加余额：{@code balance += amount}。
+     *
+     * @param userId 用户 ID，不能为空
+     * @param amount 增加金额，必须为正数
+     * @return {@code true} 表示成功；{@code false} 表示用户不存在
+     */
+    boolean addBalance(Long userId, BigDecimal amount);
+
+    /**
+     * 原子扣减余额：{@code balance -= amount}，仅当 {@code balance >= amount} 时生效。
+     *
+     * @param userId 用户 ID，不能为空
+     * @param amount 扣减金额，必须为正数
+     * @return {@code true} 表示扣减成功；{@code false} 表示余额不足或用户不存在
+     */
+    boolean deductBalance(Long userId, BigDecimal amount);
 }
