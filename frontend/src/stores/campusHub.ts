@@ -261,6 +261,7 @@ function mapReviewRecord(raw: any): ReviewRecord {
     id: String(raw.id ?? nextId('r')),
     orderId: raw.orderId == null ? null : String(raw.orderId),
     responseId: raw.responseId == null ? null : String(raw.responseId),
+    demandId: raw.demandId == null ? null : String(raw.demandId),
     reviewerId: String(author.id ?? raw.authorId ?? ''),
     reviewerName: String(author.nickname ?? raw.reviewerName ?? '匿名'),
     targetId: String(raw.targetId ?? ''),

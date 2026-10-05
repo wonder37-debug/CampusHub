@@ -22,6 +22,9 @@ const loadingDemand = ref(false)
 const refreshing = ref(false)
 const responseContent = ref('')
 const selectedResponseIds = ref<string[]>([])
+const responseReviewRating = ref('5')
+const responseReviewComment = ref('')
+const reviewingResponseId = ref<string | null>(null)
 
 // Image viewer
 const showImageViewer = ref(false)
@@ -474,6 +477,30 @@ async function acceptAnswer(responseId: string): Promise<void> {
   }
 }
 
+function startResponseReview(responseId: string) {
+  reviewingResponseId.value = responseId
+  responseReviewRating.value = '5'
+  responseReviewComment.value = ''
+}
+
+function cancelResponseReview() {
+  reviewingResponseId.value = null
+}
+
+async function submitResponseReview(responseId: string): Promise<void> {
+  if (!demand.value) return
+  message.value = ''
+  error.value = ''
+  try {
+    await store.submitReviewForResponse(responseId, Number(responseReviewRating.value), responseReviewComment.value)
+    reviewingResponseId.value = null
+    message.value = '评价已提交'
+    await store.fetchResponses(demand.value.id)
+  } catch (e) {
+    error.value = handleError(e, '评价失败')
+  }
+}
+
 async function withdrawResponse(responseId: string): Promise<void> {
   if (!await useConfirm('撤回', '确认撤回该留言？', { danger: true })) return
   message.value = ''
@@ -719,6 +746,35 @@ onMounted(() => {
                 class="button primary"
                 @click="acceptAnswer(r.id)"
               >采纳</button>
+            </div>
+            <!-- SELECT_MANY 评价入口：Demand COMPLETED 后，publisher 与被选中成员可双向评价 -->
+            <div
+              v-if="interactionMode === 'SELECT_MANY' && demand.status === 'COMPLETED' && r.status === 'SELECTED'
+                && store.currentUser && (isPublisher || r.authorId === store.currentUser.id)"
+              style="margin-top: 8px;"
+            >
+              <button
+                v-if="reviewingResponseId !== r.id"
+                type="button"
+                class="button secondary"
+                @click="startResponseReview(r.id)"
+              >评价</button>
+              <div v-else class="field">
+                <label>评分</label>
+                <select v-model="responseReviewRating">
+                  <option value="5">5 星</option>
+                  <option value="4">4 星</option>
+                  <option value="3">3 星</option>
+                  <option value="2">2 星</option>
+                  <option value="1">1 星</option>
+                </select>
+                <label style="margin-top: 6px;">评价内容</label>
+                <textarea v-model="responseReviewComment" placeholder="写下你的评价" rows="2"></textarea>
+                <div class="card-actions" style="margin-top: 6px;">
+                  <button type="button" class="button primary" :disabled="!responseReviewComment.trim()" @click="submitResponseReview(r.id)">提交评价</button>
+                  <button type="button" class="button secondary" @click="cancelResponseReview">取消</button>
+                </div>
+              </div>
             </div>
           </div>
         </div>

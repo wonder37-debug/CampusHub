@@ -343,6 +343,8 @@ CREATE TABLE IF NOT EXISTS`ord_review` (
 
   `response_id` bigint DEFAULT NULL COMMENT '关联响应ID(Order评价时为空)',
 
+  `demand_id` bigint DEFAULT NULL COMMENT '关联需求ID(Response评价跳转用,冗余辅助字段)',
+
   `author_id` bigint NOT NULL COMMENT '评价人ID',
 
   `target_id` bigint NOT NULL COMMENT '被评价人ID',
@@ -374,6 +376,13 @@ CREATE TABLE IF NOT EXISTS`ord_review` (
 -- 幂等补充 response_id 列与 order_id nullable（老版本 ord_review 表已存在但缺少 response_id 列时添加）
 SET @col_exists = (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'ord_review' AND column_name = 'response_id');
 SET @sql = IF(@col_exists = 0, 'ALTER TABLE `ord_review` ADD COLUMN `response_id` bigint DEFAULT NULL COMMENT ''关联响应ID(Order评价时为空)''', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- 幂等补充 demand_id 列（Response 评价跳转用，冗余辅助字段）
+SET @col_exists = (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'ord_review' AND column_name = 'demand_id');
+SET @sql = IF(@col_exists = 0, 'ALTER TABLE `ord_review` ADD COLUMN `demand_id` bigint DEFAULT NULL COMMENT ''关联需求ID(Response评价跳转用,冗余辅助字段)''', 'SELECT 1');
 PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;

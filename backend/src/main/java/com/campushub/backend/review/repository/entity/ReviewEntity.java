@@ -32,6 +32,9 @@ public class ReviewEntity {
     @TableField("response_id")
     private Long responseId;
 
+    @TableField("demand_id")
+    private Long demandId;
+
     @TableField("author_id")
     private Long authorId;
 
@@ -60,6 +63,7 @@ public class ReviewEntity {
         entity.id = review.getId();
         entity.orderId = review.getOrderId();
         entity.responseId = review.getResponseId();
+        entity.demandId = review.getDemandId();
         entity.authorId = review.getAuthorId();
         entity.targetId = review.getTargetId();
         entity.rating = review.getRating();
@@ -74,6 +78,7 @@ public class ReviewEntity {
         review.setId(this.id);
         review.setOrderId(this.orderId);
         review.setResponseId(this.responseId);
+        review.setDemandId(this.demandId);
         review.setAuthorId(this.authorId);
         review.setTargetId(this.targetId);
         review.setRating(this.rating == null ? 0 : this.rating);
@@ -104,6 +109,14 @@ public class ReviewEntity {
 
     public void setResponseId(Long responseId) {
         this.responseId = responseId;
+    }
+
+    public Long getDemandId() {
+        return demandId;
+    }
+
+    public void setDemandId(Long demandId) {
+        this.demandId = demandId;
     }
 
     public Long getAuthorId() {

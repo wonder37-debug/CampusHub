@@ -655,6 +655,166 @@ class DemandResponseApplicationServiceImplTest {
             demandRepository.findById(demandId).orElseThrow().getCategory());
     }
 
+    // ==================== OTHER 分类组合测试 ====================
+
+    @Test
+    void shouldPublishOtherWithDirectAcceptAndAcceptOrder() {
+        Long demandId = demandApplicationService.publish(
+            publisherId,
+            new com.campushub.backend.demand.dto.PublishDemandCommand(
+                "OTHER 直接接单", "描述", null, "OTHER", "XIANLIN", "图书馆",
+                java.time.LocalDateTime.now().plusHours(1), java.time.LocalDateTime.now().plusHours(2),
+                new java.math.BigDecimal("3.00"), java.util.List.of(), null, null, false, null, "DIRECT_ACCEPT")
+        ).id();
+        approveDemand(demandId);
+        com.campushub.backend.demand.domain.Demand d = demandRepository.findById(demandId).orElseThrow();
+        assertEquals(com.campushub.backend.demand.domain.InteractionMode.DIRECT_ACCEPT, d.getInteractionMode());
+        // 接单流程正常
+        orderApplicationService.accept(responder1Id, demandId,
+            new com.campushub.backend.order.dto.AcceptOrderCommand("我来"));
+        assertEquals("ACCEPTED",
+            orderApplicationService.getDetail(responder1Id,
+                orderRepository.findAll().stream().filter(o -> o.getDemandId().equals(demandId)).findFirst().orElseThrow().getId()).status());
+    }
+
+    @Test
+    void shouldPublishOtherWithSelectOneAndCreateOrder() {
+        Long demandId = demandApplicationService.publish(
+            publisherId,
+            new com.campushub.backend.demand.dto.PublishDemandCommand(
+                "OTHER 选择一人", "描述", null, "OTHER", "XIANLIN", "线上",
+                java.time.LocalDateTime.now().plusHours(1), java.time.LocalDateTime.now().plusDays(2),
+                new java.math.BigDecimal("5.00"), java.util.List.of(), null, null, false, null, "SELECT_ONE")
+        ).id();
+        approveDemand(demandId);
+        DemandResponseDetail r = demandResponseApplicationService.createResponse(
+            responder1Id, demandId, new CreateDemandResponseCommand("我要"));
+        com.campushub.backend.order.dto.OrderDetailResponse order = demandResponseApplicationService.selectResponse(
+            publisherId, demandId, r.id());
+        assertEquals("ACCEPTED", order.status());
+    }
+
+    @Test
+    void shouldPublishOtherWithSelectManyAndComplete() {
+        Long demandId = demandApplicationService.publish(
+            publisherId,
+            new com.campushub.backend.demand.dto.PublishDemandCommand(
+                "OTHER 组队", "描述", null, "OTHER", "XIANLIN", "操场",
+                java.time.LocalDateTime.now().plusHours(1), java.time.LocalDateTime.now().plusHours(3),
+                new java.math.BigDecimal("10.00"), java.util.List.of(), null, null, false, 2, "SELECT_MANY")
+        ).id();
+        approveDemand(demandId);
+        DemandResponseDetail r1 = demandResponseApplicationService.createResponse(
+            responder1Id, demandId, new CreateDemandResponseCommand("报名1"));
+        DemandResponseDetail r2 = demandResponseApplicationService.createResponse(
+            responder2Id, demandId, new CreateDemandResponseCommand("报名2"));
+        DemandDetailResponse result = demandResponseApplicationService.selectResponses(
+            publisherId, demandId, new SelectResponsesCommand(java.util.List.of(r1.id(), r2.id())));
+        assertEquals("COMPLETED", result.status());
+        // reward 平分：publisher 余额 90，每个 responder 105
+        assertEquals(new java.math.BigDecimal("90.00"), userRepository.findById(publisherId).orElseThrow().getBalance());
+        assertEquals(new java.math.BigDecimal("105.00"), userRepository.findById(responder1Id).orElseThrow().getBalance());
+    }
+
+    @Test
+    void shouldRejectOtherSelectManyWithoutTarget() {
+        BusinessException ex = assertThrows(BusinessException.class, () ->
+            demandApplicationService.publish(
+                publisherId,
+                new com.campushub.backend.demand.dto.PublishDemandCommand(
+                    "OTHER 组队无 target", "描述", null, "OTHER", "XIANLIN", "操场",
+                    java.time.LocalDateTime.now().plusHours(1), java.time.LocalDateTime.now().plusHours(3),
+                    new java.math.BigDecimal("10.00"), java.util.List.of(), null, null, false, null, "SELECT_MANY"))
+        );
+        assertEquals(ErrorCode.VALIDATION_FAILED, ex.getErrorCode());
+    }
+
+    @Test
+    void shouldRejectOtherSelectManyWithTargetOver100() {
+        BusinessException ex = assertThrows(BusinessException.class, () ->
+            demandApplicationService.publish(
+                publisherId,
+                new com.campushub.backend.demand.dto.PublishDemandCommand(
+                    "OTHER 组队 target 超限", "描述", null, "OTHER", "XIANLIN", "操场",
+                    java.time.LocalDateTime.now().plusHours(1), java.time.LocalDateTime.now().plusHours(3),
+                    new java.math.BigDecimal("10.00"), java.util.List.of(), null, null, false, 101, "SELECT_MANY"))
+        );
+        assertEquals(ErrorCode.VALIDATION_FAILED, ex.getErrorCode());
+    }
+
+    @Test
+    void shouldRejectOtherWithHelpInteractionMode() {
+        BusinessException ex = assertThrows(BusinessException.class, () ->
+            demandApplicationService.publish(
+                publisherId,
+                new com.campushub.backend.demand.dto.PublishDemandCommand(
+                    "OTHER HELP", "描述", null, "OTHER", "XIANLIN", "线上",
+                    java.time.LocalDateTime.now().plusHours(1), java.time.LocalDateTime.now().plusDays(1),
+                    new java.math.BigDecimal("5.00"), java.util.List.of(), null, null, false, null, "HELP"))
+        );
+        assertEquals(ErrorCode.VALIDATION_FAILED, ex.getErrorCode());
+    }
+
+    // ==================== SELECT_MANY Review 回归 ====================
+
+    @Test
+    void shouldAllowPublisherReviewForSelectManyCompleted() {
+        Long demandId = createTeamUpDemand(2);
+        DemandResponseDetail r1 = demandResponseApplicationService.createResponse(
+            responder1Id, demandId, new CreateDemandResponseCommand("报名1"));
+        DemandResponseDetail r2 = demandResponseApplicationService.createResponse(
+            responder2Id, demandId, new CreateDemandResponseCommand("报名2"));
+        demandResponseApplicationService.selectResponses(
+            publisherId, demandId, new SelectResponsesCommand(java.util.List.of(r1.id(), r2.id())));
+
+        com.campushub.backend.review.dto.ReviewResponse review = reviewApplicationService.submitForResponse(
+            publisherId, r1.id(), new com.campushub.backend.review.dto.SubmitReviewCommand(5, "靠谱"));
+        assertEquals(r1.id(), review.responseId());
+        assertEquals(responder1Id, review.targetId());
+    }
+
+    @Test
+    void shouldAllowResponseAuthorReviewForSelectManyCompleted() {
+        Long demandId = createTeamUpDemand(1);
+        DemandResponseDetail r1 = demandResponseApplicationService.createResponse(
+            responder1Id, demandId, new CreateDemandResponseCommand("报名1"));
+        demandResponseApplicationService.selectResponses(
+            publisherId, demandId, new SelectResponsesCommand(java.util.List.of(r1.id())));
+
+        // 被选中者评价发布者
+        com.campushub.backend.review.dto.ReviewResponse review = reviewApplicationService.submitForResponse(
+            responder1Id, r1.id(), new com.campushub.backend.review.dto.SubmitReviewCommand(4, "感谢组队"));
+        assertEquals(publisherId, review.targetId());
+    }
+
+    @Test
+    void shouldRejectReviewForPendingResponseInSelectMany() {
+        Long demandId = createTeamUpDemand(2);
+        DemandResponseDetail r1 = demandResponseApplicationService.createResponse(
+            responder1Id, demandId, new CreateDemandResponseCommand("报名1"));
+
+        BusinessException ex = assertThrows(BusinessException.class, () ->
+            reviewApplicationService.submitForResponse(
+                publisherId, r1.id(), new com.campushub.backend.review.dto.SubmitReviewCommand(5, "好"))
+        );
+        assertEquals(ErrorCode.BUSINESS_CONFLICT, ex.getErrorCode());
+    }
+
+    @Test
+    void shouldRejectReviewFromOutsiderForSelectMany() {
+        Long demandId = createTeamUpDemand(1);
+        DemandResponseDetail r1 = demandResponseApplicationService.createResponse(
+            responder1Id, demandId, new CreateDemandResponseCommand("报名1"));
+        demandResponseApplicationService.selectResponses(
+            publisherId, demandId, new SelectResponsesCommand(java.util.List.of(r1.id())));
+
+        BusinessException ex = assertThrows(BusinessException.class, () ->
+            reviewApplicationService.submitForResponse(
+                outsiderId, r1.id(), new com.campushub.backend.review.dto.SubmitReviewCommand(5, "旁观"))
+        );
+        assertEquals(ErrorCode.PERMISSION_DENIED, ex.getErrorCode());
+    }
+
     // ==================== helpers ====================
 
     private Long createExpressDemand() {

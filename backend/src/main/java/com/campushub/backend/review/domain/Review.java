@@ -7,6 +7,7 @@ public class Review {
     private Long id;
     private Long orderId;
     private Long responseId;
+    private Long demandId;
     private Long authorId;
     private Long targetId;
     private int rating;
@@ -49,6 +50,14 @@ public class Review {
 
     public void setResponseId(Long responseId) {
         this.responseId = responseId;
+    }
+
+    public Long getDemandId() {
+        return demandId;
+    }
+
+    public void setDemandId(Long demandId) {
+        this.demandId = demandId;
     }
 
     public Long getAuthorId() {

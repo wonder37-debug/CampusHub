@@ -85,7 +85,7 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
 
         DemandCategory category = parseCategory(command.category());
         InteractionMode interactionMode = resolveInteractionMode(category, command.interactionMode());
-        validateTargetParticipantCount(category, command.targetParticipantCount());
+        validateTargetParticipantCount(interactionMode, command.targetParticipantCount());
 
         LocalDateTime now = LocalDateTime.now();
         Demand demand = new Demand(
@@ -175,12 +175,29 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
             }
             DemandCategory newCategory = parseCategory(command.category());
             demand.setCategory(newCategory);
-            demand.setInteractionMode(resolveInteractionMode(newCategory, command.interactionMode()));
-            if (newCategory == DemandCategory.TEAM_UP) {
+            InteractionMode newMode = resolveInteractionMode(newCategory, command.interactionMode());
+            demand.setInteractionMode(newMode);
+            if (newMode == InteractionMode.SELECT_MANY) {
                 Integer effectiveTarget = command.targetParticipantCount() != null
                     ? command.targetParticipantCount()
                     : demand.getTargetParticipantCount();
-                validateTargetParticipantCount(newCategory, effectiveTarget);
+                validateTargetParticipantCount(newMode, effectiveTarget);
+            } else {
+                demand.setTargetParticipantCount(null);
+            }
+        } else if (command.interactionMode() != null) {
+            // 单独修改 interactionMode（仅对 OTHER 有意义；固定分类 resolveInteractionMode 会忽略 userInput）
+            if (hasResponses) {
+                throw new BusinessException(ErrorCode.BUSINESS_CONFLICT,
+                    "cannot change interactionMode after responses exist");
+            }
+            InteractionMode newMode = resolveInteractionMode(demand.getCategory(), command.interactionMode());
+            demand.setInteractionMode(newMode);
+            if (newMode == InteractionMode.SELECT_MANY) {
+                Integer effectiveTarget = command.targetParticipantCount() != null
+                    ? command.targetParticipantCount()
+                    : demand.getTargetParticipantCount();
+                validateTargetParticipantCount(newMode, effectiveTarget);
             } else {
                 demand.setTargetParticipantCount(null);
             }
@@ -229,7 +246,7 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
                 throw new BusinessException(ErrorCode.BUSINESS_CONFLICT,
                     "cannot change targetParticipantCount after responses exist");
             }
-            validateTargetParticipantCount(demand.getCategory(), command.targetParticipantCount());
+            validateTargetParticipantCount(demand.getInteractionMode(), command.targetParticipantCount());
             demand.setTargetParticipantCount(command.targetParticipantCount());
         }
         demand.setUpdatedAt(LocalDateTime.now());
@@ -344,10 +361,10 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
         }
     }
 
-    private void validateTargetParticipantCount(DemandCategory category, Integer targetParticipantCount) {
-        if (category == DemandCategory.TEAM_UP) {
+    private void validateTargetParticipantCount(InteractionMode interactionMode, Integer targetParticipantCount) {
+        if (interactionMode == InteractionMode.SELECT_MANY) {
             if (targetParticipantCount == null || targetParticipantCount < 1) {
-                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "TEAM_UP demand requires targetParticipantCount >= 1");
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "SELECT_MANY demand requires targetParticipantCount >= 1");
             }
             if (targetParticipantCount > 100) {
                 throw new BusinessException(ErrorCode.VALIDATION_FAILED, "targetParticipantCount must not exceed 100");

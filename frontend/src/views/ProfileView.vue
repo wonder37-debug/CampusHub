@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { useCampusHubStore } from '@/stores/campusHub'
+import type { ReviewRecord } from '@/types/campushub'
 import { formatMoney, formatRelativeTime, formatScore, formatUserRole, formatUserStatus } from '@/utils/format'
 import { handleError } from '@/utils/errorHandler'
 import AvatarCropper from '@/components/AvatarCropper.vue'
@@ -55,9 +56,21 @@ function getReviewOrderTitle(orderId: string): string {
   return order?.demandTitle ?? '未知任务'
 }
 
-function navigateToOrder(orderId: string): void {
-  if (orderId) {
-    router.push(`/orders/${orderId}`)
+function getReviewTitle(review: ReviewRecord): string {
+  if (review.orderId) {
+    return getReviewOrderTitle(review.orderId)
+  }
+  if (review.demandId) {
+    return store.getDemandById(String(review.demandId))?.title ?? '组队评价'
+  }
+  return '未知任务'
+}
+
+function navigateToReviewTarget(review: ReviewRecord): void {
+  if (review.orderId) {
+    router.push(`/orders/${review.orderId}`)
+  } else if (review.demandId) {
+    router.push(`/demands/${review.demandId}`)
   }
 }
 
@@ -173,10 +186,10 @@ onMounted(() => {
       <h2 class="section-title">别人对我的评价</h2>
 
       <div v-if="reviewsReceived.length" class="review-list">
-        <div v-for="review in reviewsReceived" :key="review.id" class="review-item" @click="navigateToOrder(review.orderId ?? '')">
+        <div v-for="review in reviewsReceived" :key="review.id" class="review-item" @click="navigateToReviewTarget(review)">
           <div class="review-item-header">
             <span class="chip is-success">{{ review.rating }} 星</span>
-            <span class="review-order-title">{{ getReviewOrderTitle(review.orderId ?? '') }}</span>
+            <span class="review-order-title">{{ getReviewTitle(review) }}</span>
             <span class="meta">{{ formatRelativeTime(review.createdAt) }}</span>
           </div>
           <div class="review-item-body">
@@ -196,10 +209,10 @@ onMounted(() => {
       <h2 class="section-title">我对别人的评价</h2>
 
       <div v-if="reviewsGiven.length" class="review-list">
-        <div v-for="review in reviewsGiven" :key="review.id" class="review-item" @click="navigateToOrder(review.orderId ?? '')">
+        <div v-for="review in reviewsGiven" :key="review.id" class="review-item" @click="navigateToReviewTarget(review)">
           <div class="review-item-header">
             <span class="chip is-success">{{ review.rating }} 星</span>
-            <span class="review-order-title">{{ getReviewOrderTitle(review.orderId ?? '') }}</span>
+            <span class="review-order-title">{{ getReviewTitle(review) }}</span>
             <span class="meta">{{ formatRelativeTime(review.createdAt) }}</span>
           </div>
           <div class="review-item-body">

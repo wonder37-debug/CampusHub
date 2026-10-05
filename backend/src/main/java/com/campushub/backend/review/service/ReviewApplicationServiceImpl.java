@@ -93,6 +93,7 @@ public class ReviewApplicationServiceImpl implements ReviewApplicationService {
             trimToNull(command.comment()),
             LocalDateTime.now()
         );
+        review.setDemandId(order.getDemandId());
         review = reviewRepository.save(review);
         recalculateCreditScore(targetId);
         notificationApplicationService.notifyReviewReceived(targetId, orderId);
@@ -149,6 +150,7 @@ public class ReviewApplicationServiceImpl implements ReviewApplicationService {
             trimToNull(command.comment()),
             LocalDateTime.now()
         );
+        review.setDemandId(demand.getId());
         review = reviewRepository.save(review);
         recalculateCreditScore(targetId);
         // Response 评价通知暂未发送：notifyReviewReceived 的 relatedId 语义为 orderId，

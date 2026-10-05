@@ -149,6 +149,7 @@ export interface ReviewRecord {
   id: string
   orderId: string | null
   responseId: string | null
+  demandId: string | null
   reviewerId: string
   reviewerName: string
   targetId: string

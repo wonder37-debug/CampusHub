@@ -49,6 +49,15 @@ const form = reactive({
   anonymous: false
 })
 
+const effectiveInteractionMode = computed<string>(() => {
+  if (form.category === 'TEAM_UP') return 'SELECT_MANY'
+  if (form.category === 'OTHER') return form.interactionMode || 'DIRECT_ACCEPT'
+  if (form.category === 'EXPRESS' || form.category === 'ERRAND') return 'DIRECT_ACCEPT'
+  if (form.category === 'SECOND_HAND' || form.category === 'STUDY_TUTORING') return 'SELECT_ONE'
+  if (form.category === 'HELP') return 'HELP'
+  return 'DIRECT_ACCEPT'
+})
+
 // datetime-local 输入格式为 YYYY-MM-DDTHH:MM，与 startTime/endTime 兼容
 const startTime = computed(() => form.startDateTime)
 const endTime = computed(() => form.endDateTime)
@@ -82,7 +91,7 @@ const isFormValid = computed(() => {
     Boolean(form.startDateTime) &&
     Boolean(form.endDateTime) &&
     Boolean(String(form.reward ?? '').trim()) &&
-    (form.category !== 'TEAM_UP' ||
+    (effectiveInteractionMode.value !== 'SELECT_MANY' ||
       (form.targetParticipantCount.trim() !== '' &&
         Number(form.targetParticipantCount) >= 1)) &&
     (form.category !== 'OTHER' ||
@@ -154,7 +163,7 @@ function runValidations(): void {
     }
   }
 
-  if (form.category === 'TEAM_UP') {
+  if (effectiveInteractionMode.value === 'SELECT_MANY') {
     const countText = String(form.targetParticipantCount ?? '').trim()
     if (!countText) {
       errors.targetParticipantCount = '请填写目标人数'
@@ -274,7 +283,7 @@ async function submitDemand(): Promise<void> {
       startTime: form.startDateTime,
       endTime: form.endDateTime,
       images: form.images,
-      targetParticipantCount: form.category === 'TEAM_UP' ? Number(form.targetParticipantCount) || null : null,
+      targetParticipantCount: effectiveInteractionMode.value === 'SELECT_MANY' ? Number(form.targetParticipantCount) || null : null,
       interactionMode: form.category === 'OTHER' ? form.interactionMode : null
     }
     await store.createDemand(submitData)
@@ -423,7 +432,7 @@ async function checkRewardBalance(): Promise<void> {
             <p v-if="rewardError || errors.reward" style="color: var(--danger); margin-top: 6px">{{ rewardError || errors.reward }}</p>
           </div>
 
-          <div v-if="form.category === 'TEAM_UP'" class="field" style="grid-column: 1 / -1;">
+          <div v-if="effectiveInteractionMode === 'SELECT_MANY'" class="field" style="grid-column: 1 / -1;">
             <label for="demand-target-count">目标人数 <span class="required-mark">*</span></label>
             <input
               id="demand-target-count"

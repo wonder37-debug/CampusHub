@@ -9,6 +9,7 @@ CREATE TABLE ord_review (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   order_id BIGINT,
   response_id BIGINT,
+  demand_id BIGINT,
   author_id BIGINT NOT NULL,
   target_id BIGINT NOT NULL,
   rating SMALLINT NOT NULL,
