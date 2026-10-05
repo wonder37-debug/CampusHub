@@ -93,11 +93,7 @@ clear_port 8080
 clear_port 5173
 
 echo "正在启动后端..."
-if command -v cmd.exe >/dev/null 2>&1; then
-  (cd "$BACKEND_DIR" && cmd.exe /c mvnw.cmd spring-boot:run) > "$BACKEND_LOG" 2>&1 &
-else
-  (cd "$BACKEND_DIR" && bash ./mvnw spring-boot:run) > "$BACKEND_LOG" 2>&1 &
-fi
+(cd "$BACKEND_DIR" && MSYS_NO_PATHCONV=1 cmd.exe /c mvnw.cmd spring-boot:run) > "$BACKEND_LOG" 2>&1 &
 BACKEND_PID=$!
 
 echo "正在启动前端..."
