@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref, onMounted, onBeforeUnmount, watch } from 'vue'
+import { computed, nextTick, reactive, ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRouter, onBeforeRouteLeave } from 'vue-router'
 
 import { DEMAND_CATEGORY_OPTIONS, type CampusZone } from '@/types/campushub'
@@ -20,7 +20,34 @@ const published = ref(false)
 
 const draftDiscarded = ref(false)
 
-const errors = reactive({
+// 字段顺序用于生成“请完善以下信息：…”提示，并定位第一个错误字段
+const FIELD_ORDER = [
+  'title',
+  'category',
+  'campusZone',
+  'location',
+  'reward',
+  'targetParticipantCount',
+  'interactionMode',
+  'startTime',
+  'endTime'
+] as const
+
+type FieldKey = (typeof FIELD_ORDER)[number]
+
+const FIELD_LABELS: Record<FieldKey, string> = {
+  title: '标题',
+  category: '分类',
+  campusZone: '校区',
+  location: '地点',
+  reward: '报酬',
+  targetParticipantCount: '目标人数',
+  interactionMode: '互动模式',
+  startTime: '开始时间',
+  endTime: '结束时间'
+}
+
+const errors = reactive<Record<FieldKey, string>>({
   title: '',
   category: '',
   location: '',
@@ -49,6 +76,7 @@ const form = reactive({
   anonymous: false
 })
 
+// 业务规则：TEAM_UP 固定为 SELECT_MANY，不需要用户选择 interactionMode
 const effectiveInteractionMode = computed<string>(() => {
   if (form.category === 'TEAM_UP') return 'SELECT_MANY'
   if (form.category === 'OTHER') return form.interactionMode || 'DIRECT_ACCEPT'
@@ -57,6 +85,12 @@ const effectiveInteractionMode = computed<string>(() => {
   if (form.category === 'HELP') return 'HELP'
   return 'DIRECT_ACCEPT'
 })
+
+// 是否需要展示“目标人数”输入框（仅 SELECT_MANY 模式需要，包含 TEAM_UP 与 OTHER+SELECT_MANY）
+const showTargetParticipantCount = computed(() => effectiveInteractionMode.value === 'SELECT_MANY')
+
+// 是否需要展示“互动模式”选择框（仅 OTHER 分类需要用户手动选择）
+const showInteractionMode = computed(() => form.category === 'OTHER')
 
 // datetime-local 输入格式为 YYYY-MM-DDTHH:MM，与 startTime/endTime 兼容
 const startTime = computed(() => form.startDateTime)
@@ -73,32 +107,6 @@ const minDateTime = computed(() => {
   return `${year}-${month}-${day}T${hours}:${minutes}`
 })
 
-const isFormValid = computed(() => {
-  return (
-    !errors.title &&
-    !errors.category &&
-    !errors.location &&
-    !errors.reward &&
-    !errors.startTime &&
-    !errors.endTime &&
-    !errors.campusZone &&
-    !errors.targetParticipantCount &&
-    !errors.interactionMode &&
-    Boolean(form.title.trim()) &&
-    Boolean(form.category) &&
-    Boolean(form.campusZone) &&
-    Boolean(form.location.trim()) &&
-    Boolean(form.startDateTime) &&
-    Boolean(form.endDateTime) &&
-    Boolean(String(form.reward ?? '').trim()) &&
-    (effectiveInteractionMode.value !== 'SELECT_MANY' ||
-      (form.targetParticipantCount.trim() !== '' &&
-        Number(form.targetParticipantCount) >= 1)) &&
-    (form.category !== 'OTHER' ||
-      ['DIRECT_ACCEPT', 'SELECT_ONE', 'SELECT_MANY'].includes(form.interactionMode))
-  )
-})
-
 const forbiddenForAdmin = computed(() => store.currentUser?.role === 'ADMIN')
 const canSubmit = computed(() => !submitting.value && !published.value && !forbiddenForAdmin.value)
 
@@ -110,94 +118,154 @@ function isEmpty(value: string): boolean {
   return !value || !value.trim()
 }
 
-function markRequiredError(field: keyof typeof errors, messageText: string): void {
+function setFieldError(field: FieldKey, messageText: string): void {
   errors[field] = messageText
 }
 
+function clearAllErrors(): void {
+  for (const key of FIELD_ORDER) {
+    errors[key] = ''
+  }
+}
+
+// 唯一的校验入口：所有校验逻辑集中在此处，避免 isFormValid 与 runValidations 各自维护一套规则
 function runValidations(): void {
-  errors.title = ''
-  errors.category = ''
-  errors.location = ''
-  errors.reward = ''
-  errors.startTime = ''
-  errors.endTime = ''
-  errors.campusZone = ''
-  errors.targetParticipantCount = ''
-  errors.interactionMode = ''
+  clearAllErrors()
 
   if (isEmpty(form.title)) {
-    markRequiredError('title', '请填写标题')
+    setFieldError('title', '请填写标题')
   } else if (form.title.trim().length < 3) {
-    markRequiredError('title', '标题至少 3 个字符')
+    setFieldError('title', '标题至少 3 个字符')
   } else if (form.title.trim().length > 200) {
-    markRequiredError('title', '标题不能超过 200 个字符')
+    setFieldError('title', '标题不能超过 200 个字符')
   }
 
   if (isEmpty(form.category)) {
-    markRequiredError('category', '请选择分类')
+    setFieldError('category', '请选择分类')
   }
 
   if (isEmpty(form.campusZone)) {
-    markRequiredError('campusZone', '请选择校区')
+    setFieldError('campusZone', '请选择校区')
   }
 
   if (isEmpty(form.location)) {
-    markRequiredError('location', '请填写地点，例如：图书馆/宿舍区')
-  }
-
-  if (!form.startDateTime) {
-    markRequiredError('startTime', '请选择开始时间')
-  }
-
-  if (!form.endDateTime) {
-    markRequiredError('endTime', '请选择结束时间')
+    setFieldError('location', '请填写地点，例如：图书馆/宿舍区')
   }
 
   const rewardText = getRewardText()
   if (!rewardText) {
-    markRequiredError('reward', '请填写报酬')
+    setFieldError('reward', '请填写报酬')
   } else {
     const amount = Number(rewardText)
     if (Number.isNaN(amount) || amount < 0) {
-      markRequiredError('reward', '请输入有效的报酬（可为 0）')
+      setFieldError('reward', '请输入有效的报酬（可为 0）')
     }
   }
 
   if (effectiveInteractionMode.value === 'SELECT_MANY') {
     const countText = String(form.targetParticipantCount ?? '').trim()
     if (!countText) {
-      errors.targetParticipantCount = '请填写目标人数'
+      setFieldError('targetParticipantCount', '请填写目标人数')
     } else {
       const count = Number(countText)
-      if (Number.isNaN(count) || !Number.isInteger(count) || count < 1) {
-        errors.targetParticipantCount = '目标人数需为不小于 1 的正整数'
+      if (Number.isNaN(count)) {
+        setFieldError('targetParticipantCount', '目标人数必须是整数')
+      } else if (!Number.isInteger(count)) {
+        setFieldError('targetParticipantCount', '目标人数必须是整数，不能为小数')
+      } else if (count < 1) {
+        setFieldError('targetParticipantCount', '目标人数必须为不小于 1 的正整数')
       } else if (count > 100) {
-        errors.targetParticipantCount = '目标人数不能超过 100'
+        setFieldError('targetParticipantCount', '目标人数不能超过 100')
       }
     }
   }
 
   if (form.category === 'OTHER') {
     if (!form.interactionMode) {
-      errors.interactionMode = '请选择互动模式'
+      setFieldError('interactionMode', '请选择互动模式')
     } else if (!['DIRECT_ACCEPT', 'SELECT_ONE', 'SELECT_MANY'].includes(form.interactionMode)) {
-      errors.interactionMode = '互动模式无效'
+      setFieldError('interactionMode', '互动模式无效')
     }
+  }
+
+  if (!form.startDateTime) {
+    setFieldError('startTime', '请选择开始时间')
+  }
+  if (!form.endDateTime) {
+    setFieldError('endTime', '请选择结束时间')
   }
 
   // 验证开始和结束时间
   if (startTime.value && endTime.value) {
-    try {
-      const start = new Date(startTime.value).getTime()
-      const end = new Date(endTime.value).getTime()
-      if (Number.isNaN(start) || Number.isNaN(end) || start >= end) {
-        errors.startTime = '请确保开始时间早于结束时间'
-        errors.endTime = '请确保开始时间早于结束时间'
-      }
-    } catch {
-      errors.startTime = '时间格式不正确'
-      errors.endTime = '时间格式不正确'
+    const start = new Date(startTime.value).getTime()
+    const end = new Date(endTime.value).getTime()
+    if (Number.isNaN(start) || Number.isNaN(end) || start >= end) {
+      setFieldError('startTime', '请确保开始时间早于结束时间')
+      setFieldError('endTime', '请确保开始时间早于结束时间')
     }
+  }
+}
+
+// 仅基于 errors 对象判断表单是否有效，避免重复规则
+const isFormValid = computed(() => {
+  for (const key of FIELD_ORDER) {
+    if (errors[key]) return false
+  }
+  return true
+})
+
+// 当前缺失/错误字段的标签列表，用于生成“请完善以下信息：…”提示
+const missingFieldLabels = computed<string[]>(() => {
+  const labels: string[] = []
+  for (const key of FIELD_ORDER) {
+    if (errors[key]) {
+      labels.push(FIELD_LABELS[key])
+    }
+  }
+  return labels
+})
+
+const firstErrorField = computed<FieldKey | null>(() => {
+  for (const key of FIELD_ORDER) {
+    if (errors[key]) return key
+  }
+  return null
+})
+
+// 自动滚动并聚焦第一个错误字段
+async function focusFirstError(): Promise<void> {
+  const field = firstErrorField.value
+  if (!field) return
+  await nextTick()
+  const el = document.getElementById(getFieldElementId(field))
+  if (!el) return
+  try {
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  } catch {
+    // 某些环境不支持 scrollIntoView 平滑滚动
+    el.scrollIntoView()
+  }
+  // 给滚动一点时间后再聚焦，避免被 scrollIntoView 中断
+  setTimeout(() => {
+    try {
+      ;(el as HTMLElement).focus?.()
+    } catch {
+      // ignore focus errors
+    }
+  }, 240)
+}
+
+function getFieldElementId(field: FieldKey): string {
+  switch (field) {
+    case 'title': return 'demand-title'
+    case 'category': return 'demand-category'
+    case 'campusZone': return 'demand-zone'
+    case 'location': return 'demand-location'
+    case 'reward': return 'demand-reward'
+    case 'targetParticipantCount': return 'demand-target-count'
+    case 'interactionMode': return 'demand-interaction-mode'
+    case 'startTime': return 'demand-start-datetime'
+    case 'endTime': return 'demand-end-datetime'
   }
 }
 
@@ -237,24 +305,24 @@ onBeforeUnmount(() => {
   }
 })
 
-// 恢复草稿
+// 恢复草稿：targetParticipantCount 等字段统一用 String() 转换，兼容旧草稿中保存的数字
 onMounted(() => {
   const draft = loadDemandDraft()
   if (draft) {
-    form.title = draft.title ?? ''
-    form.description = draft.description ?? ''
+    form.title = String(draft.title ?? '')
+    form.description = String(draft.description ?? '')
     form.category = (draft.category || '') as typeof form.category
     form.campusZone = (draft.campusZone || '') as typeof form.campusZone
-    form.location = draft.location ?? ''
-    form.startDateTime = draft.startDateTime ?? ''
-    form.endDateTime = draft.endDateTime ?? ''
-    form.reward = draft.reward ?? '10'
-    form.targetParticipantCount = draft.targetParticipantCount ?? ''
-    form.interactionMode = draft.interactionMode ?? ''
-    form.tags = draft.tags ?? ''
-    form.images = draft.images ?? []
-    form.contactInfo = draft.contactInfo ?? ''
-    form.anonymous = draft.anonymous ?? false
+    form.location = String(draft.location ?? '')
+    form.startDateTime = String(draft.startDateTime ?? '')
+    form.endDateTime = String(draft.endDateTime ?? '')
+    form.reward = String(draft.reward ?? '10')
+    form.targetParticipantCount = String(draft.targetParticipantCount ?? '')
+    form.interactionMode = String(draft.interactionMode ?? '')
+    form.tags = String(draft.tags ?? '')
+    form.images = Array.isArray(draft.images) ? draft.images.map((url: any) => String(url)) : []
+    form.contactInfo = String(draft.contactInfo ?? '')
+    form.anonymous = Boolean(draft.anonymous ?? false)
   }
 })
 
@@ -264,7 +332,11 @@ async function submitDemand(): Promise<void> {
 
   runValidations()
   if (!isFormValid.value) {
-    error.value = '请先填写所有必填项后再提交。'
+    const labels = missingFieldLabels.value
+    error.value = labels.length > 0
+      ? `请完善以下信息：${labels.join('、')}`
+      : '请先填写所有必填项后再提交。'
+    void focusFirstError()
     return
   }
 
@@ -283,7 +355,11 @@ async function submitDemand(): Promise<void> {
       startTime: form.startDateTime,
       endTime: form.endDateTime,
       images: form.images,
-      targetParticipantCount: effectiveInteractionMode.value === 'SELECT_MANY' ? Number(form.targetParticipantCount) || null : null,
+      // TEAM_UP 与 OTHER+SELECT_MANY 都属于 effectiveInteractionMode === SELECT_MANY
+      targetParticipantCount: effectiveInteractionMode.value === 'SELECT_MANY'
+        ? Number(form.targetParticipantCount) || null
+        : null,
+      // 仅 OTHER 分类由用户选择 interactionMode，其余分类后端会按规则推导
       interactionMode: form.category === 'OTHER' ? form.interactionMode : null
     }
     await store.createDemand(submitData)
@@ -432,7 +508,7 @@ async function checkRewardBalance(): Promise<void> {
             <p v-if="rewardError || errors.reward" style="color: var(--danger); margin-top: 6px">{{ rewardError || errors.reward }}</p>
           </div>
 
-          <div v-if="effectiveInteractionMode === 'SELECT_MANY'" class="field" style="grid-column: 1 / -1;">
+          <div v-if="showTargetParticipantCount" class="field" style="grid-column: 1 / -1;">
             <label for="demand-target-count">目标人数 <span class="required-mark">*</span></label>
             <input
               id="demand-target-count"
@@ -447,7 +523,7 @@ async function checkRewardBalance(): Promise<void> {
             <p v-if="errors.targetParticipantCount" class="input-help" style="color: var(--danger)">{{ errors.targetParticipantCount }}</p>
           </div>
 
-          <div v-if="form.category === 'OTHER'" class="field" style="grid-column: 1 / -1;">
+          <div v-if="showInteractionMode" class="field" style="grid-column: 1 / -1;">
             <label for="demand-interaction-mode">互动模式 <span class="required-mark">*</span></label>
             <select id="demand-interaction-mode" v-model="form.interactionMode" @change="errors.interactionMode = ''">
               <option value="">请选择</option>
@@ -504,7 +580,7 @@ async function checkRewardBalance(): Promise<void> {
             匿名发布
           </label>
 
-          <button type="button" class="button primary" style="grid-column: 1 / -1;" @click="submitDemand" :disabled="!canSubmit">
+          <button type="button" class="button primary" style="grid-column: 1 / -1;" data-testid="submit-demand" @click="submitDemand" :disabled="!canSubmit">
             {{ submitting ? '发布中...' : '发布需求' }}
           </button>
         </div>

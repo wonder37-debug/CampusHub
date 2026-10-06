@@ -43,6 +43,7 @@ export function translateApiError(payload: any): string {
     'cannot transition back to accepted': '不能回退到已接单状态',
     'banned user cannot operate orders': '已封禁用户不能操作订单',
     'banned user cannot publish demands': '已封禁用户不能发布需求',
+    'banned user cannot respond': '账号已被封禁，无法留言或报名',
     'demand contains forbidden words': '需求内容包含敏感词',
     'verification code service is not available': '验证码服务不可用',
     'request too frequent': '请求过于频繁，请稍后再试',
@@ -54,6 +55,30 @@ export function translateApiError(payload: any): string {
     'demand has expired': '该需求已过期，无法接单',
     'admin cannot publish demands': '管理员账号不能发布需求',
     'admin cannot accept demands': '管理员账号不能接单',
+    // ===== 业务模型 2.0：Demand Response 相关 =====
+    'active response already exists for this demand': '你已经提交过了，无需重复提交。',
+    'demand is not open for responses': '该需求当前已关闭，暂时无法继续留言或报名。',
+    'publisher cannot respond to own demand': '不能对自己发布的需求留言或报名。',
+    'only pending response can be selected': '这条响应已经被处理，无法重复选择。',
+    'only pending response can be accepted': '该回答已经被处理，无法重复采纳。',
+    'only pending response can be withdrawn': '该响应已被处理，无法撤回。',
+    'only author can withdraw response': '只能撤回自己提交的响应。',
+    'only publisher can perform this action': '只有需求发布者才能执行该操作。',
+    'response does not belong to this demand': '该响应不属于当前需求。',
+    'response content must not be blank': '内容不能为空。',
+    'response not found': '响应不存在或已被删除。',
+    'user not found': '用户不存在。',
+    'demand not found': '需求不存在或已被删除。',
+    'DIRECT_ACCEPT demand does not accept responses, use accept endpoint': '该需求为直接接单模式，请使用接单按钮。',
+    'responseIds must not be empty': '请至少选择一个报名。',
+    'TEAM_UP demand missing targetParticipantCount': '该组队需求缺少目标人数，请重新发布或联系管理员。',
+    'SELECT_MANY demand requires targetParticipantCount >= 1': '目标人数必须为不小于 1 的正整数。',
+    'targetParticipantCount must not exceed 100': '目标人数不能超过 100。',
+    'targetParticipantCount only allowed for SELECT_MANY, current mode: DIRECT_ACCEPT': '只有组队需求才能设置目标人数。',
+    'OTHER category interactionMode must be one of DIRECT_ACCEPT/SELECT_ONE/SELECT_MANY': '其他分类的互动模式只能为直接接单、选择一人或组队选择。',
+    'cannot change category/interactionMode after responses exist': '已有同学留言或报名，暂时不能修改需求类型。',
+    'cannot change interactionMode after responses exist': '已有同学留言或报名，暂时不能修改互动模式。',
+    'cannot change targetParticipantCount after responses exist': '已有同学报名，暂时不能修改目标人数。',
     LOGIN_REQUIRED: '请先登录后再操作',
     ADMIN_FORBIDDEN: '管理员不能执行该操作',
     OWN_DEMAND: '不能接自己的需求',
@@ -75,7 +100,8 @@ export function translateApiError(payload: any): string {
     CONFLICT: '当前操作与系统状态冲突，请刷新后重试',
     UNAUTHORIZED: '请先登录后再继续',
     FORBIDDEN: '没有权限执行该操作',
-    BUSINESS_CONFLICT: '当前操作与系统状态冲突，请刷新后重试'
+    // 业务冲突的兜底文案改为更友好、引导用户的具体提示，避免吓人的“系统状态冲突”
+    BUSINESS_CONFLICT: '当前操作未能完成，请刷新页面后重试；若仍有问题，请稍后再试。'
   }
 
   const errorCode = String(payload?.errorCode ?? payload?.codeName ?? '').trim().toUpperCase()
@@ -83,6 +109,16 @@ export function translateApiError(payload: any): string {
   // 优先匹配具体消息翻译，再回退到通用错误码
   if (rawMessage in directMap) {
     return directMap[rawMessage]
+  }
+
+  // BUSINESS_CONFLICT / code 1005 优先尝试根据 rawMessage 动态提取业务语义，
+  // 提取不到再回退到通用兜底文案，避免所有冲突都显示为“系统状态冲突”
+  if (errorCode === 'BUSINESS_CONFLICT' || code === 1005) {
+    const dynamic = matchDynamicBusinessConflict(rawMessage)
+    if (dynamic) {
+      return dynamic
+    }
+    return codeMap.BUSINESS_CONFLICT
   }
 
   if (errorCode && codeMap[errorCode]) {
@@ -99,10 +135,6 @@ export function translateApiError(payload: any): string {
 
   if (code === 1004) {
     return '没有权限执行该操作'
-  }
-
-  if (code === 1005 && rawMessage) {
-    return directMap[rawMessage] ?? '业务冲突，请检查输入后重试'
   }
 
   const nullMatch = rawMessage.match(/^([a-zA-Z][a-zA-Z0-9]*) must not be null$/)
@@ -159,6 +191,50 @@ export function translateApiError(payload: any): string {
 
   return '请求失败，请稍后重试'
 
+  function matchDynamicBusinessConflict(message: string): string | null {
+    // selection exceeds targetParticipantCount (selected=0, new=2, target=1)
+    const exceedMatch = message.match(/selection exceeds targetParticipantCount.*target=(\d+)/)
+    if (exceedMatch) {
+      return `选择人数已超过目标人数，最多只能选择 ${exceedMatch[1]} 人。`
+    }
+
+    // response 123 is not pending
+    const respNotPending = message.match(/^response \d+ is not pending$/)
+    if (respNotPending) {
+      return '该报名已经被处理，无法继续操作。'
+    }
+
+    // demand interactionMode is X, expected Y
+    const modeMismatch = message.match(/^demand interactionMode is (\w+), expected (\w+)$/)
+    if (modeMismatch) {
+      return `该需求的互动模式为“${translateInteractionMode(modeMismatch[1])}”，不支持当前操作。`
+    }
+
+    // only PENDING demand can be selected, current status: X
+    const demandStatus = message.match(/^only PENDING demand can be selected, current status: (\w+)$/)
+    if (demandStatus) {
+      return `该需求当前不处于开放状态，无法继续选择。`
+    }
+
+    // targetParticipantCount only allowed for SELECT_MANY, current mode: X
+    const targetMode = message.match(/^targetParticipantCount only allowed for SELECT_MANY, current mode: (\w+)$/)
+    if (targetMode) {
+      return `只有组队需求才能设置目标人数，当前模式为“${translateInteractionMode(targetMode[1])}”。`
+    }
+
+    return null
+  }
+
+  function translateInteractionMode(mode: string): string {
+    switch (mode) {
+      case 'DIRECT_ACCEPT': return '直接接单'
+      case 'SELECT_ONE': return '选择一人'
+      case 'SELECT_MANY': return '组队选择'
+      case 'HELP': return '采纳回答'
+      default: return mode
+    }
+  }
+
   function translateFieldName(field: string): string {
     const fieldMap: Record<string, string> = {
       email: '邮箱',
@@ -189,7 +265,12 @@ export function translateApiError(payload: any): string {
       reason: '原因',
       searchField: '搜索字段',
       sortBy: '排序字段',
-      sortDirection: '排序方向'
+      sortDirection: '排序方向',
+      responseId: '响应ID',
+      responseIds: '响应ID列表',
+      content: '内容',
+      targetParticipantCount: '目标人数',
+      interactionMode: '互动模式'
     }
 
     return fieldMap[field] ?? field
@@ -205,10 +286,11 @@ export function handleError(err: unknown, fallback = '操作失败'): string {
       if (/failed to fetch|networkerror|network error/i.test(msg)) {
         return '网络异常，请检查网络或后端服务'
       }
-      if (/[A-Za-z]/.test(msg)) {
-        return fallback
+      // 已被 translateApiError 翻译过的中文消息直接返回
+      if (!/[A-Za-z]/.test(msg)) {
+        return msg || fallback
       }
-      return msg || fallback
+      return fallback
     }
 
     // try parse structured payloads

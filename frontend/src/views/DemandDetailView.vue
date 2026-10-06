@@ -417,20 +417,58 @@ const responseListTitle = computed(() => {
   }
 })
 
+// 当前用户在该 Demand 上是否已有 active Response（PENDING 或 SELECTED）
+// 后端约束同一用户对同一 Demand 只能存在一个 active Response，前端据此隐藏重复提交入口
+const myActiveResponse = computed(() => {
+  const userId = store.currentUser?.id
+  if (!userId) return null
+  return responses.value.find((r) => r.authorId === userId && (r.status === 'PENDING' || r.status === 'SELECTED')) ?? null
+})
+
+// 已提交状态的友好提示文案
+const myResponseStatusHint = computed(() => {
+  const resp = myActiveResponse.value
+  if (!resp) return ''
+  switch (interactionMode.value) {
+    case 'HELP':
+      return resp.status === 'SELECTED'
+        ? '你的回答已被采纳，如需修改请先撤回原回答。'
+        : '你已经提交过回答了，如需修改请先撤回原回答。'
+    case 'SELECT_MANY':
+      return resp.status === 'SELECTED'
+        ? '你已被选中，如需修改请先撤回当前报名。'
+        : '你已经报名过该组队需求，如需修改请先撤回当前报名。'
+    default:
+      return resp.status === 'SELECTED'
+        ? '你的留言已被选中，如需修改请先撤回原留言。'
+        : '你已经留言过了，如需修改请先撤回原留言。'
+  }
+})
+
+// 当前用户的 Response 是否允许撤回（仅 PENDING 状态可撤回，SELECTED 已进入履约不能撤回）
+const canWithdrawMyResponse = computed(() => myActiveResponse.value?.status === 'PENDING')
+
+// 提交过程中禁用按钮，防止连续点击产生重复请求
+const responseSubmitting = ref(false)
+
 async function createResponse(): Promise<void> {
   if (!demand.value) return
+  if (responseSubmitting.value) return
   if (!responseContent.value.trim()) {
     error.value = '请填写内容'
     return
   }
   message.value = ''
   error.value = ''
+  responseSubmitting.value = true
   try {
     await store.createResponse(demand.value.id, responseContent.value)
     responseContent.value = ''
     message.value = '已提交'
   } catch (e) {
     error.value = handleError(e, '提交失败')
+  } finally {
+    responseSubmitting.value = false
   }
 }
 
@@ -506,14 +544,18 @@ async function submitResponseReview(responseId: string): Promise<void> {
 }
 
 async function withdrawResponse(responseId: string): Promise<void> {
+  if (responseSubmitting.value) return
   if (!await useConfirm('撤回', '确认撤回该留言？', { danger: true })) return
   message.value = ''
   error.value = ''
+  responseSubmitting.value = true
   try {
     await store.withdrawResponse(demand.value?.id ?? '', responseId)
     message.value = '已撤回'
   } catch (e) {
     error.value = handleError(e, '撤回失败')
+  } finally {
+    responseSubmitting.value = false
   }
 }
 
@@ -710,10 +752,29 @@ onMounted(() => {
         </div>
 
         <!-- 创建留言/报名/回答 -->
-        <div v-if="canRespond" class="field" style="margin-top: 4px;">
+        <div v-if="canRespond && !myActiveResponse" class="field" style="margin-top: 4px;">
           <textarea v-model="responseContent" :placeholder="`请填写${responseListTitle}内容`" rows="3"></textarea>
           <div class="card-actions">
-            <button type="button" class="button primary" :disabled="!responseContent.trim()" @click="createResponse">提交</button>
+            <button type="button" class="button primary" data-testid="submit-response" :disabled="!responseContent.trim() || responseSubmitting" @click="createResponse">
+              {{ responseSubmitting ? '提交中...' : '提交' }}
+            </button>
+          </div>
+        </div>
+
+        <!-- 当前用户已存在 active Response：直接显示状态，避免重复提交触发后端 BUSINESS_CONFLICT -->
+        <div v-else-if="myActiveResponse" class="list-card" style="margin-top: 4px; background: var(--accent-soft); border-color: rgba(31, 95, 83, 0.2);">
+          <strong>{{ responseListTitle === '回答' ? '已提交回答' : (responseListTitle === '报名' ? '已报名' : '已留言') }}</strong>
+          <p class="meta" style="margin-top: 4px;">{{ myResponseStatusHint }}</p>
+          <div class="meta" style="margin-top: 4px;">当前状态：{{ formatResponseStatus(myActiveResponse.status) }} · {{ formatDateTime(myActiveResponse.createdAt) }}</div>
+          <div class="card-actions" style="margin-top: 6px;">
+            <button
+              v-if="canWithdrawMyResponse"
+              type="button"
+              class="button secondary"
+              :disabled="responseSubmitting"
+              @click="withdrawResponse(myActiveResponse.id)"
+            >{{ responseSubmitting ? '撤回中...' : '撤回' }}</button>
+            <span v-else class="chip is-warning">已进入履约，无法撤回</span>
           </div>
         </div>
 
@@ -730,6 +791,7 @@ onMounted(() => {
                 v-if="r.authorId === store.currentUser?.id && r.status === 'PENDING'"
                 type="button"
                 class="button secondary"
+                :disabled="responseSubmitting"
                 @click="withdrawResponse(r.id)"
               >撤回</button>
               <button
