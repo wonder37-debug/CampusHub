@@ -23,6 +23,9 @@ import com.campushub.backend.order.dto.OrderSummaryResponse;
 import com.campushub.backend.order.dto.RequestOrderArbitrationCommand;
 import com.campushub.backend.order.dto.UpdateOrderStatusCommand;
 import com.campushub.backend.order.repository.OrderRepository;
+import com.campushub.backend.recommendation.domain.ActionType;
+import com.campushub.backend.recommendation.domain.UserActionLog;
+import com.campushub.backend.recommendation.repository.UserActionLogRepository;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -45,19 +48,22 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
     private final UserRepository userRepository;
     private final NotificationApplicationService notificationApplicationService;
     private final RewardSettlementService rewardSettlementService;
+    private final UserActionLogRepository userActionLogRepository;
 
     public OrderApplicationServiceImpl(
         OrderRepository orderRepository,
         DemandRepository demandRepository,
         UserRepository userRepository,
         NotificationApplicationService notificationApplicationService,
-        RewardSettlementService rewardSettlementService
+        RewardSettlementService rewardSettlementService,
+        UserActionLogRepository userActionLogRepository
     ) {
         this.orderRepository = orderRepository;
         this.demandRepository = demandRepository;
         this.userRepository = userRepository;
         this.notificationApplicationService = notificationApplicationService;
         this.rewardSettlementService = rewardSettlementService;
+        this.userActionLogRepository = userActionLogRepository;
     }
 
     @Override
@@ -108,6 +114,8 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         demand.setStatus(DemandStatus.IN_PROGRESS);
         demand.setUpdatedAt(now);
         demandRepository.save(demand);
+
+        recordAccept(accepter.getId(), demand);
 
         notificationApplicationService.notifyOrderAcceptedForPublisher(demand.getPublisherId(), order.getId());
         notificationApplicationService.notifyOrderAcceptedForAccepter(accepter.getId(), order.getId());
@@ -166,6 +174,8 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         demand.setStatus(DemandStatus.IN_PROGRESS);
         demand.setUpdatedAt(now);
         demandRepository.save(demand);
+
+        recordAccept(accepter.getId(), demand);
 
         notificationApplicationService.notifyOrderAcceptedForPublisher(demand.getPublisherId(), order.getId());
         notificationApplicationService.notifyOrderAcceptedForAccepter(accepter.getId(), order.getId());
@@ -472,6 +482,17 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
 
     private String trimToNull(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    // ponytail: ACCEPT 行为日志在订单创建成功路径追加写入，与 Order 同事务；
+    // 不改事务边界、不改状态机，仅在 demandRepository.save(demand) 成功后记录。
+    private void recordAccept(Long accepterId, Demand demand) {
+        if (accepterId == null || demand == null || demand.getId() == null || demand.getCategory() == null) {
+            return;
+        }
+        userActionLogRepository.save(new UserActionLog(
+            null, accepterId, ActionType.ACCEPT, demand.getId(), demand.getCategory(), LocalDateTime.now()
+        ));
     }
 
     private void transferReward(Demand demand, Order order) {

@@ -27,7 +27,10 @@ import com.campushub.backend.order.domain.Order;
 import com.campushub.backend.order.dto.AcceptOrderCommand;
 import com.campushub.backend.order.repository.OrderRepository;
 import com.campushub.backend.order.service.OrderApplicationService;
+import com.campushub.backend.recommendation.domain.ActionType;
+import com.campushub.backend.recommendation.domain.UserActionLog;
 import com.campushub.backend.recommendation.dto.RecommendationItemResponse;
+import com.campushub.backend.recommendation.repository.UserActionLogRepository;
 import com.campushub.backend.recommendation.service.RecommendationApplicationService;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.LocalDateTime;
@@ -38,6 +41,9 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -51,6 +57,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/demands")
 public class DemandController {
 
+    private static final Logger log = LoggerFactory.getLogger(DemandController.class);
+
     private final DemandApplicationService demandApplicationService;
     private final OrderApplicationService orderApplicationService;
     private final DemandResponseApplicationService demandResponseApplicationService;
@@ -58,6 +66,7 @@ public class DemandController {
     private final DemandRepository demandRepository;
     private final UserRepository userRepository;
     private final OrderRepository orderRepository;
+    private final UserActionLogRepository userActionLogRepository;
     private final RequestUserExtractor requestUserExtractor;
     private final ApiViewMapper apiViewMapper;
 
@@ -69,6 +78,7 @@ public class DemandController {
         DemandRepository demandRepository,
         UserRepository userRepository,
         OrderRepository orderRepository,
+        UserActionLogRepository userActionLogRepository,
         RequestUserExtractor requestUserExtractor,
         ApiViewMapper apiViewMapper
     ) {
@@ -79,6 +89,7 @@ public class DemandController {
         this.demandRepository = demandRepository;
         this.userRepository = userRepository;
         this.orderRepository = orderRepository;
+        this.userActionLogRepository = userActionLogRepository;
         this.requestUserExtractor = requestUserExtractor;
         this.apiViewMapper = apiViewMapper;
     }
@@ -195,11 +206,35 @@ public class DemandController {
     @GetMapping("/{demandId}")
     public ApiResponse<DemandView> detail(HttpServletRequest request, @PathVariable Long demandId) {
         CurrentUser currentUser = requestUserExtractor.tryExtract(request);
-        return ApiResponse.success(
-            demandRepository.findById(demandId)
-                .map(demand -> apiViewMapper.toDemandView(demand, currentUser))
-                .orElseThrow()
-        );
+        Demand demand = demandRepository.findById(demandId).orElseThrow();
+        recordView(currentUser, demand);
+        return ApiResponse.success(apiViewMapper.toDemandView(demand, currentUser));
+    }
+
+    // ponytail: VIEW 去重——同一用户对同一需求 1 小时内的重复浏览只记一次，
+    // 避免刷新推荐页面产生大量日志。仅在已登录用户访问真实需求时记录。
+    // VIEW 日志是推荐系统副作用，写入失败不得影响详情接口可用性，故吞掉 DataAccessException。
+    private void recordView(CurrentUser currentUser, Demand demand) {
+        if (currentUser == null || demand == null || demand.getId() == null || demand.getCategory() == null) {
+            return;
+        }
+        try {
+            Long userId = currentUser.userId();
+            List<UserActionLog> recentViews = userActionLogRepository.findByUserIdAndActionType(userId, ActionType.VIEW);
+            LocalDateTime oneHourAgo = LocalDateTime.now().minusHours(1);
+            boolean viewedWithinOneHour = recentViews.stream().anyMatch(viewLog ->
+                demand.getId().equals(viewLog.getDemandId())
+                    && viewLog.getCreatedAt() != null
+                    && viewLog.getCreatedAt().isAfter(oneHourAgo));
+            if (viewedWithinOneHour) {
+                return;
+            }
+            userActionLogRepository.save(new UserActionLog(
+                null, userId, ActionType.VIEW, demand.getId(), demand.getCategory(), LocalDateTime.now()
+            ));
+        } catch (DataAccessException e) {
+            log.warn("VIEW action log failed for demand {}", demand.getId(), e);
+        }
     }
 
     @PutMapping("/{demandId}")
