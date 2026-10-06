@@ -133,7 +133,11 @@ public class RecommendationApplicationServiceImpl implements RecommendationAppli
             ranked.add(new RecommendationItem(demand, score, ranked.size() + 1, reasonTags));
         }
 
-        ranked = applyDiversityRerank(ranked);
+        // ponytail: RecommendationSwitch 关闭时保持 createdAt DESC 默认排序语义，
+        // 不执行 diversity rerank、不应用 view penalty、不生成偏好排序（见上方 enabled 三元）。
+        if (enabled) {
+            ranked = applyDiversityRerank(ranked);
+        }
 
         int page = query.pageQuery().page();
         int size = query.pageQuery().size();

@@ -506,6 +506,8 @@ CREATE  TABLE IF NOT EXISTS `rec_user_action_log` (
 
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '行为发生时间',
 
-  KEY `idx_action_user_cat` (`user_id`, `category`) COMMENT '用于按分类统计用户偏好'
+  KEY `idx_action_user_cat` (`user_id`, `category`) COMMENT '用于按分类统计用户偏好',
+
+  KEY `idx_user_action_demand_time` (`user_id`, `action_type`, `demand_id`, `created_at`) COMMENT '用于 VIEW 去重 existsRecentView'
 
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='推荐系统用户行为日志表';

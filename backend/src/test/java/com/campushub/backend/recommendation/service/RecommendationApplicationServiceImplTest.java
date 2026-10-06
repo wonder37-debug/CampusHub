@@ -180,6 +180,49 @@ class RecommendationApplicationServiceImplTest {
     }
 
     @Test
+    void shouldKeepCreatedAtDescWhenSwitchOffWithSameCategory() {
+        // 回归：RecommendationSwitch 关闭时，即使 6 个相同 category 也不触发 diversity rerank，
+        // 结果严格保持 createdAt DESC，diversity 不改变顺序。
+        recommendationApplicationService = new RecommendationApplicationServiceImpl(
+            demandRepository,
+            orderRepository,
+            userRepository,
+            userActionLogRepository,
+            () -> false
+        );
+        DemandDetailResponse d1 = createDemand("需求一", "EXPRESS");
+        DemandDetailResponse d2 = createDemand("需求二", "EXPRESS");
+        DemandDetailResponse d3 = createDemand("需求三", "EXPRESS");
+        DemandDetailResponse d4 = createDemand("需求四", "EXPRESS");
+        DemandDetailResponse d5 = createDemand("需求五", "EXPRESS");
+        DemandDetailResponse d6 = createDemand("需求六", "EXPRESS");
+        // createdAt 严格递减：d1 最新，d6 最旧
+        setCreatedAt(d1.id(), LocalDateTime.now().minusMinutes(1));
+        setCreatedAt(d2.id(), LocalDateTime.now().minusMinutes(2));
+        setCreatedAt(d3.id(), LocalDateTime.now().minusMinutes(3));
+        setCreatedAt(d4.id(), LocalDateTime.now().minusMinutes(4));
+        setCreatedAt(d5.id(), LocalDateTime.now().minusMinutes(5));
+        setCreatedAt(d6.id(), LocalDateTime.now().minusMinutes(6));
+
+        PageResponse<RecommendationItemResponse> page = recommendationApplicationService.recommend(
+            accepterId,
+            new DemandQuery(null, null, null, null, null, null, null, new PageQuery(1, 20))
+        );
+
+        assertEquals(6, page.items().size());
+        // 关闭 switch：diversity 不执行，保持 createdAt DESC 原序
+        assertEquals(d1.id(), page.items().get(0).demandId());
+        assertEquals(d2.id(), page.items().get(1).demandId());
+        assertEquals(d3.id(), page.items().get(2).demandId());
+        assertEquals(d4.id(), page.items().get(3).demandId());
+        assertEquals(d5.id(), page.items().get(4).demandId());
+        assertEquals(d6.id(), page.items().get(5).demandId());
+        // score 全 0、tag 默认排序
+        assertEquals(0.0, page.items().get(0).score());
+        assertTrue(page.items().get(0).reasonTags().contains("默认排序"));
+    }
+
+    @Test
     void shouldRankByViewPreference() {
         DemandDetailResponse express = createDemand("推荐快递", "EXPRESS");
         DemandDetailResponse study = createDemand("学习辅导", "STUDY_TUTORING");

@@ -12,3 +12,4 @@ CREATE TABLE rec_user_action_log (
 );
 
 CREATE INDEX idx_action_user_cat ON rec_user_action_log(user_id, category);
+CREATE INDEX idx_user_action_demand_time ON rec_user_action_log(user_id, action_type, demand_id, created_at);

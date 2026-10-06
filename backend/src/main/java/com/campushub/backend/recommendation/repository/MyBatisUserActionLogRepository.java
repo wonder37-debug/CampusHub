@@ -72,6 +72,20 @@ public class MyBatisUserActionLogRepository implements UserActionLogRepository {
     }
 
     @Override
+    public boolean existsRecentView(Long userId, Long demandId, LocalDateTime since) {
+        if (userId == null || demandId == null || since == null) {
+            return false;
+        }
+        Long count = userActionLogMapper.selectCount(
+            new LambdaQueryWrapper<UserActionLogEntity>()
+                .eq(UserActionLogEntity::getUserId, userId)
+                .eq(UserActionLogEntity::getActionType, ActionType.VIEW)
+                .eq(UserActionLogEntity::getDemandId, demandId)
+                .ge(UserActionLogEntity::getCreatedAt, since));
+        return count != null && count > 0;
+    }
+
+    @Override
     public Set<Long> findActiveUserIdsByDate(LocalDate today) {
         if (today == null) {
             return Set.of();

@@ -202,6 +202,16 @@ class FrontendIntegrationFlowTest {
     }
 
     @Test
+    void shouldReturn404ForMissingDemand() throws Exception {
+        TestUser user = registerAndLogin("missing-demand-404");
+        mockMvc.perform(get("/api/v1/demands/99999999")
+                .header("Authorization", bearer(user.token())))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.code").value(1003))
+            .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
     void shouldRejectUnauthenticatedProtectedApi() throws Exception {
         mockMvc.perform(get("/api/v1/orders"))
             .andExpect(status().isUnauthorized())

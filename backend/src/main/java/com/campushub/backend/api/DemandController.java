@@ -206,7 +206,8 @@ public class DemandController {
     @GetMapping("/{demandId}")
     public ApiResponse<DemandView> detail(HttpServletRequest request, @PathVariable Long demandId) {
         CurrentUser currentUser = requestUserExtractor.tryExtract(request);
-        Demand demand = demandRepository.findById(demandId).orElseThrow();
+        Demand demand = demandRepository.findById(demandId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "demand not found"));
         recordView(currentUser, demand);
         return ApiResponse.success(apiViewMapper.toDemandView(demand, currentUser));
     }
@@ -214,19 +215,15 @@ public class DemandController {
     // ponytail: VIEW 去重——同一用户对同一需求 1 小时内的重复浏览只记一次，
     // 避免刷新推荐页面产生大量日志。仅在已登录用户访问真实需求时记录。
     // VIEW 日志是推荐系统副作用，写入失败不得影响详情接口可用性，故吞掉 DataAccessException。
+    // 用 existsRecentView bounded 查询替代全量加载用户 VIEW 历史。
     private void recordView(CurrentUser currentUser, Demand demand) {
         if (currentUser == null || demand == null || demand.getId() == null || demand.getCategory() == null) {
             return;
         }
         try {
             Long userId = currentUser.userId();
-            List<UserActionLog> recentViews = userActionLogRepository.findByUserIdAndActionType(userId, ActionType.VIEW);
             LocalDateTime oneHourAgo = LocalDateTime.now().minusHours(1);
-            boolean viewedWithinOneHour = recentViews.stream().anyMatch(viewLog ->
-                demand.getId().equals(viewLog.getDemandId())
-                    && viewLog.getCreatedAt() != null
-                    && viewLog.getCreatedAt().isAfter(oneHourAgo));
-            if (viewedWithinOneHour) {
+            if (userActionLogRepository.existsRecentView(userId, demand.getId(), oneHourAgo)) {
                 return;
             }
             userActionLogRepository.save(new UserActionLog(
