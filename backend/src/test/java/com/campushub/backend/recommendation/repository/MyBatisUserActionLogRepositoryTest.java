@@ -135,6 +135,47 @@ class MyBatisUserActionLogRepositoryTest {
         assertThat(repository.findActiveUserIdsByDate(null)).isEmpty();
     }
 
+    @Test
+    void existsRecentView_returns_true_when_recent_view_present() {
+        repository.save(newUserActionLog(10L, ActionType.VIEW, 1001L, DemandCategory.EXPRESS));
+
+        boolean exists = repository.existsRecentView(10L, 1001L, LocalDateTime.now().minusHours(1));
+
+        assertThat(exists).isTrue();
+    }
+
+    @Test
+    void existsRecentView_returns_false_when_view_outside_window() {
+        UserActionLog old = repository.save(newUserActionLog(10L, ActionType.VIEW, 1001L, DemandCategory.EXPRESS));
+        old.setCreatedAt(LocalDateTime.now().minusDays(2));
+        repository.save(old);
+
+        boolean exists = repository.existsRecentView(10L, 1001L, LocalDateTime.now().minusHours(1));
+
+        assertThat(exists).isFalse();
+    }
+
+    @Test
+    void existsRecentView_returns_false_when_different_demand_or_user_or_accept() {
+        repository.save(newUserActionLog(10L, ActionType.VIEW, 1001L, DemandCategory.EXPRESS));
+        repository.save(newUserActionLog(20L, ActionType.VIEW, 1001L, DemandCategory.EXPRESS));
+        repository.save(newUserActionLog(10L, ActionType.ACCEPT, 1001L, DemandCategory.EXPRESS));
+
+        // 不同 demand
+        assertThat(repository.existsRecentView(10L, 1002L, LocalDateTime.now().minusHours(1))).isFalse();
+        // 不同 user
+        assertThat(repository.existsRecentView(20L, 1001L, LocalDateTime.now().minusHours(1))).isTrue();
+        // 同 user 同 demand 但 ACCEPT 不算 VIEW
+        assertThat(repository.existsRecentView(10L, 1001L, LocalDateTime.now().minusHours(1))).isTrue();
+    }
+
+    @Test
+    void existsRecentView_null_args_return_false() {
+        assertThat(repository.existsRecentView(null, 1001L, LocalDateTime.now().minusHours(1))).isFalse();
+        assertThat(repository.existsRecentView(10L, null, LocalDateTime.now().minusHours(1))).isFalse();
+        assertThat(repository.existsRecentView(10L, 1001L, null)).isFalse();
+    }
+
     /**
      * 工厂方法：为所有 NOT NULL 列（user_id / action_type / demand_id / category / created_at）
      * 提供默认值，避免 H2 抛出 NULL not allowed 异常。

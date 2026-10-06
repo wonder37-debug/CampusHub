@@ -1,5 +1,6 @@
 package com.campushub.backend.api;
 
+import static org.hamcrest.Matchers.hasItem;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -139,7 +140,8 @@ class FrontendIntegrationFlowTest {
                 .param("size", "10"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.items[0].rank").value(1))
-            .andExpect(jsonPath("$.data.items[0].demand.id").value(demandId));
+            // V2：accepter 查看详情后该 demand 会被浏览轻微惩罚（×0.80），但仍保留在推荐结果中（不过滤）
+            .andExpect(jsonPath("$.data.items[*].demand.id", hasItem(demandId.intValue())));
 
         Long orderId = acceptDemand(accepter.token(), demandId);
 
@@ -197,6 +199,16 @@ class FrontendIntegrationFlowTest {
             .andExpect(jsonPath("$.data.currentUserReviewed").value(true))
             .andExpect(jsonPath("$.data.pendingReviewTarget").doesNotExist())
             .andExpect(jsonPath("$.data.completionHint").value("双方已确认完成"));
+    }
+
+    @Test
+    void shouldReturn404ForMissingDemand() throws Exception {
+        TestUser user = registerAndLogin("missing-demand-404");
+        mockMvc.perform(get("/api/v1/demands/99999999")
+                .header("Authorization", bearer(user.token())))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.code").value(1003))
+            .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
 
     @Test
