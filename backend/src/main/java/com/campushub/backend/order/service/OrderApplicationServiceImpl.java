@@ -67,7 +67,8 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
             throw new BusinessException(ErrorCode.PERMISSION_DENIED, "admin cannot accept demands");
         }
 
-        Demand demand = findDemand(demandId);
+        // 加 Demand 行锁，避免 accept 与 update 并发：update 把 DIRECT_ACCEPT 改成 SELECT_ONE 后 accept 仍按旧 mode 创建 Order
+        Demand demand = findDemandForUpdate(demandId);
         if (demand.getInteractionMode() != InteractionMode.DIRECT_ACCEPT) {
             throw new BusinessException(ErrorCode.BUSINESS_CONFLICT,
                 "only DIRECT_ACCEPT demand can be accepted via /accept, current mode: " + demand.getInteractionMode());
@@ -427,6 +428,11 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
 
     private Demand findDemand(Long demandId) {
         return demandRepository.findById(demandId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "demand not found"));
+    }
+
+    private Demand findDemandForUpdate(Long demandId) {
+        return demandRepository.findByIdForUpdate(demandId)
             .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "demand not found"));
     }
 

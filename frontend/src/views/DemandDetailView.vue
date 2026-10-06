@@ -496,10 +496,10 @@ async function submitResponseReview(responseId: string): Promise<void> {
   message.value = ''
   error.value = ''
   try {
+    // store 内已将返回的 Review 写入 store.reviews，hasReviewedResponse 立即生效，无需再次请求后端
     await store.submitReviewForResponse(responseId, Number(responseReviewRating.value), responseReviewComment.value)
     reviewingResponseId.value = null
     message.value = '评价已提交'
-    await store.fetchResponses(demand.value.id)
   } catch (e) {
     error.value = handleError(e, '评价失败')
   }

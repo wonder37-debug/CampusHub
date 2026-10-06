@@ -482,6 +482,123 @@ class DemandResponseApplicationServiceImplTest {
         assertEquals(1, settledCount);
     }
 
+    // ==================== update ↔ createResponse 并发回归 ====================
+
+    @Test
+    void shouldNotLeaveResponseAndChangedModeUnderConcurrentUpdateAndCreateResponse() throws Exception {
+        // OTHER + SELECT_ONE：update 可把 mode 改成 DIRECT_ACCEPT；createResponse 在 SELECT_ONE 下可创建
+        Long demandId = demandApplicationService.publish(
+            publisherId,
+            new PublishDemandCommand(
+                "OTHER 并发更新", "描述", null, "OTHER", "XIANLIN", "线上",
+                LocalDateTime.now().plusHours(1), LocalDateTime.now().plusDays(2),
+                new BigDecimal("5.00"), List.of(), null, null, false, null, "SELECT_ONE")
+        ).id();
+        approveDemand(demandId);
+
+        java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newFixedThreadPool(2);
+        java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(2);
+        java.util.concurrent.atomic.AtomicInteger updateSuccess = new java.util.concurrent.atomic.AtomicInteger(0);
+        java.util.concurrent.atomic.AtomicInteger responseSuccess = new java.util.concurrent.atomic.AtomicInteger(0);
+        java.util.concurrent.atomic.AtomicInteger failures = new java.util.concurrent.atomic.AtomicInteger(0);
+
+        executor.submit(() -> {
+            try {
+                start.await();
+                demandApplicationService.update(
+                    publisherId, demandId,
+                    new com.campushub.backend.demand.dto.UpdateDemandCommand(
+                        null, null, null, null, null, null, null, null, null, null, null, null, null, "DIRECT_ACCEPT"));
+                updateSuccess.incrementAndGet();
+            } catch (Exception e) {
+                failures.incrementAndGet();
+            } finally {
+                done.countDown();
+            }
+        });
+        executor.submit(() -> {
+            try {
+                start.await();
+                demandResponseApplicationService.createResponse(
+                    responder1Id, demandId, new CreateDemandResponseCommand("报名"));
+                responseSuccess.incrementAndGet();
+            } catch (Exception e) {
+                failures.incrementAndGet();
+            } finally {
+                done.countDown();
+            }
+        });
+        start.countDown();
+        assertTrue(done.await(30, java.util.concurrent.TimeUnit.SECONDS));
+        executor.shutdown();
+
+        // FOR UPDATE 串行化：恰好一个成功，另一个因互斥条件失败
+        assertEquals(1, updateSuccess.get() + responseSuccess.get());
+        assertEquals(1, failures.get());
+
+        com.campushub.backend.demand.domain.Demand d = demandRepository.findById(demandId).orElseThrow();
+        long responseCount = demandResponseRepository.findByDemandId(demandId).size();
+        // 不变量：不会出现“已存在 Response + interactionMode 被改成 DIRECT_ACCEPT”
+        if (responseCount > 0) {
+            assertEquals(com.campushub.backend.demand.domain.InteractionMode.SELECT_ONE, d.getInteractionMode(),
+                "存在 Response 时 interactionMode 不应被修改");
+        } else {
+            assertEquals(com.campushub.backend.demand.domain.InteractionMode.DIRECT_ACCEPT, d.getInteractionMode(),
+                "无 Response 时 update 应成功改为 DIRECT_ACCEPT");
+        }
+    }
+
+    // ==================== withdrawResponse ↔ selectResponse 并发回归 ====================
+    //
+    // 说明：H2（MULTI_THREADED=FALSE）下 SELECT ... FOR UPDATE 不提供跨操作行锁等待，
+    // withdrawResponse 不修改 Demand 行，仅靠 Demand 行锁无法在 H2 下稳定串行化 Response 读写，
+    // 因此真正的并发竞态在 H2 下不可稳定复现。改用“锁定后重新读取状态”的序列化集成验证：
+    // selectResponse / selectResponses 把 Response 改成 SELECTED 后，withdrawResponse 必须拒绝。
+
+    @Test
+    void shouldRejectWithdrawAfterResponseSelectedForSelectOne() {
+        // SELECT_ONE：selectResponse 把 Response 改成 SELECTED、Demand 进入 IN_PROGRESS、创建 Order
+        Long demandId = createSecondHandDemand();
+        DemandResponseDetail response = demandResponseApplicationService.createResponse(
+            responder1Id, demandId, new CreateDemandResponseCommand("我要"));
+        demandResponseApplicationService.selectResponse(publisherId, demandId, response.id());
+
+        // withdrawResponse 锁 Demand 后重新查询 Response，发现 SELECTED 必须拒绝
+        BusinessException exception = assertThrows(
+            BusinessException.class,
+            () -> demandResponseApplicationService.withdrawResponse(responder1Id, response.id())
+        );
+        assertEquals(ErrorCode.BUSINESS_CONFLICT, exception.getErrorCode());
+        assertEquals(com.campushub.backend.demand.domain.ResponseStatus.SELECTED,
+            demandResponseRepository.findById(response.id()).orElseThrow().getStatus());
+        // Order 已创建且 Reward 结算未被撤回
+        assertTrue(orderRepository.findByDemandId(demandId).isPresent());
+    }
+
+    @Test
+    void shouldRejectWithdrawAfterResponsesSelectedForSelectMany() {
+        // SELECT_MANY：selectResponses 达到 target 后 Demand COMPLETED、Reward 平分结算
+        Long demandId = createTeamUpDemand(2);
+        DemandResponseDetail r1 = demandResponseApplicationService.createResponse(
+            responder1Id, demandId, new CreateDemandResponseCommand("报名1"));
+        DemandResponseDetail r2 = demandResponseApplicationService.createResponse(
+            responder2Id, demandId, new CreateDemandResponseCommand("报名2"));
+        demandResponseApplicationService.selectResponses(
+            publisherId, demandId, new SelectResponsesCommand(List.of(r1.id(), r2.id())));
+
+        // 已结算的 SELECTED Response 不能被撤回，避免出现“Reward 已结算 + Response=WITHDRAWN”
+        BusinessException exception = assertThrows(
+            BusinessException.class,
+            () -> demandResponseApplicationService.withdrawResponse(responder1Id, r1.id())
+        );
+        assertEquals(ErrorCode.BUSINESS_CONFLICT, exception.getErrorCode());
+        assertEquals(com.campushub.backend.demand.domain.ResponseStatus.SELECTED,
+            demandResponseRepository.findById(r1.id()).orElseThrow().getStatus());
+        assertEquals(com.campushub.backend.demand.domain.DemandStatus.COMPLETED,
+            demandRepository.findById(demandId).orElseThrow().getStatus());
+    }
+
     @Test
     void shouldRejectSelectOnCompletedDemand() {
         Long demandId = createTeamUpDemand(1);

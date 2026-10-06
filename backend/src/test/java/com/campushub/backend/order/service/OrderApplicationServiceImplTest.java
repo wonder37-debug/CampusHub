@@ -347,6 +347,109 @@ class OrderApplicationServiceImplTest {
         assertTrue(arbitration.statusHistory().stream().anyMatch(item -> "IN_ARBITRATION".equals(item.toStatus())));
     }
 
+    // ==================== accept ↔ update 并发边界 ====================
+
+    @Test
+    void shouldRejectAcceptWhenModeChangedToSelectOne() {
+        // 序列化验证锁定后重新读取：update 把 DIRECT_ACCEPT 改成 SELECT_ONE 后，accept 必须拒绝，不会绕过新 mode
+        Long demandId = demandApplicationService.publish(
+            publisherId,
+            new PublishDemandCommand(
+                "OTHER accept mode", "desc", null, "OTHER", "XIANLIN", "图书馆",
+                LocalDateTime.now().plusHours(1), LocalDateTime.now().plusHours(2),
+                new BigDecimal("3.00"), List.of(), null, null, false, null, "DIRECT_ACCEPT")
+        ).id();
+        demandRepository.findById(demandId).ifPresent(saved -> {
+            saved.setStatus(DemandStatus.PENDING);
+            saved.setIsApproved(true);
+            demandRepository.save(saved);
+        });
+
+        demandApplicationService.update(
+            publisherId, demandId,
+            new com.campushub.backend.demand.dto.UpdateDemandCommand(
+                null, null, null, null, null, null, null, null, null, null, null, null, null, "SELECT_ONE"));
+
+        BusinessException exception = assertThrows(
+            BusinessException.class,
+            () -> orderApplicationService.accept(accepterId, demandId, new AcceptOrderCommand("我来"))
+        );
+        assertEquals(ErrorCode.BUSINESS_CONFLICT, exception.getErrorCode());
+        assertEquals(com.campushub.backend.demand.domain.InteractionMode.SELECT_ONE,
+            demandRepository.findById(demandId).orElseThrow().getInteractionMode());
+        assertTrue(orderRepository.findByDemandId(demandId).isEmpty(),
+            "mode=SELECT_ONE 时 /accept 不应创建 Order");
+    }
+
+    @Test
+    void shouldNotRaceAcceptAndUpdateOnDemandLock() throws Exception {
+        Long demandId = demandApplicationService.publish(
+            publisherId,
+            new PublishDemandCommand(
+                "OTHER accept race", "desc", null, "OTHER", "XIANLIN", "图书馆",
+                LocalDateTime.now().plusHours(1), LocalDateTime.now().plusHours(2),
+                new BigDecimal("3.00"), List.of(), null, null, false, null, "DIRECT_ACCEPT")
+        ).id();
+        demandRepository.findById(demandId).ifPresent(saved -> {
+            saved.setStatus(DemandStatus.PENDING);
+            saved.setIsApproved(true);
+            demandRepository.save(saved);
+        });
+
+        java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newFixedThreadPool(2);
+        java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(2);
+        java.util.concurrent.atomic.AtomicInteger acceptSuccess = new java.util.concurrent.atomic.AtomicInteger(0);
+        java.util.concurrent.atomic.AtomicInteger updateSuccess = new java.util.concurrent.atomic.AtomicInteger(0);
+        java.util.concurrent.atomic.AtomicInteger failures = new java.util.concurrent.atomic.AtomicInteger(0);
+
+        executor.submit(() -> {
+            try {
+                start.await();
+                orderApplicationService.accept(accepterId, demandId, new AcceptOrderCommand("我来"));
+                acceptSuccess.incrementAndGet();
+            } catch (Exception e) {
+                failures.incrementAndGet();
+            } finally {
+                done.countDown();
+            }
+        });
+        executor.submit(() -> {
+            try {
+                start.await();
+                demandApplicationService.update(
+                    publisherId, demandId,
+                    new com.campushub.backend.demand.dto.UpdateDemandCommand(
+                        null, null, null, null, null, null, null, null, null, null, null, null, null, "SELECT_ONE"));
+                updateSuccess.incrementAndGet();
+            } catch (Exception e) {
+                failures.incrementAndGet();
+            } finally {
+                done.countDown();
+            }
+        });
+        start.countDown();
+        assertTrue(done.await(30, java.util.concurrent.TimeUnit.SECONDS));
+        executor.shutdown();
+
+        // 不变量：有 Order ⇔ Demand=IN_PROGRESS（accept 成功推进），不会出现 Demand=PENDING + 已创建 Order
+        boolean hasOrder = orderRepository.findByDemandId(demandId).isPresent();
+        com.campushub.backend.demand.domain.Demand finalDemand = demandRepository.findById(demandId).orElseThrow();
+        if (hasOrder) {
+            assertEquals(com.campushub.backend.demand.domain.DemandStatus.IN_PROGRESS, finalDemand.getStatus(),
+                "accept 成功创建 Order 时 Demand 必为 IN_PROGRESS");
+            // accept 当时 mode 必为 DIRECT_ACCEPT（锁内校验）；update 若成功则在 accept 之后改 mode
+            assertTrue(acceptSuccess.get() == 1, "有 Order 说明 accept 成功");
+        } else {
+            assertEquals(com.campushub.backend.demand.domain.DemandStatus.PENDING, finalDemand.getStatus(),
+                "无 Order 时 Demand 应仍 PENDING");
+            assertEquals(com.campushub.backend.demand.domain.InteractionMode.SELECT_ONE, finalDemand.getInteractionMode(),
+                "无 Order 说明 update 先改 mode=SELECT_ONE，accept 拒绝");
+        }
+        // 至少一个操作成功
+        assertTrue(acceptSuccess.get() + updateSuccess.get() >= 1);
+    }
+
     private DemandDetailResponse createDemand() {
         DemandDetailResponse demand = demandApplicationService.publish(
             publisherId,

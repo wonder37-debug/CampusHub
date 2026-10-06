@@ -836,7 +836,10 @@ export const useCampusHubStore = defineStore('campusHub', {
         method: 'POST',
         body: JSON.stringify({ rating, comment: comment.trim() })
       }, this.token)
-      return mapReviewRecord(review)
+      const mapped = mapReviewRecord(review)
+      // 本地写入 reviews，使 hasReviewedResponse 立即返回 true，无需再次请求后端
+      this.reviews.unshift(mapped)
+      return mapped
     },
 
     async startOrder(orderId: string): Promise<OrderRecord> {

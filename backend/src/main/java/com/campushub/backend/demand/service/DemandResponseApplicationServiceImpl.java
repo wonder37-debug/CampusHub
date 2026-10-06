@@ -216,6 +216,11 @@ public class DemandResponseApplicationServiceImpl implements DemandResponseAppli
 
     @Override
     public DemandResponseDetail withdrawResponse(Long operatorId, Long responseId) {
+        // 先定位 Response 拿到 demandId，仅用于锁定对应 Demand
+        DemandResponse snapshot = findResponse(responseId);
+        // 与 selectResponse / selectResponses / acceptAnswer 保持同一锁顺序：先锁 Demand
+        findDemandForUpdate(snapshot.getDemandId());
+        // 锁住 Demand 后重新查询 Response，避免继续使用可能已被 select 改成 SELECTED 的旧快照
         DemandResponse response = findResponse(responseId);
         if (!response.getAuthorId().equals(operatorId)) {
             throw new BusinessException(ErrorCode.PERMISSION_DENIED, "only author can withdraw response");

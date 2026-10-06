@@ -151,12 +151,14 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "update demand command must not be null");
         }
 
-        Demand demand = findDemandById(demandId);
+        // 加 Demand 行锁，确保 countByDemandId 与后续 category/interactionMode 判断基于同一锁定快照，
+        // 避免 update 与 createResponse 之间“已存在 Response 却仍被修改互动模式”的并发竞态。
+        Demand demand = findDemandForUpdate(demandId);
         if (!demand.isEditableBy(operatorId)) {
             throw new BusinessException(ErrorCode.PERMISSION_DENIED, "only publisher can edit this demand");
         }
 
-        // 一旦已有 Response（报名/留言/回答），禁止修改互动模式相关字段，避免破坏选择/结算流程
+        // 锁持有期间统计 Response，避免 createResponse 并发插入导致漏判
         boolean hasResponses = demandResponseRepository.countByDemandId(demandId) > 0;
 
         guardForbiddenWords(command.title(), command.description());
@@ -321,6 +323,14 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "demandId must not be null");
         }
         return demandRepository.findById(demandId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "demand not found"));
+    }
+
+    private Demand findDemandForUpdate(Long demandId) {
+        if (demandId == null) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "demandId must not be null");
+        }
+        return demandRepository.findByIdForUpdate(demandId)
             .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "demand not found"));
     }
 
