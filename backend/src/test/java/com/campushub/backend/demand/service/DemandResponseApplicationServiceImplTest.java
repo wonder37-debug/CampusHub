@@ -553,7 +553,10 @@ class DemandResponseApplicationServiceImplTest {
     //
     // 说明：H2（MULTI_THREADED=FALSE）下 SELECT ... FOR UPDATE 不提供跨操作行锁等待，
     // withdrawResponse 不修改 Demand 行，仅靠 Demand 行锁无法在 H2 下稳定串行化 Response 读写，
-    // 因此真正的并发竞态在 H2 下不可稳定复现。改用“锁定后重新读取状态”的序列化集成验证：
+    // 因此真正的并发竞态在 H2 下不可稳定复现（实测两操作均可成功并出现
+    // Response=WITHDRAWN + Demand=IN_PROGRESS + Order 的非法终态）。
+    // 生产 MySQL 下 FOR UPDATE 会串行化 withdrawResponse 与 selectResponse，修复生效。
+    // 按 P1 的 H2 豁免逻辑，改用“锁定后重新读取状态”的序列化集成验证，检查最终数据库状态：
     // selectResponse / selectResponses 把 Response 改成 SELECTED 后，withdrawResponse 必须拒绝。
 
     @Test
@@ -597,6 +600,71 @@ class DemandResponseApplicationServiceImplTest {
             demandResponseRepository.findById(r1.id()).orElseThrow().getStatus());
         assertEquals(com.campushub.backend.demand.domain.DemandStatus.COMPLETED,
             demandRepository.findById(demandId).orElseThrow().getStatus());
+    }
+
+    // ==================== Demand.withdraw ↔ 接单/选择流程 回归 ====================
+
+    @Test
+    void shouldRejectWithdrawAfterSelectResponseForSelectOne() {
+        // SELECT_ONE：selectResponse 后 Demand=IN_PROGRESS + Order 已创建，withdraw 必须拒绝
+        Long demandId = createSecondHandDemand();
+        DemandResponseDetail response = demandResponseApplicationService.createResponse(
+            responder1Id, demandId, new CreateDemandResponseCommand("我要"));
+        demandResponseApplicationService.selectResponse(publisherId, demandId, response.id());
+
+        BusinessException exception = assertThrows(
+            BusinessException.class,
+            () -> demandApplicationService.withdraw(publisherId, demandId)
+        );
+        assertEquals(ErrorCode.BUSINESS_CONFLICT, exception.getErrorCode());
+        // 最终数据库状态：Demand 未被 CANCELLED，Order 仍存在，Response 仍 SELECTED
+        assertEquals(com.campushub.backend.demand.domain.DemandStatus.IN_PROGRESS,
+            demandRepository.findById(demandId).orElseThrow().getStatus());
+        assertTrue(orderRepository.findByDemandId(demandId).isPresent(),
+            "select 创建的 Order 不应被 withdraw 撤回");
+    }
+
+    @Test
+    void shouldRejectWithdrawAfterAcceptAnswerForHelp() {
+        // HELP：acceptAnswer 后 Demand=COMPLETED + reward 已结算，withdraw 必须拒绝
+        Long demandId = createHelpDemand(new BigDecimal("10.00"));
+        DemandResponseDetail response = demandResponseApplicationService.createResponse(
+            responder1Id, demandId, new CreateDemandResponseCommand("回答"));
+        demandResponseApplicationService.acceptAnswer(publisherId, demandId, response.id());
+
+        BusinessException exception = assertThrows(
+            BusinessException.class,
+            () -> demandApplicationService.withdraw(publisherId, demandId)
+        );
+        assertEquals(ErrorCode.BUSINESS_CONFLICT, exception.getErrorCode());
+        assertEquals(com.campushub.backend.demand.domain.DemandStatus.COMPLETED,
+            demandRepository.findById(demandId).orElseThrow().getStatus());
+        // reward 已结算：publisher 余额减少 10，responder 余额增加 10
+        assertEquals(new BigDecimal("90.00"), userRepository.findById(publisherId).orElseThrow().getBalance());
+        assertEquals(new BigDecimal("110.00"), userRepository.findById(responder1Id).orElseThrow().getBalance());
+    }
+
+    @Test
+    void shouldRejectWithdrawAfterSelectResponsesForSelectMany() {
+        // SELECT_MANY：selectResponses 达 target 后 Demand=COMPLETED + reward 平分结算，withdraw 必须拒绝
+        Long demandId = createTeamUpDemand(2);
+        DemandResponseDetail r1 = demandResponseApplicationService.createResponse(
+            responder1Id, demandId, new CreateDemandResponseCommand("报名1"));
+        DemandResponseDetail r2 = demandResponseApplicationService.createResponse(
+            responder2Id, demandId, new CreateDemandResponseCommand("报名2"));
+        demandResponseApplicationService.selectResponses(
+            publisherId, demandId, new SelectResponsesCommand(List.of(r1.id(), r2.id())));
+
+        BusinessException exception = assertThrows(
+            BusinessException.class,
+            () -> demandApplicationService.withdraw(publisherId, demandId)
+        );
+        assertEquals(ErrorCode.BUSINESS_CONFLICT, exception.getErrorCode());
+        // 最终数据库状态：Demand 未被 CANCELLED，reward 已结算
+        assertEquals(com.campushub.backend.demand.domain.DemandStatus.COMPLETED,
+            demandRepository.findById(demandId).orElseThrow().getStatus());
+        assertEquals(new BigDecimal("90.00"), userRepository.findById(publisherId).orElseThrow().getBalance());
+        assertEquals(new BigDecimal("105.00"), userRepository.findById(responder1Id).orElseThrow().getBalance());
     }
 
     @Test

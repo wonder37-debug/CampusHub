@@ -46,7 +46,6 @@ public class RewardSettlementServiceImpl implements RewardSettlementService {
         }
         List<Long> distinctIds = accepterIds.stream().distinct().toList();
         BigDecimal share = totalReward.divide(BigDecimal.valueOf(distinctIds.size()), 2, RoundingMode.DOWN);
-        BigDecimal distributed = BigDecimal.ZERO;
         for (int i = 0; i < distinctIds.size(); i++) {
             Long accepterId = distinctIds.get(i);
             BigDecimal amount = share;
@@ -56,7 +55,6 @@ public class RewardSettlementServiceImpl implements RewardSettlementService {
                 amount = share.add(remainder);
             }
             settleToAccepter(publisherId, accepterId, amount);
-            distributed = distributed.add(amount);
         }
     }
 

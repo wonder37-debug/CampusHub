@@ -838,7 +838,10 @@ export const useCampusHubStore = defineStore('campusHub', {
       }, this.token)
       const mapped = mapReviewRecord(review)
       // 本地写入 reviews，使 hasReviewedResponse 立即返回 true，无需再次请求后端
-      this.reviews.unshift(mapped)
+      // 用 review.id 做最小去重，避免重复调用导致 store.reviews 出现相同 review ID 的重复项
+      if (!this.reviews.some((r) => r.id === mapped.id)) {
+        this.reviews.unshift(mapped)
+      }
       return mapped
     },
 

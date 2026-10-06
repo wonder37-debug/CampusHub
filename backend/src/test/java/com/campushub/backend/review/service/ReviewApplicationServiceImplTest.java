@@ -15,9 +15,14 @@ import com.campushub.backend.common.exception.ErrorCode;
 import com.campushub.backend.common.model.PageQuery;
 import com.campushub.backend.demand.domain.DemandStatus;
 import com.campushub.backend.demand.dto.DemandDetailResponse;
+import com.campushub.backend.demand.dto.DemandResponseDetail;
 import com.campushub.backend.demand.dto.PublishDemandCommand;
+import com.campushub.backend.demand.dto.SelectResponsesCommand;
+import com.campushub.backend.demand.dto.CreateDemandResponseCommand;
 import com.campushub.backend.demand.repository.DemandRepository;
+import com.campushub.backend.demand.repository.DemandResponseRepository;
 import com.campushub.backend.demand.service.DemandApplicationService;
+import com.campushub.backend.demand.service.DemandResponseApplicationService;
 import com.campushub.backend.notification.dto.NotificationQuery;
 import com.campushub.backend.notification.dto.NotificationResponse;
 import com.campushub.backend.notification.repository.NotificationRepository;
@@ -66,6 +71,12 @@ class ReviewApplicationServiceImplTest {
     private DemandApplicationService demandApplicationService;
 
     @Autowired
+    private DemandResponseApplicationService demandResponseApplicationService;
+
+    @Autowired
+    private DemandResponseRepository demandResponseRepository;
+
+    @Autowired
     private OrderApplicationService orderApplicationService;
 
     @Autowired
@@ -77,6 +88,8 @@ class ReviewApplicationServiceImplTest {
     private Long publisherId;
     private Long accepterId;
     private Long outsiderId;
+    private Long responder1Id;
+    private Long responder2Id;
 
     @BeforeEach
     void setUp() {
@@ -116,6 +129,36 @@ class ReviewApplicationServiceImplTest {
             "20260003",
             "hash",
             "旁观者",
+            null,
+            UserRole.USER,
+            UserStatus.ACTIVE,
+            100,
+            new BigDecimal("100.00"),
+            BigDecimal.ZERO,
+            LocalDateTime.now(),
+            LocalDateTime.now()
+        )).getId();
+        responder1Id = userRepository.save(new User(
+            null,
+            "responder1@example.edu.cn",
+            "20260004",
+            "hash",
+            "报名者1",
+            null,
+            UserRole.USER,
+            UserStatus.ACTIVE,
+            100,
+            new BigDecimal("100.00"),
+            BigDecimal.ZERO,
+            LocalDateTime.now(),
+            LocalDateTime.now()
+        )).getId();
+        responder2Id = userRepository.save(new User(
+            null,
+            "responder2@example.edu.cn",
+            "20260005",
+            "hash",
+            "报名者2",
             null,
             UserRole.USER,
             UserStatus.ACTIVE,
@@ -206,6 +249,86 @@ class ReviewApplicationServiceImplTest {
         );
 
         assertTrue(notifications.items().stream().anyMatch(item -> "REVIEW_RECEIVED".equals(item.type())));
+    }
+
+    @Test
+    void shouldNotifyParticipantWhenPublisherReviewsResponse() {
+        // SELECT_MANY 完成后 publisher 评价 participant（response.author），应通知 participant
+        Long demandId = createTeamUpDemandCompleted();
+        DemandResponseDetail r1 = demandResponseApplicationService.createResponse(
+            responder1Id, demandId, new CreateDemandResponseCommand("报名1"));
+        DemandResponseDetail r2 = demandResponseApplicationService.createResponse(
+            responder2Id, demandId, new CreateDemandResponseCommand("报名2"));
+        demandResponseApplicationService.selectResponses(
+            publisherId, demandId, new SelectResponsesCommand(List.of(r1.id(), r2.id())));
+
+        reviewApplicationService.submitForResponse(
+            publisherId, r1.id(), new SubmitReviewCommand(5, "靠谱"));
+
+        PageResponse<NotificationResponse> notifications = notificationApplicationService.list(
+            responder1Id,
+            new NotificationQuery(false, new PageQuery(1, 20))
+        );
+        NotificationResponse reviewNotification = notifications.items().stream()
+            .filter(item -> "RESPONSE_REVIEW_RECEIVED".equals(item.type()))
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("participant 未收到 RESPONSE_REVIEW_RECEIVED 通知"));
+        assertEquals("DEMAND", reviewNotification.targetType(),
+            "Response Review 通知 targetType 必须为 DEMAND，避免前端误判为 Order Review");
+        assertEquals(demandId, reviewNotification.targetId(),
+            "Response Review 通知 targetId 应为 demandId，前端跳 demand 详情");
+    }
+
+    @Test
+    void shouldNotifyPublisherWhenParticipantReviewsResponse() {
+        // SELECT_MANY 完成后 participant 评价 publisher，应通知 publisher
+        Long demandId = createTeamUpDemandCompleted();
+        DemandResponseDetail r1 = demandResponseApplicationService.createResponse(
+            responder1Id, demandId, new CreateDemandResponseCommand("报名1"));
+        DemandResponseDetail r2 = demandResponseApplicationService.createResponse(
+            responder2Id, demandId, new CreateDemandResponseCommand("报名2"));
+        demandResponseApplicationService.selectResponses(
+            publisherId, demandId, new SelectResponsesCommand(List.of(r1.id(), r2.id())));
+
+        reviewApplicationService.submitForResponse(
+            responder1Id, r1.id(), new SubmitReviewCommand(4, "感谢组队"));
+
+        PageResponse<NotificationResponse> notifications = notificationApplicationService.list(
+            publisherId,
+            new NotificationQuery(false, new PageQuery(1, 20))
+        );
+        assertTrue(notifications.items().stream().anyMatch(item -> "RESPONSE_REVIEW_RECEIVED".equals(item.type())),
+            "publisher 未收到 RESPONSE_REVIEW_RECEIVED 通知");
+    }
+
+    @Test
+    void shouldNotBreakOrderReviewNotificationAfterResponseReviewAdded() {
+        // 验证新增 Response Review 通知不破坏既有 Order Review 通知
+        OrderDetailResponse order = createCompletedOrder();
+        reviewApplicationService.submit(publisherId, order.orderId(), new SubmitReviewCommand(5, "很好"));
+
+        PageResponse<NotificationResponse> notifications = notificationApplicationService.list(
+            accepterId,
+            new NotificationQuery(false, new PageQuery(1, 20))
+        );
+        assertTrue(notifications.items().stream().anyMatch(item -> "REVIEW_RECEIVED".equals(item.type())),
+            "Order Review 通知仍应为 REVIEW_RECEIVED");
+    }
+
+    private Long createTeamUpDemandCompleted() {
+        Long demandId = demandApplicationService.publish(
+            publisherId,
+            new PublishDemandCommand(
+                "组队打球", "找队友", null, "TEAM_UP", "XIANLIN", "操场",
+                LocalDateTime.now().plusHours(1), LocalDateTime.now().plusHours(3),
+                new BigDecimal("10.00"), List.of("篮球"), null, null, false, 2, null)
+        ).id();
+        demandRepository.findById(demandId).ifPresent(saved -> {
+            saved.setStatus(DemandStatus.PENDING);
+            saved.setIsApproved(true);
+            demandRepository.save(saved);
+        });
+        return demandId;
     }
 
     private DemandDetailResponse createDemand() {

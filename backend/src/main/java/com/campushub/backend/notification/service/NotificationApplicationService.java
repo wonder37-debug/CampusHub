@@ -17,6 +17,12 @@ public interface NotificationApplicationService {
 
     void notifyReviewReceived(Long receiverId, Long orderId);
 
+    /**
+     * Response Review（SELECT_MANY 组队评价）专用通知。
+     * relatedId 语义为 demandId，前端跳转 demand 详情；通知内容明确为组队评价，避免与 Order Review 混淆。
+     */
+    void notifyResponseReviewReceived(Long receiverId, Long responseId, Long demandId);
+
     void notifyDemandReviewRequested(Long receiverId, Long demandId);
 
     void notifyDemandRejected(Long receiverId, Long demandId, String reviewReason);

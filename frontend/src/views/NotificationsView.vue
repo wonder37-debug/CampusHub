@@ -33,7 +33,7 @@ async function refreshNotifications(): Promise<void> {
 
 function iconFor(type: string): string {
   if (type === 'ORDER_ACCEPTED') return '🧩'
-  if (type === 'REVIEW_RECEIVED') return '⭐'
+  if (type === 'REVIEW_RECEIVED' || type === 'RESPONSE_REVIEW_RECEIVED') return '⭐'
   if (type === 'REVIEW_REQUEST' || type === 'DEMAND_REJECTED') return '📣'
   if (type === 'DEMAND_APPROVED') return '✅'
   if (type === 'ORDER_ARBITRATION_REQUESTED') return '⚖️'

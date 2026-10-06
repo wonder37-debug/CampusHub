@@ -206,6 +206,7 @@ class MyBatisNotificationRepositoryTest {
             case PENDING_REVIEW -> "待评价提醒";
             case ORDER_ARBITRATION_REQUESTED -> "订单申请仲裁";
             case ORDER_ARBITRATION_RESOLVED -> "订单仲裁已处理";
+            case RESPONSE_REVIEW_RECEIVED -> "收到组队评价";
         });
         notification.setContent(switch (type) {
             case ORDER_ACCEPTED -> "接单成功";
@@ -217,6 +218,7 @@ class MyBatisNotificationRepositoryTest {
             case PENDING_REVIEW -> "您有未评价的订单";
             case ORDER_ARBITRATION_REQUESTED -> "有订单发起了仲裁";
             case ORDER_ARBITRATION_RESOLVED -> "订单仲裁结果已发布";
+            case RESPONSE_REVIEW_RECEIVED -> "您的组队收到新评价";
         });
         notification.setRead(false);
         notification.setCreatedAt(LocalDateTime.now());

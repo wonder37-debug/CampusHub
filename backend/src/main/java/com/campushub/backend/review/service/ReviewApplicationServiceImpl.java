@@ -153,8 +153,8 @@ public class ReviewApplicationServiceImpl implements ReviewApplicationService {
         review.setDemandId(demand.getId());
         review = reviewRepository.save(review);
         recalculateCreditScore(targetId);
-        // Response 评价通知暂未发送：notifyReviewReceived 的 relatedId 语义为 orderId，
-        // 用于 responseId 会导致前端 REVIEW_RECEIVED 通知跳转错乱，待新增 NotificationType 后再补
+        // Response Review 专用通知：relatedId=demandId，前端跳 demand 详情，避免与 Order Review 的 orderId 语义混淆
+        notificationApplicationService.notifyResponseReviewReceived(targetId, responseId, demand.getId());
         return ReviewResponse.from(review);
     }
 

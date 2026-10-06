@@ -279,8 +279,9 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
 
     @Override
     public DemandDetailResponse withdraw(Long operatorId, Long demandId) {
-        Demand demand = demandRepository.findById(demandId)
-            .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "demand not found"));
+        // 加 Demand 行锁，与 update/createResponse/selectResponse/selectResponses/acceptAnswer/accept/withdrawResponse
+        // 同一并发控制模型，避免 withdraw 与接单/选择流程并发产生“Demand=CANCELLED + Order 已创建 / Response=SELECTED + reward 已结算”
+        Demand demand = findDemandForUpdate(demandId);
         if (!demand.getPublisherId().equals(operatorId)) {
             throw new BusinessException(ErrorCode.PERMISSION_DENIED, "only the publisher can withdraw this demand");
         }
