@@ -86,6 +86,9 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
         DemandCategory category = parseCategory(command.category());
         InteractionMode interactionMode = resolveInteractionMode(category, command.interactionMode());
         validateTargetParticipantCount(interactionMode, command.targetParticipantCount());
+        // 不变量：仅 SELECT_MANY 保存 targetParticipantCount，其余强制 null
+        Integer targetParticipantCount = interactionMode == InteractionMode.SELECT_MANY
+            ? command.targetParticipantCount() : null;
 
         LocalDateTime now = LocalDateTime.now();
         Demand demand = new Demand(
@@ -102,7 +105,7 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
             command.endTime(),
             reward,
             interactionMode,
-            command.targetParticipantCount(),
+            targetParticipantCount,
             command.tags(),
             command.images(),
             trimToNull(command.contactInfo()),
@@ -245,6 +248,10 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
             if (hasResponses) {
                 throw new BusinessException(ErrorCode.BUSINESS_CONFLICT,
                     "cannot change targetParticipantCount after responses exist");
+            }
+            if (demand.getInteractionMode() != InteractionMode.SELECT_MANY) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED,
+                    "targetParticipantCount only allowed for SELECT_MANY, current mode: " + demand.getInteractionMode());
             }
             validateTargetParticipantCount(demand.getInteractionMode(), command.targetParticipantCount());
             demand.setTargetParticipantCount(command.targetParticipantCount());

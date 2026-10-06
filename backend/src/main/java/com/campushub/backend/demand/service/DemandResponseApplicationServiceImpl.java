@@ -65,7 +65,7 @@ public class DemandResponseApplicationServiceImpl implements DemandResponseAppli
         }
 
         User author = findActiveUser(operatorId);
-        Demand demand = findDemand(demandId);
+        Demand demand = findDemandForUpdate(demandId);
 
         if (demand.getInteractionMode() == InteractionMode.DIRECT_ACCEPT) {
             throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "DIRECT_ACCEPT demand does not accept responses, use accept endpoint");

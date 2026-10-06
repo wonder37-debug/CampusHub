@@ -68,6 +68,10 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         }
 
         Demand demand = findDemand(demandId);
+        if (demand.getInteractionMode() != InteractionMode.DIRECT_ACCEPT) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT,
+                "only DIRECT_ACCEPT demand can be accepted via /accept, current mode: " + demand.getInteractionMode());
+        }
         if (isDemandExpired(demand, LocalDateTime.now()) || demand.getStatus() == DemandStatus.EXPIRED) {
             throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "demand has expired");
         }

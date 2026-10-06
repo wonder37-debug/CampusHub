@@ -483,6 +483,10 @@ function startResponseReview(responseId: string) {
   responseReviewComment.value = ''
 }
 
+function hasReviewedResponse(responseId: string): boolean {
+  return store.reviews.some((rev) => rev.responseId === responseId && rev.reviewerId === store.currentUser?.id)
+}
+
 function cancelResponseReview() {
   reviewingResponseId.value = null
 }
@@ -520,6 +524,7 @@ onMounted(() => {
       await store.fetchDemandDetail(String(route.params.id))
       if (store.currentUser) {
         await store.fetchOrders()
+        await store.fetchUserReviews(store.currentUser.id)
         // 第三方用户可能不在 store.orders 中，通过 demandId 单独获取关联订单
         const demandId = String(route.params.id)
         const hasRelatedOrder = store.orders.some((o) => o.demandId === demandId)
@@ -754,11 +759,12 @@ onMounted(() => {
               style="margin-top: 8px;"
             >
               <button
-                v-if="reviewingResponseId !== r.id"
+                v-if="reviewingResponseId !== r.id && !hasReviewedResponse(r.id)"
                 type="button"
                 class="button secondary"
                 @click="startResponseReview(r.id)"
               >评价</button>
+              <span v-else-if="hasReviewedResponse(r.id)" class="chip is-success">已评价</span>
               <div v-else class="field">
                 <label>评分</label>
                 <select v-model="responseReviewRating">

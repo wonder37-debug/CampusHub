@@ -1,6 +1,7 @@
 package com.campushub.backend.demand.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -813,6 +814,102 @@ class DemandResponseApplicationServiceImplTest {
                 outsiderId, r1.id(), new com.campushub.backend.review.dto.SubmitReviewCommand(5, "旁观"))
         );
         assertEquals(ErrorCode.PERMISSION_DENIED, ex.getErrorCode());
+    }
+
+    // ==================== accept 模式限制 ====================
+
+    @Test
+    void shouldRejectAcceptForSelectOne() {
+        Long demandId = createSecondHandDemand();
+        BusinessException ex = assertThrows(BusinessException.class, () ->
+            orderApplicationService.accept(responder1Id, demandId,
+                new com.campushub.backend.order.dto.AcceptOrderCommand("我来"))
+        );
+        assertEquals(ErrorCode.BUSINESS_CONFLICT, ex.getErrorCode());
+    }
+
+    @Test
+    void shouldRejectAcceptForSelectMany() {
+        Long demandId = createTeamUpDemand(2);
+        BusinessException ex = assertThrows(BusinessException.class, () ->
+            orderApplicationService.accept(responder1Id, demandId,
+                new com.campushub.backend.order.dto.AcceptOrderCommand("我来"))
+        );
+        assertEquals(ErrorCode.BUSINESS_CONFLICT, ex.getErrorCode());
+    }
+
+    @Test
+    void shouldRejectAcceptForHelp() {
+        Long demandId = createHelpDemand(new java.math.BigDecimal("5.00"));
+        BusinessException ex = assertThrows(BusinessException.class, () ->
+            orderApplicationService.accept(responder1Id, demandId,
+                new com.campushub.backend.order.dto.AcceptOrderCommand("我来"))
+        );
+        assertEquals(ErrorCode.BUSINESS_CONFLICT, ex.getErrorCode());
+    }
+
+    // ==================== targetParticipantCount 不变量 ====================
+
+    @Test
+    void shouldForceNullTargetForOtherDirectAccept() {
+        Long demandId = demandApplicationService.publish(
+            publisherId,
+            new com.campushub.backend.demand.dto.PublishDemandCommand(
+                "OTHER DA target", "desc", null, "OTHER", "XIANLIN", "图书馆",
+                java.time.LocalDateTime.now().plusHours(1), java.time.LocalDateTime.now().plusHours(2),
+                new java.math.BigDecimal("3.00"), java.util.List.of(), null, null, false, 3, "DIRECT_ACCEPT")
+        ).id();
+        approveDemand(demandId);
+        com.campushub.backend.demand.domain.Demand d = demandRepository.findById(demandId).orElseThrow();
+        assertNull(d.getTargetParticipantCount(),
+            "OTHER+DIRECT_ACCEPT must not save targetParticipantCount even if provided");
+    }
+
+    @Test
+    void shouldForceNullTargetForOtherSelectOne() {
+        Long demandId = demandApplicationService.publish(
+            publisherId,
+            new com.campushub.backend.demand.dto.PublishDemandCommand(
+                "OTHER S1 target", "desc", null, "OTHER", "XIANLIN", "线上",
+                java.time.LocalDateTime.now().plusHours(1), java.time.LocalDateTime.now().plusDays(2),
+                new java.math.BigDecimal("5.00"), java.util.List.of(), null, null, false, 3, "SELECT_ONE")
+        ).id();
+        approveDemand(demandId);
+        com.campushub.backend.demand.domain.Demand d = demandRepository.findById(demandId).orElseThrow();
+        assertNull(d.getTargetParticipantCount(),
+            "OTHER+SELECT_ONE must not save targetParticipantCount even if provided");
+    }
+
+    @Test
+    void shouldForceNullTargetForHelp() {
+        Long demandId = demandApplicationService.publish(
+            publisherId,
+            new com.campushub.backend.demand.dto.PublishDemandCommand(
+                "HELP target", "desc", null, "HELP", "XIANLIN", "线上",
+                java.time.LocalDateTime.now().plusHours(1), java.time.LocalDateTime.now().plusDays(1),
+                new java.math.BigDecimal("5.00"), java.util.List.of(), null, null, false, 3, null)
+        ).id();
+        approveDemand(demandId);
+        com.campushub.backend.demand.domain.Demand d = demandRepository.findById(demandId).orElseThrow();
+        assertNull(d.getTargetParticipantCount(),
+            "HELP must not save targetParticipantCount even if provided");
+    }
+
+    // ==================== Demand 完成后不能创建 Response ====================
+
+    @Test
+    void shouldRejectCreateResponseAfterDemandCompleted() {
+        Long demandId = createTeamUpDemand(1);
+        DemandResponseDetail r1 = demandResponseApplicationService.createResponse(
+            responder1Id, demandId, new CreateDemandResponseCommand("报名1"));
+        demandResponseApplicationService.selectResponses(
+            publisherId, demandId, new SelectResponsesCommand(java.util.List.of(r1.id())));
+
+        BusinessException ex = assertThrows(BusinessException.class, () ->
+            demandResponseApplicationService.createResponse(
+                responder2Id, demandId, new CreateDemandResponseCommand("迟到报名"))
+        );
+        assertEquals(ErrorCode.BUSINESS_CONFLICT, ex.getErrorCode());
     }
 
     // ==================== helpers ====================
