@@ -17,6 +17,8 @@ public record PublishDemandCommand(
     List<String> tags,
     List<String> images,
     String contactInfo,
-    boolean anonymous
+    boolean anonymous,
+    Integer targetParticipantCount,
+    String interactionMode
 ) {
 }

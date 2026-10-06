@@ -11,12 +11,14 @@ import com.campushub.backend.demand.domain.CampusZone;
 import com.campushub.backend.demand.domain.Demand;
 import com.campushub.backend.demand.domain.DemandCategory;
 import com.campushub.backend.demand.domain.DemandStatus;
+import com.campushub.backend.demand.domain.InteractionMode;
 import com.campushub.backend.demand.dto.DemandDetailResponse;
 import com.campushub.backend.demand.dto.DemandQuery;
 import com.campushub.backend.demand.dto.DemandSummaryResponse;
 import com.campushub.backend.demand.dto.PublishDemandCommand;
 import com.campushub.backend.demand.dto.UpdateDemandCommand;
 import com.campushub.backend.demand.repository.DemandRepository;
+import com.campushub.backend.demand.repository.DemandResponseRepository;
 import com.campushub.backend.notification.service.NotificationApplicationService;
 import com.campushub.backend.order.domain.Order;
 import com.campushub.backend.order.domain.OrderStatus;
@@ -44,6 +46,7 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
     private final OrderApplicationService orderApplicationService;
     private final ReviewRepository reviewRepository;
     private final OrderRepository orderRepository;
+    private final DemandResponseRepository demandResponseRepository;
 
     @Autowired
     public DemandApplicationServiceImpl(
@@ -53,7 +56,8 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
         NotificationApplicationService notificationApplicationService,
         OrderApplicationService orderApplicationService,
         ReviewRepository reviewRepository,
-        OrderRepository orderRepository
+        OrderRepository orderRepository,
+        DemandResponseRepository demandResponseRepository
     ) {
         this.demandRepository = demandRepository;
         this.userRepository = userRepository;
@@ -62,6 +66,7 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
         this.orderApplicationService = orderApplicationService;
         this.reviewRepository = reviewRepository;
         this.orderRepository = orderRepository;
+        this.demandResponseRepository = demandResponseRepository;
     }
 
     @Override
@@ -78,6 +83,13 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
         // 自动完成超时订单 + 检查未评价订单并提醒
         checkPendingReviewsAndAutoComplete(publisherId);
 
+        DemandCategory category = parseCategory(command.category());
+        InteractionMode interactionMode = resolveInteractionMode(category, command.interactionMode());
+        validateTargetParticipantCount(interactionMode, command.targetParticipantCount());
+        // 不变量：仅 SELECT_MANY 保存 targetParticipantCount，其余强制 null
+        Integer targetParticipantCount = interactionMode == InteractionMode.SELECT_MANY
+            ? command.targetParticipantCount() : null;
+
         LocalDateTime now = LocalDateTime.now();
         Demand demand = new Demand(
             null,
@@ -86,12 +98,14 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
             command.title().trim(),
             trimToNull(command.description()),
             trimToNull(command.note()),
-            parseCategory(command.category()),
+            category,
             parseCampusZone(command.campusZone()),
             trimToNull(command.location()),
             command.startTime(),
             command.endTime(),
-            normalizeReward(command.reward()),
+            reward,
+            interactionMode,
+            targetParticipantCount,
             command.tags(),
             command.images(),
             trimToNull(command.contactInfo()),
@@ -137,10 +151,15 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "update demand command must not be null");
         }
 
-        Demand demand = findDemandById(demandId);
+        // 加 Demand 行锁，确保 countByDemandId 与后续 category/interactionMode 判断基于同一锁定快照，
+        // 避免 update 与 createResponse 之间“已存在 Response 却仍被修改互动模式”的并发竞态。
+        Demand demand = findDemandForUpdate(demandId);
         if (!demand.isEditableBy(operatorId)) {
             throw new BusinessException(ErrorCode.PERMISSION_DENIED, "only publisher can edit this demand");
         }
+
+        // 锁持有期间统计 Response，避免 createResponse 并发插入导致漏判
+        boolean hasResponses = demandResponseRepository.countByDemandId(demandId) > 0;
 
         guardForbiddenWords(command.title(), command.description());
         if (command.title() != null) {
@@ -155,7 +174,38 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
             demand.setNote(trimToNull(command.note()));
         }
         if (command.category() != null) {
-            demand.setCategory(parseCategory(command.category()));
+            if (hasResponses) {
+                throw new BusinessException(ErrorCode.BUSINESS_CONFLICT,
+                    "cannot change category/interactionMode after responses exist");
+            }
+            DemandCategory newCategory = parseCategory(command.category());
+            demand.setCategory(newCategory);
+            InteractionMode newMode = resolveInteractionMode(newCategory, command.interactionMode());
+            demand.setInteractionMode(newMode);
+            if (newMode == InteractionMode.SELECT_MANY) {
+                Integer effectiveTarget = command.targetParticipantCount() != null
+                    ? command.targetParticipantCount()
+                    : demand.getTargetParticipantCount();
+                validateTargetParticipantCount(newMode, effectiveTarget);
+            } else {
+                demand.setTargetParticipantCount(null);
+            }
+        } else if (command.interactionMode() != null) {
+            // 单独修改 interactionMode（仅对 OTHER 有意义；固定分类 resolveInteractionMode 会忽略 userInput）
+            if (hasResponses) {
+                throw new BusinessException(ErrorCode.BUSINESS_CONFLICT,
+                    "cannot change interactionMode after responses exist");
+            }
+            InteractionMode newMode = resolveInteractionMode(demand.getCategory(), command.interactionMode());
+            demand.setInteractionMode(newMode);
+            if (newMode == InteractionMode.SELECT_MANY) {
+                Integer effectiveTarget = command.targetParticipantCount() != null
+                    ? command.targetParticipantCount()
+                    : demand.getTargetParticipantCount();
+                validateTargetParticipantCount(newMode, effectiveTarget);
+            } else {
+                demand.setTargetParticipantCount(null);
+            }
         }
         if (command.campusZone() != null) {
             demand.setCampusZone(parseCampusZone(command.campusZone()));
@@ -196,6 +246,18 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
             demand.setAnonymous(command.anonymous());
             demand.setAnonymousCode(Boolean.TRUE.equals(command.anonymous()) ? generateAnonymousCode() : null);
         }
+        if (command.targetParticipantCount() != null) {
+            if (hasResponses) {
+                throw new BusinessException(ErrorCode.BUSINESS_CONFLICT,
+                    "cannot change targetParticipantCount after responses exist");
+            }
+            if (demand.getInteractionMode() != InteractionMode.SELECT_MANY) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED,
+                    "targetParticipantCount only allowed for SELECT_MANY, current mode: " + demand.getInteractionMode());
+            }
+            validateTargetParticipantCount(demand.getInteractionMode(), command.targetParticipantCount());
+            demand.setTargetParticipantCount(command.targetParticipantCount());
+        }
         demand.setUpdatedAt(LocalDateTime.now());
         return DemandDetailResponse.from(demandRepository.save(demand));
     }
@@ -217,8 +279,9 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
 
     @Override
     public DemandDetailResponse withdraw(Long operatorId, Long demandId) {
-        Demand demand = demandRepository.findById(demandId)
-            .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "demand not found"));
+        // 加 Demand 行锁，与 update/createResponse/selectResponse/selectResponses/acceptAnswer/accept/withdrawResponse
+        // 同一并发控制模型，避免 withdraw 与接单/选择流程并发产生“Demand=CANCELLED + Order 已创建 / Response=SELECTED + reward 已结算”
+        Demand demand = findDemandForUpdate(demandId);
         if (!demand.getPublisherId().equals(operatorId)) {
             throw new BusinessException(ErrorCode.PERMISSION_DENIED, "only the publisher can withdraw this demand");
         }
@@ -264,6 +327,14 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
             .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "demand not found"));
     }
 
+    private Demand findDemandForUpdate(Long demandId) {
+        if (demandId == null) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "demandId must not be null");
+        }
+        return demandRepository.findByIdForUpdate(demandId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "demand not found"));
+    }
+
     private void validatePublishCommand(PublishDemandCommand command) {
         if (command == null) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "publish demand command must not be null");
@@ -306,6 +377,36 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
         if (tags != null && tags.size() > 20) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "tags size must not exceed 20");
         }
+    }
+
+    private void validateTargetParticipantCount(InteractionMode interactionMode, Integer targetParticipantCount) {
+        if (interactionMode == InteractionMode.SELECT_MANY) {
+            if (targetParticipantCount == null || targetParticipantCount < 1) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "SELECT_MANY demand requires targetParticipantCount >= 1");
+            }
+            if (targetParticipantCount > 100) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "targetParticipantCount must not exceed 100");
+            }
+        }
+    }
+
+    /**
+     * 解析互动模式：固定分类按 category 推导；OTHER 由用户传入，未传默认 DIRECT_ACCEPT，且禁止 HELP。
+     */
+    private InteractionMode resolveInteractionMode(DemandCategory category, String userInput) {
+        if (category == DemandCategory.OTHER) {
+            if (userInput == null || userInput.isBlank()) {
+                return InteractionMode.DIRECT_ACCEPT;
+            }
+            InteractionMode mode = InteractionMode.fromValue(userInput);
+            if (mode == null || mode == InteractionMode.HELP) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED,
+                    "OTHER category interactionMode must be one of DIRECT_ACCEPT/SELECT_ONE/SELECT_MANY");
+            }
+            return mode;
+        }
+        InteractionMode resolved = InteractionMode.resolve(category);
+        return resolved == null ? InteractionMode.DIRECT_ACCEPT : resolved;
     }
 
     private void validateRewardAgainstBalance(User publisher, BigDecimal reward) {

@@ -9,6 +9,7 @@ import com.campushub.backend.common.exception.BusinessException;
 import com.campushub.backend.common.exception.ErrorCode;
 import com.campushub.backend.demand.domain.Demand;
 import com.campushub.backend.demand.domain.DemandStatus;
+import com.campushub.backend.demand.domain.InteractionMode;
 import com.campushub.backend.demand.dto.DemandDetailResponse;
 import com.campushub.backend.demand.repository.DemandRepository;
 import com.campushub.backend.notification.service.NotificationApplicationService;
@@ -43,17 +44,20 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
     private final DemandRepository demandRepository;
     private final UserRepository userRepository;
     private final NotificationApplicationService notificationApplicationService;
+    private final RewardSettlementService rewardSettlementService;
 
     public OrderApplicationServiceImpl(
         OrderRepository orderRepository,
         DemandRepository demandRepository,
         UserRepository userRepository,
-        NotificationApplicationService notificationApplicationService
+        NotificationApplicationService notificationApplicationService,
+        RewardSettlementService rewardSettlementService
     ) {
         this.orderRepository = orderRepository;
         this.demandRepository = demandRepository;
         this.userRepository = userRepository;
         this.notificationApplicationService = notificationApplicationService;
+        this.rewardSettlementService = rewardSettlementService;
     }
 
     @Override
@@ -63,7 +67,12 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
             throw new BusinessException(ErrorCode.PERMISSION_DENIED, "admin cannot accept demands");
         }
 
-        Demand demand = findDemand(demandId);
+        // 加 Demand 行锁，避免 accept 与 update 并发：update 把 DIRECT_ACCEPT 改成 SELECT_ONE 后 accept 仍按旧 mode 创建 Order
+        Demand demand = findDemandForUpdate(demandId);
+        if (demand.getInteractionMode() != InteractionMode.DIRECT_ACCEPT) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT,
+                "only DIRECT_ACCEPT demand can be accepted via /accept, current mode: " + demand.getInteractionMode());
+        }
         if (isDemandExpired(demand, LocalDateTime.now()) || demand.getStatus() == DemandStatus.EXPIRED) {
             throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "demand has expired");
         }
@@ -89,6 +98,64 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         order.setCreatedAt(now);
         order.setUpdatedAt(now);
         order.addHistory(null, OrderStatus.ACCEPTED, accepter.getId(), order.getAcceptNote(), now);
+
+        try {
+            order = orderRepository.save(order);
+        } catch (DuplicateKeyException exception) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "demand has already been accepted");
+        }
+
+        demand.setStatus(DemandStatus.IN_PROGRESS);
+        demand.setUpdatedAt(now);
+        demandRepository.save(demand);
+
+        notificationApplicationService.notifyOrderAcceptedForPublisher(demand.getPublisherId(), order.getId());
+        notificationApplicationService.notifyOrderAcceptedForAccepter(accepter.getId(), order.getId());
+        return OrderDetailResponse.from(order, DemandDetailResponse.from(demand));
+    }
+
+    @Override
+    public OrderDetailResponse createOrderForSelectedResponse(Long operatorId, Long demandId, Long accepterId, String note) {
+        if (accepterId == null) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "accepterId must not be null");
+        }
+        Demand demand = findDemand(demandId);
+        if (demand.getInteractionMode() != InteractionMode.SELECT_ONE) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "only SELECT_ONE demand can create order from response");
+        }
+        if (demand.getPublisherId() == null || !demand.getPublisherId().equals(operatorId)) {
+            throw new BusinessException(ErrorCode.PERMISSION_DENIED, "only publisher can select response to create order");
+        }
+        if (demand.getPublisherId().equals(accepterId)) {
+            throw new BusinessException(ErrorCode.PERMISSION_DENIED, "publisher cannot select own response");
+        }
+        if (isDemandExpired(demand, LocalDateTime.now()) || demand.getStatus() == DemandStatus.EXPIRED) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "demand has expired");
+        }
+        if (demand.getStatus() != DemandStatus.PENDING) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "demand is not available for selection");
+        }
+        if (orderRepository.findByDemandId(demandId).isPresent()) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "demand has already been accepted");
+        }
+
+        User accepter = findActiveUser(accepterId);
+        if (accepter.getRole() == UserRole.ADMIN) {
+            throw new BusinessException(ErrorCode.PERMISSION_DENIED, "admin cannot be selected as accepter");
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        Order order = new Order();
+        order.setDemandId(demand.getId());
+        order.setPublisherId(demand.getPublisherId());
+        order.setAccepterId(accepter.getId());
+        order.setStatus(OrderStatus.ACCEPTED);
+        order.setAcceptNote(trimToNull(note));
+        order.setProofSubmitted(false);
+        order.setProofImageCount(0);
+        order.setCreatedAt(now);
+        order.setUpdatedAt(now);
+        order.addHistory(null, OrderStatus.ACCEPTED, operatorId, order.getAcceptNote(), now);
 
         try {
             order = orderRepository.save(order);
@@ -364,6 +431,11 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
             .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "demand not found"));
     }
 
+    private Demand findDemandForUpdate(Long demandId) {
+        return demandRepository.findByIdForUpdate(demandId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "demand not found"));
+    }
+
     private Order findOrder(Long orderId) {
         if (orderId == null) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "orderId must not be null");
@@ -404,28 +476,12 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
 
     private void transferReward(Demand demand, Order order) {
         BigDecimal reward = demand.getReward() == null ? BigDecimal.ZERO : demand.getReward();
-        if (reward.compareTo(BigDecimal.ZERO) <= 0) {
-            return;
-        }
-        if (!userRepository.deductBalance(order.getPublisherId(), reward)) {
-            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "发布者余额不足，无法结算悬赏");
-        }
-        if (!userRepository.unfreezeBalance(order.getPublisherId(), reward)) {
-            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "冻结金额不足，无法结算悬赏");
-        }
-        if (!userRepository.addBalance(order.getAccepterId(), reward)) {
-            throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "接单者不存在，无法结算悬赏");
-        }
+        rewardSettlementService.settleToAccepter(order.getPublisherId(), order.getAccepterId(), reward);
     }
 
     private void unfreezePublisherBalance(Demand demand) {
         BigDecimal reward = demand.getReward() == null ? BigDecimal.ZERO : demand.getReward();
-        if (reward.compareTo(BigDecimal.ZERO) <= 0 || demand.getPublisherId() == null) {
-            return;
-        }
-        if (!userRepository.unfreezeBalance(demand.getPublisherId(), reward)) {
-            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "冻结金额不足，无法解冻悬赏");
-        }
+        rewardSettlementService.refundToPublisher(demand.getPublisherId(), reward);
     }
 
     private boolean isDemandExpired(Demand demand, LocalDateTime now) {

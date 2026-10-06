@@ -27,7 +27,9 @@ const errors = reactive({
   reward: '',
   startTime: '',
   endTime: '',
-  campusZone: ''
+  campusZone: '',
+  targetParticipantCount: '',
+  interactionMode: ''
 })
 
 const form = reactive({
@@ -39,10 +41,21 @@ const form = reactive({
   startDateTime: '',
   endDateTime: '',
   reward: '10',
+  targetParticipantCount: '' as string,
+  interactionMode: '' as string,
   tags: '',
   images: [] as string[],
   contactInfo: '',
   anonymous: false
+})
+
+const effectiveInteractionMode = computed<string>(() => {
+  if (form.category === 'TEAM_UP') return 'SELECT_MANY'
+  if (form.category === 'OTHER') return form.interactionMode || 'DIRECT_ACCEPT'
+  if (form.category === 'EXPRESS' || form.category === 'ERRAND') return 'DIRECT_ACCEPT'
+  if (form.category === 'SECOND_HAND' || form.category === 'STUDY_TUTORING') return 'SELECT_ONE'
+  if (form.category === 'HELP') return 'HELP'
+  return 'DIRECT_ACCEPT'
 })
 
 // datetime-local 输入格式为 YYYY-MM-DDTHH:MM，与 startTime/endTime 兼容
@@ -69,13 +82,20 @@ const isFormValid = computed(() => {
     !errors.startTime &&
     !errors.endTime &&
     !errors.campusZone &&
+    !errors.targetParticipantCount &&
+    !errors.interactionMode &&
     Boolean(form.title.trim()) &&
     Boolean(form.category) &&
     Boolean(form.campusZone) &&
     Boolean(form.location.trim()) &&
     Boolean(form.startDateTime) &&
     Boolean(form.endDateTime) &&
-    Boolean(String(form.reward ?? '').trim())
+    Boolean(String(form.reward ?? '').trim()) &&
+    (effectiveInteractionMode.value !== 'SELECT_MANY' ||
+      (form.targetParticipantCount.trim() !== '' &&
+        Number(form.targetParticipantCount) >= 1)) &&
+    (form.category !== 'OTHER' ||
+      ['DIRECT_ACCEPT', 'SELECT_ONE', 'SELECT_MANY'].includes(form.interactionMode))
   )
 })
 
@@ -102,6 +122,8 @@ function runValidations(): void {
   errors.startTime = ''
   errors.endTime = ''
   errors.campusZone = ''
+  errors.targetParticipantCount = ''
+  errors.interactionMode = ''
 
   if (isEmpty(form.title)) {
     markRequiredError('title', '请填写标题')
@@ -138,6 +160,28 @@ function runValidations(): void {
     const amount = Number(rewardText)
     if (Number.isNaN(amount) || amount < 0) {
       markRequiredError('reward', '请输入有效的报酬（可为 0）')
+    }
+  }
+
+  if (effectiveInteractionMode.value === 'SELECT_MANY') {
+    const countText = String(form.targetParticipantCount ?? '').trim()
+    if (!countText) {
+      errors.targetParticipantCount = '请填写目标人数'
+    } else {
+      const count = Number(countText)
+      if (Number.isNaN(count) || !Number.isInteger(count) || count < 1) {
+        errors.targetParticipantCount = '目标人数需为不小于 1 的正整数'
+      } else if (count > 100) {
+        errors.targetParticipantCount = '目标人数不能超过 100'
+      }
+    }
+  }
+
+  if (form.category === 'OTHER') {
+    if (!form.interactionMode) {
+      errors.interactionMode = '请选择互动模式'
+    } else if (!['DIRECT_ACCEPT', 'SELECT_ONE', 'SELECT_MANY'].includes(form.interactionMode)) {
+      errors.interactionMode = '互动模式无效'
     }
   }
 
@@ -205,6 +249,8 @@ onMounted(() => {
     form.startDateTime = draft.startDateTime ?? ''
     form.endDateTime = draft.endDateTime ?? ''
     form.reward = draft.reward ?? '10'
+    form.targetParticipantCount = draft.targetParticipantCount ?? ''
+    form.interactionMode = draft.interactionMode ?? ''
     form.tags = draft.tags ?? ''
     form.images = draft.images ?? []
     form.contactInfo = draft.contactInfo ?? ''
@@ -236,7 +282,9 @@ async function submitDemand(): Promise<void> {
       ...form,
       startTime: form.startDateTime,
       endTime: form.endDateTime,
-      images: form.images
+      images: form.images,
+      targetParticipantCount: effectiveInteractionMode.value === 'SELECT_MANY' ? Number(form.targetParticipantCount) || null : null,
+      interactionMode: form.category === 'OTHER' ? form.interactionMode : null
     }
     await store.createDemand(submitData)
     clearDemandDraft()
@@ -382,6 +430,32 @@ async function checkRewardBalance(): Promise<void> {
             <input id="demand-reward" v-model="form.reward" type="number" min="0" step="1" @blur="checkRewardBalance" @input="errors.reward = ''" />
             <p class="input-help" style="margin-top:4px;">可用余额：{{ formatMoney((store.currentUser?.balance ?? 0) - (store.currentUser?.frozenBalance ?? 0)) }}</p>
             <p v-if="rewardError || errors.reward" style="color: var(--danger); margin-top: 6px">{{ rewardError || errors.reward }}</p>
+          </div>
+
+          <div v-if="effectiveInteractionMode === 'SELECT_MANY'" class="field" style="grid-column: 1 / -1;">
+            <label for="demand-target-count">目标人数 <span class="required-mark">*</span></label>
+            <input
+              id="demand-target-count"
+              v-model="form.targetParticipantCount"
+              type="number"
+              min="1"
+              max="100"
+              step="1"
+              placeholder="需要几人"
+              @input="errors.targetParticipantCount = ''"
+            />
+            <p v-if="errors.targetParticipantCount" class="input-help" style="color: var(--danger)">{{ errors.targetParticipantCount }}</p>
+          </div>
+
+          <div v-if="form.category === 'OTHER'" class="field" style="grid-column: 1 / -1;">
+            <label for="demand-interaction-mode">互动模式 <span class="required-mark">*</span></label>
+            <select id="demand-interaction-mode" v-model="form.interactionMode" @change="errors.interactionMode = ''">
+              <option value="">请选择</option>
+              <option value="DIRECT_ACCEPT">直接接单</option>
+              <option value="SELECT_ONE">选择一人</option>
+              <option value="SELECT_MANY">组队选择</option>
+            </select>
+            <p v-if="errors.interactionMode" class="input-help" style="color: var(--danger)">{{ errors.interactionMode }}</p>
           </div>
 
           <div class="field">

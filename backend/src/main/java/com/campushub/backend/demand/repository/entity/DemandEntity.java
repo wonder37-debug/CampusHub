@@ -8,6 +8,7 @@ import com.campushub.backend.demand.domain.CampusZone;
 import com.campushub.backend.demand.domain.Demand;
 import com.campushub.backend.demand.domain.DemandCategory;
 import com.campushub.backend.demand.domain.DemandStatus;
+import com.campushub.backend.demand.domain.InteractionMode;
 import com.campushub.backend.demand.repository.handler.CommaSeparatedStringTypeHandler;
 
 import java.math.BigDecimal;
@@ -59,6 +60,12 @@ public class DemandEntity {
 
     @TableField("reward")
     private BigDecimal reward;
+
+    @TableField("interaction_mode")
+    private String interactionMode;
+
+    @TableField("target_participant_count")
+    private Integer targetParticipantCount;
 
     @TableField(value = "tags", typeHandler = CommaSeparatedStringTypeHandler.class)
     private List<String> tags;
@@ -125,6 +132,8 @@ public class DemandEntity {
         entity.startTime = demand.getStartTime();
         entity.endTime = demand.getEndTime();
         entity.reward = demand.getReward();
+        entity.interactionMode = demand.getInteractionMode() == null ? null : demand.getInteractionMode().name();
+        entity.targetParticipantCount = demand.getTargetParticipantCount();
         entity.tags = demand.getTags();
         entity.images = demand.getImages();
         entity.contactInfo = demand.getContactInfo();
@@ -155,6 +164,8 @@ public class DemandEntity {
         demand.setStartTime(this.startTime);
         demand.setEndTime(this.endTime);
         demand.setReward(this.reward);
+        demand.setInteractionMode(this.interactionMode == null ? InteractionMode.DIRECT_ACCEPT : InteractionMode.fromValue(this.interactionMode));
+        demand.setTargetParticipantCount(this.targetParticipantCount);
         demand.setTags(this.tags == null ? new ArrayList<>() : new ArrayList<>(this.tags));
         demand.setImages(this.images == null ? new ArrayList<>() : new ArrayList<>(this.images));
         demand.setContactInfo(this.contactInfo);
@@ -248,6 +259,22 @@ public class DemandEntity {
 
     public void setReward(BigDecimal reward) {
         this.reward = reward;
+    }
+
+    public String getInteractionMode() {
+        return interactionMode;
+    }
+
+    public void setInteractionMode(String interactionMode) {
+        this.interactionMode = interactionMode;
+    }
+
+    public Integer getTargetParticipantCount() {
+        return targetParticipantCount;
+    }
+
+    public void setTargetParticipantCount(Integer targetParticipantCount) {
+        this.targetParticipantCount = targetParticipantCount;
     }
 
     public List<String> getTags() {

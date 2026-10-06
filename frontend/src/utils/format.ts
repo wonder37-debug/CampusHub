@@ -11,7 +11,9 @@ import {
   type NotificationType,
   type OrderStatus,
   type UserRole,
-  type UserStatus
+  type UserStatus,
+  type InteractionMode,
+  type ResponseStatus
 } from '@/types/campushub'
 
 export function formatDateTime(value: string): string {
@@ -71,8 +73,40 @@ export function formatDemandCategory(category: DemandCategory): string {
       return '二手交易'
     case 'TEAM_UP':
       return '活动组队'
+    case 'HELP':
+      return '互助问答'
     default:
       return '其他'
+  }
+}
+
+export function formatInteractionMode(mode: InteractionMode | string | undefined): string {
+  switch (mode) {
+    case 'DIRECT_ACCEPT':
+      return '直接接单'
+    case 'SELECT_ONE':
+      return '选择一人'
+    case 'SELECT_MANY':
+      return '组队选择'
+    case 'HELP':
+      return '采纳回答'
+    default:
+      return '直接接单'
+  }
+}
+
+export function formatResponseStatus(status: ResponseStatus | string): string {
+  switch (status) {
+    case 'PENDING':
+      return '待选择'
+    case 'SELECTED':
+      return '已选中'
+    case 'REJECTED':
+      return '未选中'
+    case 'WITHDRAWN':
+      return '已撤回'
+    default:
+      return status
   }
 }
 

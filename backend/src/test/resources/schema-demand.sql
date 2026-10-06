@@ -12,6 +12,8 @@ CREATE TABLE ord_demand (
   start_time DATETIME,
   end_time DATETIME,
   reward DECIMAL(10,2) NOT NULL DEFAULT '0.00',
+  interaction_mode VARCHAR(32) NOT NULL DEFAULT 'DIRECT_ACCEPT',
+  target_participant_count INT,
   tags VARCHAR(500),
   images TEXT DEFAULT NULL,
   contact_info VARCHAR(200) DEFAULT NULL,
@@ -24,7 +26,8 @@ CREATE TABLE ord_demand (
   reviewed_at DATETIME,
   review_reason VARCHAR(500),
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME
+  updated_at DATETIME,
+  CONSTRAINT chk_demand_interaction CHECK (interaction_mode IN ('DIRECT_ACCEPT','SELECT_ONE','SELECT_MANY','HELP'))
 );
 
 CREATE INDEX idx_demand_publisher ON ord_demand(publisher_id);

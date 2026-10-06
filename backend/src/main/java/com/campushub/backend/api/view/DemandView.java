@@ -19,6 +19,8 @@ public record DemandView(
     LocalDateTime startTime,
     LocalDateTime endTime,
     BigDecimal reward,
+    String interactionMode,
+    Integer targetParticipantCount,
     List<String> tags,
     String status,
     boolean anonymous,

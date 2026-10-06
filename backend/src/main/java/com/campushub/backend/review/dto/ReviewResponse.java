@@ -6,6 +6,8 @@ import java.time.LocalDateTime;
 public record ReviewResponse(
     Long id,
     Long orderId,
+    Long responseId,
+    Long demandId,
     Long authorId,
     Long targetId,
     int rating,
@@ -17,6 +19,8 @@ public record ReviewResponse(
         return new ReviewResponse(
             review.getId(),
             review.getOrderId(),
+            review.getResponseId(),
+            review.getDemandId(),
             review.getAuthorId(),
             review.getTargetId(),
             review.getRating(),

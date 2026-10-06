@@ -187,7 +187,9 @@ class RecommendationApplicationServiceImplTest {
                 List.of("tag"),
                 null,
                 null,
-                false
+                false,
+                null,
+                null
             )
         );
         demandRepository.findById(demand.id()).ifPresent(saved -> {

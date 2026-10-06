@@ -67,6 +67,11 @@ public class NotificationApplicationServiceImpl implements NotificationApplicati
     }
 
     @Override
+    public void notifyResponseReviewReceived(Long receiverId, Long responseId, Long demandId) {
+        createNotification(receiverId, buildResponseReviewReceived(responseId, demandId));
+    }
+
+    @Override
     public void notifyDemandReviewRequested(Long receiverId, Long demandId) {
         createNotification(receiverId, buildDemandReviewRequested(demandId));
     }
@@ -246,6 +251,16 @@ public class NotificationApplicationServiceImpl implements NotificationApplicati
         );
     }
 
+    private NotificationDraft buildResponseReviewReceived(Long responseId, Long demandId) {
+        String demandTitle = resolveDemandTitle(demandId);
+        return new NotificationDraft(
+            NotificationType.RESPONSE_REVIEW_RECEIVED,
+            "收到新的组队评价",
+            "您在《" + demandTitle + "》的组队收到一条新的评价，请及时查看。",
+            demandId
+        );
+    }
+
     private NotificationDraft buildDemandReviewRequested(Long demandId) {
         String demandTitle = resolveDemandTitle(demandId);
         return new NotificationDraft(
@@ -326,7 +341,8 @@ public class NotificationApplicationServiceImpl implements NotificationApplicati
         return switch (notification.getType()) {
             case ORDER_ACCEPTED, STATUS_CHANGED, REVIEW_RECEIVED, PENDING_REVIEW,
                 ORDER_ARBITRATION_REQUESTED, ORDER_ARBITRATION_RESOLVED -> "ORDER";
-            case REVIEW_REQUEST, DEMAND_REJECTED, DEMAND_APPROVED -> "DEMAND";
+            case REVIEW_REQUEST, DEMAND_REJECTED, DEMAND_APPROVED,
+                RESPONSE_REVIEW_RECEIVED -> "DEMAND";
         };
     }
 
@@ -360,7 +376,7 @@ public class NotificationApplicationServiceImpl implements NotificationApplicati
         }
         return switch (type) {
             case REVIEW_REQUEST -> "REVIEW_DEMAND";
-            case DEMAND_REJECTED, DEMAND_APPROVED -> "VIEW_DEMAND";
+            case DEMAND_REJECTED, DEMAND_APPROVED, RESPONSE_REVIEW_RECEIVED -> "VIEW_DEMAND";
             case REVIEW_RECEIVED, PENDING_REVIEW, ORDER_ACCEPTED, STATUS_CHANGED,
                 ORDER_ARBITRATION_REQUESTED, ORDER_ARBITRATION_RESOLVED ->
                 "ORDER".equals(targetType) ? "VIEW_ORDER" : "VIEW_DEMAND";

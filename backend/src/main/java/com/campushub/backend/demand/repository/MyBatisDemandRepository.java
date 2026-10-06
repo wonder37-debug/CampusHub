@@ -65,6 +65,15 @@ public class MyBatisDemandRepository implements DemandRepository {
     }
 
     @Override
+    public Optional<Demand> findByIdForUpdate(Long demandId) {
+        if (demandId == null) {
+            return Optional.empty();
+        }
+        DemandEntity entity = demandMapper.selectByIdForUpdate(demandId);
+        return Optional.ofNullable(entity).map(DemandEntity::toDomain);
+    }
+
+    @Override
     public List<Demand> findAll() {
         List<DemandEntity> entities = demandMapper.selectList(null);
         return entities.stream().map(DemandEntity::toDomain).toList();

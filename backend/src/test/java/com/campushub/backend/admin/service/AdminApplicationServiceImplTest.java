@@ -368,7 +368,9 @@ class AdminApplicationServiceImplTest {
                 List.of("tag"),
                 null,
                 null,
-                false
+                false,
+                null,
+                null
             )
         );
     }

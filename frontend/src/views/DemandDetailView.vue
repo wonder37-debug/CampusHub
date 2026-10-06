@@ -6,7 +6,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useCampusHubStore } from '@/stores/campusHub'
 import SkeletonCard from '@/components/SkeletonCard.vue'
 import ImageViewer from '@/components/ImageViewer.vue'
-import { formatAcceptDisabledReason, formatCampusZone, formatDateTime, formatDemandCategory, formatDemandStatus, formatMoney, formatOrderStatus, formatScore, statusToneClass } from '@/utils/format'
+import { formatAcceptDisabledReason, formatCampusZone, formatDateTime, formatDemandCategory, formatDemandStatus, formatInteractionMode, formatMoney, formatOrderStatus, formatResponseStatus, formatScore, statusToneClass } from '@/utils/format'
 import { useConfirm } from '@/composables/useDialog'
 
 const route = useRoute()
@@ -20,6 +20,11 @@ const error = ref('')
 const completionSubmitted = ref(false)
 const loadingDemand = ref(false)
 const refreshing = ref(false)
+const responseContent = ref('')
+const selectedResponseIds = ref<string[]>([])
+const responseReviewRating = ref('5')
+const responseReviewComment = ref('')
+const reviewingResponseId = ref<string | null>(null)
 
 // Image viewer
 const showImageViewer = ref(false)
@@ -51,6 +56,8 @@ const demand = computed(() => store.getDemandById(String(route.params.id)))
 const relatedOrder = computed(() => store.orders.find((order) => order.demandId === demand.value?.id))
 const canAccept = computed(() => {
   if (!demand.value) return false
+  // 仅 DIRECT_ACCEPT 走立即接单；SELECT_ONE/SELECT_MANY/HELP 走 Response 选择/采纳
+  if ((demand.value.interactionMode ?? 'DIRECT_ACCEPT') !== 'DIRECT_ACCEPT') return false
   if (typeof demand.value.canAccept === 'boolean') return demand.value.canAccept
   if (relatedOrder.value) return false
   if (demand.value.status !== 'PENDING') return false
@@ -395,6 +402,121 @@ async function submitArbitration(): Promise<void> {
   }
 }
 
+// ========== 业务模型 2.0 Response 交互 ==========
+const interactionMode = computed(() => demand.value?.interactionMode ?? 'DIRECT_ACCEPT')
+const responses = computed(() => store.demandResponses)
+const isPublisher = computed(() => !!store.currentUser && store.currentUser.id === demand.value?.publisherId)
+const canRespond = computed(() => interactionMode.value !== 'DIRECT_ACCEPT' && demand.value?.status === 'PENDING' && !!store.currentUser && !isPublisher.value)
+const selectedCount = computed(() => responses.value.filter((r) => r.status === 'SELECTED').length)
+const targetCount = computed(() => demand.value?.targetParticipantCount ?? 0)
+const responseListTitle = computed(() => {
+  switch (interactionMode.value) {
+    case 'HELP': return '回答'
+    case 'SELECT_MANY': return '报名'
+    default: return '留言'
+  }
+})
+
+async function createResponse(): Promise<void> {
+  if (!demand.value) return
+  if (!responseContent.value.trim()) {
+    error.value = '请填写内容'
+    return
+  }
+  message.value = ''
+  error.value = ''
+  try {
+    await store.createResponse(demand.value.id, responseContent.value)
+    responseContent.value = ''
+    message.value = '已提交'
+  } catch (e) {
+    error.value = handleError(e, '提交失败')
+  }
+}
+
+async function selectResponse(responseId: string): Promise<void> {
+  if (!demand.value) return
+  if (!await useConfirm('确认选择', '确认选择该响应？将生成订单进入履约。')) return
+  message.value = ''
+  error.value = ''
+  try {
+    await store.selectResponse(demand.value.id, responseId)
+    message.value = '已选择，订单已生成'
+  } catch (e) {
+    error.value = handleError(e, '选择失败')
+  }
+}
+
+async function selectResponses(): Promise<void> {
+  if (!demand.value) return
+  if (selectedResponseIds.value.length === 0) {
+    error.value = '请至少选择一个'
+    return
+  }
+  message.value = ''
+  error.value = ''
+  try {
+    await store.selectResponses(demand.value.id, selectedResponseIds.value)
+    selectedResponseIds.value = []
+    message.value = '已确认选择'
+  } catch (e) {
+    error.value = handleError(e, '选择失败')
+  }
+}
+
+async function acceptAnswer(responseId: string): Promise<void> {
+  if (!demand.value) return
+  if (!await useConfirm('确认采纳', '确认采纳该回答？')) return
+  message.value = ''
+  error.value = ''
+  try {
+    await store.acceptAnswer(demand.value.id, responseId)
+    message.value = '已采纳该回答'
+  } catch (e) {
+    error.value = handleError(e, '采纳失败')
+  }
+}
+
+function startResponseReview(responseId: string) {
+  reviewingResponseId.value = responseId
+  responseReviewRating.value = '5'
+  responseReviewComment.value = ''
+}
+
+function hasReviewedResponse(responseId: string): boolean {
+  return store.reviews.some((rev) => rev.responseId === responseId && rev.reviewerId === store.currentUser?.id)
+}
+
+function cancelResponseReview() {
+  reviewingResponseId.value = null
+}
+
+async function submitResponseReview(responseId: string): Promise<void> {
+  if (!demand.value) return
+  message.value = ''
+  error.value = ''
+  try {
+    // store 内已将返回的 Review 写入 store.reviews，hasReviewedResponse 立即生效，无需再次请求后端
+    await store.submitReviewForResponse(responseId, Number(responseReviewRating.value), responseReviewComment.value)
+    reviewingResponseId.value = null
+    message.value = '评价已提交'
+  } catch (e) {
+    error.value = handleError(e, '评价失败')
+  }
+}
+
+async function withdrawResponse(responseId: string): Promise<void> {
+  if (!await useConfirm('撤回', '确认撤回该留言？', { danger: true })) return
+  message.value = ''
+  error.value = ''
+  try {
+    await store.withdrawResponse(demand.value?.id ?? '', responseId)
+    message.value = '已撤回'
+  } catch (e) {
+    error.value = handleError(e, '撤回失败')
+  }
+}
+
 onMounted(() => {
   loadingDemand.value = true
   void (async () => {
@@ -402,6 +524,7 @@ onMounted(() => {
       await store.fetchDemandDetail(String(route.params.id))
       if (store.currentUser) {
         await store.fetchOrders()
+        await store.fetchUserReviews(store.currentUser.id)
         // 第三方用户可能不在 store.orders 中，通过 demandId 单独获取关联订单
         const demandId = String(route.params.id)
         const hasRelatedOrder = store.orders.some((o) => o.demandId === demandId)
@@ -409,6 +532,7 @@ onMounted(() => {
           await store.fetchOrderByDemandId(demandId)
         }
       }
+      await store.fetchResponses(String(route.params.id))
     } catch {
       try {
         await store.fetchDemands()
@@ -575,6 +699,108 @@ onMounted(() => {
           </button>
           <span v-else-if="relatedOrder?.status === 'IN_PROGRESS' && !completionSubmitted" class="chip is-warning">{{ currentUserConfirmedCompletion || providerConfirmed ? '等待对方确认完成' : '等待接单方确认完成' }}</span>
           <button v-if="canRequestArbitration" type="button" class="button secondary" @click="openArbitrationDialog">发起仲裁</button>
+        </div>
+      </div>
+
+      <!-- Response 交互区域（非 DIRECT_ACCEPT 模式：SELECT_ONE / SELECT_MANY / HELP） -->
+      <div v-if="interactionMode !== 'DIRECT_ACCEPT'" class="list-card" style="margin-top: 12px;">
+        <div class="status-row" style="margin-bottom: 8px;">
+          <strong>{{ responseListTitle }}</strong>
+          <span class="chip">{{ formatInteractionMode(interactionMode) }}</span>
+        </div>
+
+        <!-- 创建留言/报名/回答 -->
+        <div v-if="canRespond" class="field" style="margin-top: 4px;">
+          <textarea v-model="responseContent" :placeholder="`请填写${responseListTitle}内容`" rows="3"></textarea>
+          <div class="card-actions">
+            <button type="button" class="button primary" :disabled="!responseContent.trim()" @click="createResponse">提交</button>
+          </div>
+        </div>
+
+        <!-- 列表 -->
+        <div v-if="responses.length" class="review-list" style="margin-top: 8px;">
+          <div v-for="r in responses" :key="r.id" class="timeline-item">
+            <div style="flex: 1;">
+              <strong>{{ r.authorName }}</strong>
+              <div class="meta" style="margin-top: 4px; white-space: pre-wrap;">{{ r.content }}</div>
+              <div class="meta" style="margin-top: 4px;">{{ formatResponseStatus(r.status) }} · {{ formatDateTime(r.createdAt) }}</div>
+            </div>
+            <div class="card-actions" style="gap: 8px;">
+              <button
+                v-if="r.authorId === store.currentUser?.id && r.status === 'PENDING'"
+                type="button"
+                class="button secondary"
+                @click="withdrawResponse(r.id)"
+              >撤回</button>
+              <button
+                v-if="isPublisher && interactionMode === 'SELECT_ONE' && r.status === 'PENDING'"
+                type="button"
+                class="button primary"
+                @click="selectResponse(r.id)"
+              >选择</button>
+              <label
+                v-if="isPublisher && interactionMode === 'SELECT_MANY' && r.status === 'PENDING'"
+                style="display: inline-flex; align-items: center; gap: 6px;"
+              >
+                <input type="checkbox" :value="r.id" v-model="selectedResponseIds" />
+                <span>选择</span>
+              </label>
+              <button
+                v-if="isPublisher && interactionMode === 'HELP' && r.status === 'PENDING'"
+                type="button"
+                class="button primary"
+                @click="acceptAnswer(r.id)"
+              >采纳</button>
+            </div>
+            <!-- SELECT_MANY 评价入口：Demand COMPLETED 后，publisher 与被选中成员可双向评价 -->
+            <div
+              v-if="interactionMode === 'SELECT_MANY' && demand.status === 'COMPLETED' && r.status === 'SELECTED'
+                && store.currentUser && (isPublisher || r.authorId === store.currentUser.id)"
+              style="margin-top: 8px;"
+            >
+              <button
+                v-if="reviewingResponseId !== r.id && !hasReviewedResponse(r.id)"
+                type="button"
+                class="button secondary"
+                @click="startResponseReview(r.id)"
+              >评价</button>
+              <span v-else-if="hasReviewedResponse(r.id)" class="chip is-success">已评价</span>
+              <div v-else class="field">
+                <label>评分</label>
+                <select v-model="responseReviewRating">
+                  <option value="5">5 星</option>
+                  <option value="4">4 星</option>
+                  <option value="3">3 星</option>
+                  <option value="2">2 星</option>
+                  <option value="1">1 星</option>
+                </select>
+                <label style="margin-top: 6px;">评价内容</label>
+                <textarea v-model="responseReviewComment" placeholder="写下你的评价" rows="2"></textarea>
+                <div class="card-actions" style="margin-top: 6px;">
+                  <button type="button" class="button primary" :disabled="!responseReviewComment.trim()" @click="submitResponseReview(r.id)">提交评价</button>
+                  <button type="button" class="button secondary" @click="cancelResponseReview">取消</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p v-else class="meta" style="margin-top: 8px;">暂无{{ responseListTitle }}</p>
+
+        <!-- SELECT_MANY 底部统计与确认 -->
+        <div
+          v-if="isPublisher && interactionMode === 'SELECT_MANY'"
+          class="card-actions"
+          style="margin-top: 8px; justify-content: space-between;"
+        >
+          <span class="chip" :class="targetCount > 0 && selectedCount >= targetCount ? 'is-success' : 'is-warning'">
+            {{ targetCount > 0 && selectedCount >= targetCount ? `已满 ${targetCount} 人` : `已选择 ${selectedCount} / ${targetCount} 人` }}
+          </span>
+          <button
+            type="button"
+            class="button primary"
+            :disabled="selectedResponseIds.length === 0"
+            @click="selectResponses"
+          >确认选择</button>
         </div>
       </div>
 

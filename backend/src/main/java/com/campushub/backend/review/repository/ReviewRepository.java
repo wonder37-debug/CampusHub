@@ -21,6 +21,11 @@ public interface ReviewRepository {
     Optional<Review> findByOrderIdAndAuthorId(Long orderId, Long authorId);
 
     /**
+     * 按响应与评价作者查询评价。数据库实现需保证同一响应同一作者最多一条记录。
+     */
+    Optional<Review> findByResponseIdAndAuthorId(Long responseId, Long authorId);
+
+    /**
      * 查询某个被评价用户收到的全部评价。
      */
     List<Review> findByTargetId(Long targetId);

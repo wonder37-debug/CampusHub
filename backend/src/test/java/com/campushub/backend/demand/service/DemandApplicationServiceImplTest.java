@@ -20,6 +20,7 @@ import com.campushub.backend.demand.domain.Demand;
 import com.campushub.backend.demand.domain.DemandCategory;
 import com.campushub.backend.demand.domain.DemandSort;
 import com.campushub.backend.demand.domain.DemandStatus;
+import com.campushub.backend.demand.domain.InteractionMode;
 import com.campushub.backend.demand.dto.DemandDetailResponse;
 import com.campushub.backend.demand.dto.DemandQuery;
 import com.campushub.backend.demand.dto.DemandSummaryResponse;
@@ -90,7 +91,9 @@ class DemandApplicationServiceImplTest {
                 List.of("快递", "跑腿"),
                 null,
                 null,
-                true
+                true,
+                null,
+                null
             )
         );
 
@@ -119,7 +122,9 @@ class DemandApplicationServiceImplTest {
                     List.of(),
                     null,
                     null,
-                    false
+                    false,
+                    null,
+                    null
                 )
             )
         );
@@ -144,7 +149,9 @@ class DemandApplicationServiceImplTest {
                 List.of(),
                 null,
                 null,
-                false
+                false,
+                null,
+                null
             )
         );
         DemandDetailResponse second = demandApplicationService.publish(
@@ -162,7 +169,9 @@ class DemandApplicationServiceImplTest {
                 List.of(),
                 null,
                 null,
-                false
+                false,
+                null,
+                null
             )
         );
         makePending(first.id());
@@ -202,7 +211,9 @@ class DemandApplicationServiceImplTest {
                 List.of(),
                 null,
                 null,
-                false
+                false,
+                null,
+                null
             )
         );
         DemandDetailResponse cancelled = demandApplicationService.publish(
@@ -220,7 +231,9 @@ class DemandApplicationServiceImplTest {
                 List.of(),
                 null,
                 null,
-                false
+                false,
+                null,
+                null
             )
         );
         demandRepository.findById(cancelled.id()).ifPresent(demand -> {
@@ -258,7 +271,9 @@ class DemandApplicationServiceImplTest {
                 List.of(),
                 null,
                 null,
-                true
+                true,
+                null,
+                null
             )
         );
 
@@ -285,7 +300,9 @@ class DemandApplicationServiceImplTest {
                 List.of(),
                 null,
                 null,
-                false
+                false,
+                null,
+                null
             )
         );
         DemandDetailResponse legacyAliasDemand = demandApplicationService.publish(
@@ -303,7 +320,9 @@ class DemandApplicationServiceImplTest {
                 List.of(),
                 null,
                 null,
-                false
+                false,
+                null,
+                null
             )
         );
 
@@ -328,7 +347,9 @@ class DemandApplicationServiceImplTest {
                 List.of(),
                 null,
                 null,
-                false
+                false,
+                3,
+                null
             )
         );
 
@@ -337,7 +358,7 @@ class DemandApplicationServiceImplTest {
             () -> demandApplicationService.update(
                 999L,
                 published.id(),
-                new UpdateDemandCommand("改标题", null, null, null, null, null, null, null, null, null, null, null)
+                new UpdateDemandCommand("改标题", null, null, null, null, null, null, null, null, null, null, null, null, null)
             )
         );
 
@@ -361,7 +382,9 @@ class DemandApplicationServiceImplTest {
                 List.of("a"),
                 null,
                 null,
-                false
+                false,
+                null,
+                null
             )
         );
 
@@ -380,7 +403,9 @@ class DemandApplicationServiceImplTest {
                 new BigDecimal("9.99"),
                 List.of("新标签"),
                 null,
-                true
+                true,
+                null,
+                null
             )
         );
 
@@ -406,6 +431,8 @@ class DemandApplicationServiceImplTest {
             null,
             null,
             BigDecimal.ZERO,
+            InteractionMode.DIRECT_ACCEPT,
+            null,
             List.of(),
             List.of(),
             null,
@@ -426,7 +453,7 @@ class DemandApplicationServiceImplTest {
             () -> demandApplicationService.update(
                 publisherId,
                 saved.getId(),
-                new UpdateDemandCommand("改不了", null, null, null, null, null, null, null, null, null, null, null)
+                new UpdateDemandCommand("改不了", null, null, null, null, null, null, null, null, null, null, null, null, null)
             )
         );
 

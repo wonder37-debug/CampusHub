@@ -19,6 +19,8 @@ public class Demand {
     private LocalDateTime startTime;
     private LocalDateTime endTime;
     private BigDecimal reward;
+    private InteractionMode interactionMode;
+    private Integer targetParticipantCount;
     private List<String> tags;
     private List<String> images;
     private String contactInfo;
@@ -50,6 +52,8 @@ public class Demand {
         LocalDateTime startTime,
         LocalDateTime endTime,
         BigDecimal reward,
+        InteractionMode interactionMode,
+        Integer targetParticipantCount,
         List<String> tags,
         List<String> images,
         String contactInfo,
@@ -75,6 +79,8 @@ public class Demand {
         this.startTime = startTime;
         this.endTime = endTime;
         this.reward = reward;
+        this.interactionMode = interactionMode;
+        this.targetParticipantCount = targetParticipantCount;
         this.tags = tags == null ? new ArrayList<>() : new ArrayList<>(tags);
         this.images = images == null ? new ArrayList<>() : new ArrayList<>(images);
         this.contactInfo = contactInfo;
@@ -190,6 +196,22 @@ public class Demand {
 
     public void setReward(BigDecimal reward) {
         this.reward = reward;
+    }
+
+    public InteractionMode getInteractionMode() {
+        return interactionMode;
+    }
+
+    public void setInteractionMode(InteractionMode interactionMode) {
+        this.interactionMode = interactionMode;
+    }
+
+    public Integer getTargetParticipantCount() {
+        return targetParticipantCount;
+    }
+
+    public void setTargetParticipantCount(Integer targetParticipantCount) {
+        this.targetParticipantCount = targetParticipantCount;
     }
 
     public List<String> getTags() {
