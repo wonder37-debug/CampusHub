@@ -110,8 +110,8 @@ class DemandApplicationServiceImplTest {
             () -> demandApplicationService.publish(
                 publisherId,
                 new PublishDemandCommand(
-                    "求代课",
-                    "帮我代课一节",
+                    "求代考",
+                    "帮我代考一次",
                     null,
                     "STUDY_TUTORING",
                     "GULOU",
@@ -130,6 +130,43 @@ class DemandApplicationServiceImplTest {
         );
 
         assertEquals(ErrorCode.BUSINESS_CONFLICT, exception.getErrorCode());
+        assertEquals("demand contains forbidden words", exception.getMessage());
+    }
+
+    @Test
+    void shouldRejectForbiddenWordsOnUpdate() {
+        DemandDetailResponse published = demandApplicationService.publish(
+            publisherId,
+            new PublishDemandCommand(
+                "组队学习",
+                "找队友一起自习",
+                null,
+                "TEAM_UP",
+                "XIANLIN",
+                "图书馆",
+                null,
+                null,
+                BigDecimal.ZERO,
+                List.of(),
+                null,
+                null,
+                false,
+                3,
+                null
+            )
+        );
+
+        BusinessException exception = assertThrows(
+            BusinessException.class,
+            () -> demandApplicationService.update(
+                publisherId,
+                published.id(),
+                new UpdateDemandCommand("求代考", null, null, null, null, null, null, null, null, null, null, null, null, null)
+            )
+        );
+
+        assertEquals(ErrorCode.BUSINESS_CONFLICT, exception.getErrorCode());
+        assertEquals("demand contains forbidden words", exception.getMessage());
     }
 
     @Test
