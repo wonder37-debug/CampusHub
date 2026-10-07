@@ -46,7 +46,6 @@ function buildDraft(overrides: Partial<AiDemandDraft> = {}): AiDemandDraft {
     tags: ['快递', '跑腿'],
     interactionMode: 'DIRECT_ACCEPT',
     targetParticipantCount: null,
-    note: null,
     missingFields: [],
     ...overrides
   }
@@ -234,6 +233,76 @@ describe('DemandPublishView - AI 帮我发布', () => {
 
     expect((wrapper.find('#demand-category').element as HTMLSelectElement).value).toBe('TEAM_UP')
     expect((wrapper.find('#demand-target-count').element as HTMLInputElement).value).toBe('3')
+  })
+
+  it('reward=null 时清空默认值，即使 missingFields 不含 reward', async () => {
+    mockGenerate.mockResolvedValue(buildDraft({
+      title: '取快递',
+      description: '描述',
+      campusZone: 'XIANLIN',
+      location: '图书馆',
+      startTime: '2026-10-08T10:00:00',
+      endTime: '2026-10-08T12:00:00',
+      reward: null,
+      // 故意让 missingFields 不含 reward，验证前端不依赖 missingFields 决定清空
+      missingFields: []
+    }))
+    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
+    await wrapper.find('[data-testid="ai-prompt-input"]').setValue('取快递')
+    await wrapper.find('[data-testid="ai-generate-button"]').trigger('click')
+    await flushPromises()
+
+    // reward=null 必须清空，不依赖 missingFields，不能保留默认 10 元
+    expect((wrapper.find('#demand-reward').element as HTMLInputElement).value).toBe('')
+  })
+
+  it('reward=0 时保留为 0，不误判为空', async () => {
+    mockGenerate.mockResolvedValue(buildDraft({
+      title: '取快递',
+      description: '描述',
+      campusZone: 'XIANLIN',
+      location: '图书馆',
+      startTime: '2026-10-08T10:00:00',
+      endTime: '2026-10-08T12:00:00',
+      reward: 0,
+      missingFields: []
+    }))
+    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
+    await wrapper.find('[data-testid="ai-prompt-input"]').setValue('取快递')
+    await wrapper.find('[data-testid="ai-generate-button"]').trigger('click')
+    await flushPromises()
+
+    // reward=0 是有效值，必须保留为 "0"，不能误判为空
+    expect((wrapper.find('#demand-reward').element as HTMLInputElement).value).toBe('0')
+  })
+
+  it('category 从 TEAM_UP 改为 EXPRESS 时清理旧 targetParticipantCount', async () => {
+    // 先模拟用户选了 TEAM_UP + target count = 3
+    await wrapper.find('#demand-category').setValue('TEAM_UP')
+    await wrapper.find('#demand-target-count').setValue('3')
+    expect((wrapper.find('#demand-target-count').element as HTMLInputElement).value).toBe('3')
+
+    // AI 返回 EXPRESS（category 改变）
+    mockGenerate.mockResolvedValue(buildDraft({
+      title: '取快递',
+      description: '描述',
+      category: 'EXPRESS',
+      campusZone: 'XIANLIN',
+      location: '图书馆',
+      startTime: '2026-10-08T10:00:00',
+      endTime: '2026-10-08T12:00:00',
+      reward: 10,
+      missingFields: []
+    }))
+    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
+    await wrapper.find('[data-testid="ai-prompt-input"]').setValue('取快递')
+    await wrapper.find('[data-testid="ai-generate-button"]').trigger('click')
+    await flushPromises()
+
+    // EXPRESS 模式下 target count 输入框不显示（effectiveInteractionMode=DIRECT_ACCEPT）
+    // 旧的 targetParticipantCount=3 已被清理，不残留
+    expect(wrapper.find('#demand-target-count').exists()).toBe(false)
+    expect((wrapper.find('#demand-category').element as HTMLSelectElement).value).toBe('EXPRESS')
   })
 
   it('取消按钮关闭 Dialog（未生成时）', async () => {

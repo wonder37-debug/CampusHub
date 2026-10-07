@@ -7,12 +7,14 @@ import com.campushub.backend.common.exception.ErrorCode;
 import com.campushub.backend.demand.domain.CampusZone;
 import com.campushub.backend.demand.domain.DemandCategory;
 import com.campushub.backend.demand.domain.InteractionMode;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import java.math.BigDecimal;
+import java.net.ConnectException;
+import java.net.SocketTimeoutException;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
-import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -25,6 +27,7 @@ import org.springframework.ai.retry.TransientAiException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.ResourceAccessException;
 
 /**
  * AI 需求草稿生成服务实现。
@@ -52,7 +55,7 @@ public class AiDemandApplicationServiceImpl implements AiDemandApplicationServic
         1. 只返回结构化 DemandDraft 的 JSON，不要输出任何解释、markdown、代码块或多余文本。
         2. 不直接发布 Demand，不访问数据库，不执行工具调用。
         3. 不编造用户没有提供的信息。无法确定的信息一律返回 null。
-        4. 重要缺失信息加入 missingFields 数组（字段名使用英文驼峰：title/description/category/campusZone/location/startTime/endTime/reward/tags/interactionMode/targetParticipantCount/note）。
+        4. 重要缺失信息加入 missingFields 数组（字段名使用英文驼峰：title/category/campusZone/location/startTime/endTime/reward/interactionMode/targetParticipantCount）。
         5. category 只能是以下值之一：EXPRESS、ERRAND、STUDY_TUTORING、SECOND_HAND、TEAM_UP、HELP、OTHER。
         6. interactionMode 只能是以下值之一：DIRECT_ACCEPT、SELECT_ONE、SELECT_MANY、HELP。
         7. category 与 interactionMode 对应关系必须遵循：
@@ -68,7 +71,7 @@ public class AiDemandApplicationServiceImpl implements AiDemandApplicationServic
         10. startTime/endTime 使用 ISO-8601 格式 yyyy-MM-dd'T'HH:mm:ss；不确定时返回 null 并加入 missingFields。
         11. reward 为数字（单位元），不确定时返回 null 并加入 missingFields；明确说"免费/无报酬"时填 0。
         12. tags 为字符串数组，没有则返回空数组 []。
-        13. title 长度 3-200 字符；description 不超过 2000 字符；note 不超过 500 字符。
+        13. title 长度 3-200 字符；description 不超过 2000 字符。
         14. 不要替代后端 SensitiveWordChecker，不要自行审核内容。
         15. AI 产生的是草稿，不是最终发布结果。所有最终发布都必须通过 CampusHub 现有 Demand 发布流程。
 
@@ -85,7 +88,6 @@ public class AiDemandApplicationServiceImpl implements AiDemandApplicationServic
           "tags": [...],
           "interactionMode": "...",
           "targetParticipantCount": ...,
-          "note": "...",
           "missingFields": [...]
         }
         """;
@@ -93,7 +95,6 @@ public class AiDemandApplicationServiceImpl implements AiDemandApplicationServic
     private static final int TITLE_MAX_LENGTH = 200;
     private static final int DESCRIPTION_MAX_LENGTH = 2000;
     private static final int LOCATION_MAX_LENGTH = 256;
-    private static final int NOTE_MAX_LENGTH = 500;
     private static final int TAGS_MAX_SIZE = 20;
     private static final int TARGET_PARTICIPANT_COUNT_MAX = 100;
 
@@ -101,9 +102,8 @@ public class AiDemandApplicationServiceImpl implements AiDemandApplicationServic
      * missingFields 白名单：只允许 DemandDraft 已知字段名，避免 AI 注入任意字符串到前端提示。
      */
     private static final Set<String> MISSING_FIELD_WHITELIST = Set.of(
-        "title", "description", "category", "campusZone", "location",
-        "startTime", "endTime", "reward", "tags", "interactionMode",
-        "targetParticipantCount", "note"
+        "title", "category", "campusZone", "location",
+        "startTime", "endTime", "reward", "interactionMode", "targetParticipantCount"
     );
 
     private final ChatClient chatClient;
@@ -169,18 +169,21 @@ public class AiDemandApplicationServiceImpl implements AiDemandApplicationServic
      *
      * <p>interactionMode 处理顺序（关键）：
      * <ol>
-     *   <li>先校验 category 合法。</li>
+     *   <li>先校验 category 合法（null/非法直接拒绝，不进入 missingFields）。</li>
      *   <li>TEAM_UP 先强制 {@link InteractionMode#SELECT_MANY}，不管原 interactionMode（即使 null）。</li>
      *   <li>HELP 先强制 {@link InteractionMode#HELP}，不管原 interactionMode。</li>
      *   <li>OTHER 禁止 HELP；null 则加入 missingFields 让用户选择；非空必须合法且非 HELP。</li>
      *   <li>固定分类（EXPRESS/ERRAND/STUDY_TUTORING/SECOND_HAND）用 {@link InteractionMode#resolve} 推导，忽略 AI 返回值。</li>
      * </ol>
+     *
+     * <p>missingFields canonicalization：服务端根据字段最终值重新计算缺失字段，
+     * 不盲目信任 LLM 声明的 missingFields（LLM 漏报的补充，LLM 误报的移除）。
      */
     DemandDraft validate(DemandDraft raw) {
         String category = normalizeEnum(raw.category(), DemandCategory::fromValue, "category", raw.category());
         DemandCategory categoryEnum = DemandCategory.fromValue(category);
 
-        List<String> missingFields = new ArrayList<>(
+        LinkedHashSet<String> missingFields = new LinkedHashSet<>(
             raw.missingFields() == null ? List.of() : raw.missingFields());
 
         // interactionMode 按 category 优先级处理
@@ -202,10 +205,6 @@ public class AiDemandApplicationServiceImpl implements AiDemandApplicationServic
                 targetParticipantCount = null;
             }
         }
-        if ("SELECT_MANY".equals(interactionMode) && targetParticipantCount == null
-            && !missingFields.contains("targetParticipantCount")) {
-            missingFields.add("targetParticipantCount");
-        }
 
         // reward 校验
         if (reward != null && reward.compareTo(BigDecimal.ZERO) < 0) {
@@ -225,7 +224,6 @@ public class AiDemandApplicationServiceImpl implements AiDemandApplicationServic
         String title = truncate(raw.title(), TITLE_MAX_LENGTH);
         String description = truncate(raw.description(), DESCRIPTION_MAX_LENGTH);
         String location = truncate(raw.location(), LOCATION_MAX_LENGTH);
-        String note = truncate(raw.note(), NOTE_MAX_LENGTH);
 
         // tags 校验
         List<String> tags = raw.tags() == null ? List.of() : raw.tags();
@@ -237,7 +235,11 @@ public class AiDemandApplicationServiceImpl implements AiDemandApplicationServic
             .map(String::trim)
             .toList();
 
-        // missingFields 白名单 + 去重
+        // canonicalize missingFields：服务端根据字段最终值重算（不信任 LLM 声明）
+        canonicalizeMissingFields(missingFields, category, title, campusZone, location,
+            raw.startTime(), raw.endTime(), reward, interactionMode, targetParticipantCount);
+
+        // 白名单 + 去重
         List<String> normalizedMissingFields = normalizeMissingFields(missingFields);
 
         return new DemandDraft(
@@ -252,7 +254,6 @@ public class AiDemandApplicationServiceImpl implements AiDemandApplicationServic
             normalizedTags,
             interactionMode,
             targetParticipantCount,
-            note,
             normalizedMissingFields
         );
     }
@@ -262,7 +263,7 @@ public class AiDemandApplicationServiceImpl implements AiDemandApplicationServic
      *
      * <p>TEAM_UP / HELP 强制覆盖原值；OTHER 禁止 HELP 且非空必须合法；固定分类用 resolve 推导。
      */
-    private String resolveInteractionMode(DemandCategory category, String rawMode, List<String> missingFields) {
+    private String resolveInteractionMode(DemandCategory category, String rawMode, LinkedHashSet<String> missingFields) {
         if (category == DemandCategory.TEAM_UP) {
             // TEAM_UP 先强制 SELECT_MANY，不管原 interactionMode（即使 null 或非法）
             if (rawMode != null && !rawMode.isBlank()) {
@@ -286,9 +287,7 @@ public class AiDemandApplicationServiceImpl implements AiDemandApplicationServic
         if (category == DemandCategory.OTHER) {
             // OTHER 由用户最终确认；AI 返回的值必须合法且不能是 HELP
             if (rawMode == null || rawMode.isBlank()) {
-                if (!missingFields.contains("interactionMode")) {
-                    missingFields.add("interactionMode");
-                }
+                missingFields.add("interactionMode");
                 return null;
             }
             InteractionMode parsed = InteractionMode.fromValue(rawMode);
@@ -308,6 +307,54 @@ public class AiDemandApplicationServiceImpl implements AiDemandApplicationServic
         // 固定分类：用 resolve 推导（忽略 AI 返回的 interactionMode）
         InteractionMode resolved = InteractionMode.resolve(category);
         return resolved == null ? InteractionMode.DIRECT_ACCEPT.name() : resolved.name();
+    }
+
+    /**
+     * 服务端根据字段最终值重新计算 missingFields。
+     *
+     * <p>结合现有 Demand 发布规则（前端 runValidations / 后端 validatePublishCommand）：
+     * <ul>
+     *   <li>必填字段（title/campusZone/location/startTime/endTime/reward）：null/空 → 加入 missingFields；
+     *       有值（含 reward=0）→ 移除（不信任 LLM 漏报或误报）。</li>
+     *   <li>targetParticipantCount：仅 SELECT_MANY 必填；非 SELECT_MANY 时不应出现在 missingFields。</li>
+     *   <li>interactionMode：仅 OTHER 必填；非 OTHER 时不应出现在 missingFields。</li>
+     *   <li>category：null/非法直接拒绝（不进入 missingFields）。</li>
+     *   <li>description/tags：可空，不进入 missingFields。</li>
+     * </ul>
+     */
+    private void canonicalizeMissingFields(LinkedHashSet<String> missingFields, String category,
+        String title, String campusZone, String location,
+        String startTime, String endTime, BigDecimal reward,
+        String interactionMode, Integer targetParticipantCount) {
+        updateMissing(missingFields, "title", isBlank(title));
+        updateMissing(missingFields, "campusZone", isBlank(campusZone));
+        updateMissing(missingFields, "location", isBlank(location));
+        updateMissing(missingFields, "startTime", isBlank(startTime));
+        updateMissing(missingFields, "endTime", isBlank(endTime));
+        // reward：null → 缺失；0 → 有效值（不缺失）
+        updateMissing(missingFields, "reward", reward == null);
+        // targetParticipantCount：仅 SELECT_MANY 必填
+        if ("SELECT_MANY".equals(interactionMode)) {
+            updateMissing(missingFields, "targetParticipantCount", targetParticipantCount == null);
+        } else {
+            missingFields.remove("targetParticipantCount");
+        }
+        // interactionMode：仅 OTHER 必填（OTHER+null 已在 resolveInteractionMode 加入）
+        if (!"OTHER".equals(category)) {
+            missingFields.remove("interactionMode");
+        }
+    }
+
+    private void updateMissing(LinkedHashSet<String> missingFields, String field, boolean isMissing) {
+        if (isMissing) {
+            missingFields.add(field);
+        } else {
+            missingFields.remove(field);
+        }
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     private String normalizeEnum(String value, java.util.function.Function<String, DemandCategory> resolver,
@@ -365,7 +412,7 @@ public class AiDemandApplicationServiceImpl implements AiDemandApplicationServic
     /**
      * missingFields 白名单 + 去重：只保留 DemandDraft 已知字段名，避免 AI 注入任意字符串到前端提示。
      */
-    private List<String> normalizeMissingFields(List<String> missingFields) {
+    private List<String> normalizeMissingFields(LinkedHashSet<String> missingFields) {
         LinkedHashSet<String> deduped = new LinkedHashSet<>();
         for (String field : missingFields) {
             if (field == null || field.isBlank()) {
@@ -379,6 +426,19 @@ public class AiDemandApplicationServiceImpl implements AiDemandApplicationServic
         return List.copyOf(deduped);
     }
 
+    /**
+     * Provider 异常分类（关键：不把网络故障误报成"AI 返回内容无法识别"）。
+     *
+     * <ol>
+     *   <li>429 限流（message contains 429/too many requests/rate limit/quota）→ VALIDATION_FAILED "AI 服务繁忙"。
+     *       Spring AI 可能把 429 包装成 NonTransientAiException，但 message 仍含 429，故优先识别。</li>
+     *   <li>Spring AI NonTransientAiException / TransientAiException（401/403/5xx）→ INTERNAL_ERROR "AI 服务暂时不可用"。</li>
+     *   <li>网络/HTTP 故障（ResourceAccessException / ConnectException / SocketTimeoutException，含 cause-chain）→ INTERNAL_ERROR "AI 服务暂时不可用"。</li>
+     *   <li>结构化输出解析失败（cause-chain 含 JsonProcessingException）→ VALIDATION_FAILED "AI 返回内容无法识别"。
+     *       Spring AI BeanOutputConverter 用 ObjectMapper.readValue，失败时抛 RuntimeException(cause=JsonProcessingException)。</li>
+     *   <li>未知异常 → INTERNAL_ERROR "AI 服务暂时不可用"（不误判为 JSON 解析失败）。</li>
+     * </ol>
+     */
     private BusinessException translateProviderException(Exception exception) {
         String message = exception.getMessage() == null ? "" : exception.getMessage();
         String lower = message.toLowerCase();
@@ -388,13 +448,41 @@ public class AiDemandApplicationServiceImpl implements AiDemandApplicationServic
             log.warn("AI provider 返回限流");
             return new BusinessException(ErrorCode.VALIDATION_FAILED, "AI 服务繁忙，请稍后重试");
         }
-        // Spring AI provider 异常（401/403/5xx/超时）→ INTERNAL_ERROR，不泄露内部细节
+        // Spring AI provider 异常（401/403/5xx）→ INTERNAL_ERROR，不泄露内部细节
         if (exception instanceof NonTransientAiException || exception instanceof TransientAiException) {
             log.warn("AI provider 异常：{}", exception.getClass().getSimpleName());
             return new BusinessException(ErrorCode.INTERNAL_ERROR, "AI 服务暂时不可用，请稍后重试");
         }
-        // JSON / structured output 解析失败 → VALIDATION_FAILED
-        log.warn("AI 结构化输出解析失败：{}", exception.getClass().getSimpleName());
-        return new BusinessException(ErrorCode.VALIDATION_FAILED, "AI 返回内容无法识别，请重新描述需求");
+        // 网络/HTTP 故障（含 cause-chain）→ INTERNAL_ERROR，不误判为结构化输出失败
+        if (hasCauseInChain(exception, ResourceAccessException.class, ConnectException.class, SocketTimeoutException.class)) {
+            log.warn("AI 网络异常：{}", exception.getClass().getSimpleName());
+            return new BusinessException(ErrorCode.INTERNAL_ERROR, "AI 服务暂时不可用，请稍后重试");
+        }
+        // 结构化输出解析失败（cause-chain 含 JsonProcessingException）→ VALIDATION_FAILED
+        if (hasCauseInChain(exception, JsonProcessingException.class)) {
+            log.warn("AI 结构化输出解析失败：{}", exception.getClass().getSimpleName());
+            return new BusinessException(ErrorCode.VALIDATION_FAILED, "AI 返回内容无法识别，请重新描述需求");
+        }
+        // 未知异常：优先 INTERNAL_ERROR，不误判为 JSON 解析失败
+        log.warn("AI 未知异常：{}", exception.getClass().getSimpleName());
+        return new BusinessException(ErrorCode.INTERNAL_ERROR, "AI 服务暂时不可用，请稍后重试");
+    }
+
+    /**
+     * 沿 cause-chain 检查异常或其 cause 是否为指定类型。
+     */
+    private boolean hasCauseInChain(Throwable throwable, Class<?>... targetTypes) {
+        Throwable current = throwable;
+        int depth = 0;
+        while (current != null && depth < 16) {
+            for (Class<?> targetType : targetTypes) {
+                if (targetType.isInstance(current)) {
+                    return true;
+                }
+            }
+            current = current.getCause();
+            depth++;
+        }
+        return false;
     }
 }

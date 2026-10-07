@@ -263,6 +263,5 @@ export interface AiDemandDraft {
   tags: string[]
   interactionMode: string | null
   targetParticipantCount: number | null
-  note: string | null
   missingFields: string[]
 }

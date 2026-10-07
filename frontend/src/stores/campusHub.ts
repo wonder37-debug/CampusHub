@@ -303,7 +303,6 @@ function normalizeAiDemandDraft(raw: any): AiDemandDraft {
     tags: Array.isArray(raw?.tags) ? raw.tags.map((tag: any) => String(tag)) : [],
     interactionMode: raw?.interactionMode == null ? null : String(raw.interactionMode),
     targetParticipantCount: raw?.targetParticipantCount == null ? null : Number(raw.targetParticipantCount),
-    note: raw?.note == null ? null : String(raw.note),
     missingFields: Array.isArray(raw?.missingFields) ? raw.missingFields.map((f: any) => String(f)) : []
   }
 }

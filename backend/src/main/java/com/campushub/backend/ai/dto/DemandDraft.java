@@ -29,7 +29,6 @@ public record DemandDraft(
     List<String> tags,
     String interactionMode,
     Integer targetParticipantCount,
-    String note,
     List<String> missingFields
 ) {
 }

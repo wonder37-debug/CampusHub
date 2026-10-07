@@ -439,8 +439,7 @@ const AI_DIALOG_FIELD_LABELS: Record<string, string> = {
   reward: '报酬',
   tags: '标签',
   interactionMode: '互动模式',
-  targetParticipantCount: '目标人数',
-  note: '备注'
+  targetParticipantCount: '目标人数'
 }
 
 const aiDialogOpen = ref(false)
@@ -480,27 +479,46 @@ function isLegalCampusZone(value: string | null): value is CampusZone {
 }
 
 function applyAiDraft(draft: import('@/types/campushub').AiDemandDraft): void {
+  // 1. AI 有明确值的字段覆盖；AI null 的字段保留用户已输入值（不凭空填默认值）
   if (draft.title) form.title = draft.title
   if (draft.description) form.description = draft.description
-  if (isLegalCategory(draft.category)) form.category = draft.category
-  if (isLegalCampusZone(draft.campusZone)) form.campusZone = draft.campusZone
   if (draft.location) form.location = draft.location
   if (draft.startTime) form.startDateTime = toDateTimeLocal(draft.startTime)
   if (draft.endTime) form.endDateTime = toDateTimeLocal(draft.endTime)
-  if (draft.reward != null && Number.isFinite(draft.reward) && draft.reward >= 0) {
-    form.reward = String(draft.reward)
-  } else if (draft.missingFields.includes('reward')) {
-    // AI 未识别到报酬时清空默认值，避免"显示 10 却提示补充报酬"的矛盾
+
+  // 2. reward：AI null 必须清空（form.reward 默认 '10' 有业务意义，不能保留默认值导致用户误提交 10 元）
+  //    reward=0 是有效值，必须保留，不能误判为空
+  if (draft.reward == null) {
     form.reward = ''
+  } else if (Number.isFinite(draft.reward) && draft.reward >= 0) {
+    form.reward = String(draft.reward)
   }
+
+  // 3. campusZone：AI 有合法值则覆盖
+  if (isLegalCampusZone(draft.campusZone)) form.campusZone = draft.campusZone
+
+  // 4. category 改变时清理旧 interactionMode/targetParticipantCount，避免旧状态残留冲突
+  //    （例如旧 TEAM_UP + targetParticipantCount=3，新 AI EXPRESS 应清理 targetParticipantCount）
+  if (isLegalCategory(draft.category) && draft.category !== form.category) {
+    form.category = draft.category
+    form.interactionMode = ''
+    form.targetParticipantCount = ''
+  }
+
+  // 5. tags：AI 有值则覆盖
   if (Array.isArray(draft.tags) && draft.tags.length > 0) {
     form.tags = draft.tags.join(',')
   }
-  // 仅 OTHER 分类由用户选择 interactionMode，其余分类后端会按规则推导
+
+  // 6. interactionMode：仅 OTHER 分类由用户/AI 选择，其余分类后端会按规则推导
   if (form.category === 'OTHER' && draft.interactionMode) {
     form.interactionMode = draft.interactionMode
   }
-  if (draft.targetParticipantCount != null && Number.isFinite(draft.targetParticipantCount)) {
+
+  // 7. targetParticipantCount：仅 SELECT_MANY 模式（TEAM_UP 或 OTHER+SELECT_MANY）由 AI 设置
+  if (effectiveInteractionMode.value === 'SELECT_MANY'
+    && draft.targetParticipantCount != null
+    && Number.isFinite(draft.targetParticipantCount)) {
     form.targetParticipantCount = String(draft.targetParticipantCount)
   }
 
