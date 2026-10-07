@@ -79,7 +79,7 @@ jobs:
         working-directory: backend
         run: >-
           mvn $MAVEN_CLI_OPTS
-          "-Dtest=*ServiceImplTest,RequestUserExtractorTest"
+          "-Dtest=!FrontendIntegrationFlowTest,!BackendApplicationTests"
           "-Dsurefire.timeout=240"
           "-Dsurefire.exitTimeout=30"
           test
@@ -116,7 +116,7 @@ jobs:
         working-directory: backend
         run: >-
           mvn $MAVEN_CLI_OPTS
-          "-Dtest=FrontendIntegrationFlowTest"
+          "-Dtest=FrontendIntegrationFlowTest,BackendApplicationTests"
           "-Dsurefire.timeout=360"
           "-Dsurefire.forkedProcessTimeoutInSeconds=180"
           "-Dsurefire.exitTimeout=30"

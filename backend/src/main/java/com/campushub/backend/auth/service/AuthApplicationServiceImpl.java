@@ -20,6 +20,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.Objects;
+import java.util.Optional;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -30,6 +31,7 @@ public class AuthApplicationServiceImpl implements AuthApplicationService {
     private static final BigDecimal DEFAULT_INITIAL_BALANCE = new BigDecimal("100.00");
     private static final long TOKEN_EXPIRES_IN_SECONDS = 3600L;
     private static final String DEFAULT_NICKNAME = "匿名校友";
+    private static final long PASSWORD_RESET_CODE_EXPIRES_IN_SECONDS = 300L;
 
     private final UserRepository userRepository;
     private final VerificationCodeService verificationCodeService;
@@ -69,9 +71,13 @@ public class AuthApplicationServiceImpl implements AuthApplicationService {
     public EmailVerificationIssue sendPasswordResetCode(String email) {
         String normalizedEmail = normalizeEmail(email);
         validateEmail(normalizedEmail);
-        User user = userRepository.findByEmail(normalizedEmail)
-            .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "user not found"));
-        return verificationCodeService.issueCode(normalizedEmail, user.getStudentId());
+        Optional<User> userOpt = userRepository.findByEmail(normalizedEmail);
+        if (userOpt.isEmpty()) {
+            // 账号枚举防护：用户不存在时不抛错、不发送邮件，返回与正常流程一致的伪 issue
+            Instant expiresAt = Instant.now().plusSeconds(PASSWORD_RESET_CODE_EXPIRES_IN_SECONDS);
+            return new EmailVerificationIssue(normalizedEmail, null, PASSWORD_RESET_CODE_EXPIRES_IN_SECONDS, expiresAt);
+        }
+        return verificationCodeService.issueCode(normalizedEmail, userOpt.get().getStudentId());
     }
 
     @Override
@@ -186,15 +192,12 @@ public class AuthApplicationServiceImpl implements AuthApplicationService {
         validateNewPassword(command.newPassword());
 
         String normalizedEmail = normalizeEmail(command.email());
-        User user = userRepository.findByEmail(normalizedEmail)
-            .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "user not found"));
-        if (!verificationCodeService.matchesStudentId(normalizedEmail, user.getStudentId())) {
-            throw new BusinessException(ErrorCode.AUTH_FAILED, "verification code does not match current account");
-        }
+        // 账号枚举防护：先校验验证码，无论邮箱是否注册，失败都返回统一错误
         if (!verificationCodeService.verify(normalizedEmail, command.verificationCode())) {
-            throw new BusinessException(ErrorCode.AUTH_FAILED, "verification code is invalid");
+            throw new BusinessException(ErrorCode.AUTH_FAILED, "verification code is invalid or has expired");
         }
-
+        User user = userRepository.findByEmail(normalizedEmail)
+            .orElseThrow(() -> new BusinessException(ErrorCode.AUTH_FAILED, "verification code is invalid or has expired"));
         user.setPasswordHash(passwordEncoder.encode(command.newPassword()));
         user.setUpdatedAt(LocalDateTime.now());
         userRepository.save(user);

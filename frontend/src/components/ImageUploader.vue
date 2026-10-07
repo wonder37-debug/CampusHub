@@ -12,7 +12,7 @@ const emit = defineEmits<{
 }>()
 
 const maxCount = computed(() => props.maxCount ?? 6)
-const maxSizeBytes = computed(() => (props.maxSizeMB ?? 5) * 1024 * 1024)
+const maxSizeBytes = computed(() => (props.maxSizeMB ?? 10) * 1024 * 1024)
 
 const uploading = ref(false)
 const uploadProgress = ref(0)

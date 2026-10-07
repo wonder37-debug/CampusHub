@@ -32,13 +32,15 @@ export type NotificationType = (typeof NOTIFICATION_TYPE_OPTIONS)[number]
 
 export interface PublicUser {
   id: string
-  studentId: string
-  email: string
+  // 以下字段仅在本人/管理员接口（/auth/login、/users/me、/admin/users 等）返回；
+  // 公开接口（Demand/Order/Review 中的 publisher/requester/provider/author）不返回，使用时请做空值兜底
+  studentId?: string
+  email?: string
+  balance?: number
+  frozenBalance?: number
   nickname: string
   phone?: string
   creditScore: number
-  balance: number
-  frozenBalance: number
   role: UserRole
   status: UserStatus
   avatarUrl: string

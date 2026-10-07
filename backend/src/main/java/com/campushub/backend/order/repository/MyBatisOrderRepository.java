@@ -76,6 +76,18 @@ public class MyBatisOrderRepository implements OrderRepository {
     }
 
     @Override
+    public Optional<Order> findByIdForUpdate(Long orderId) {
+        if (orderId == null) {
+            return Optional.empty();
+        }
+        OrderEntity entity = orderMapper.selectByIdForUpdate(orderId);
+        if (entity == null) {
+            return Optional.empty();
+        }
+        return Optional.of(entity.toDomain(loadHistory(entity.getId())));
+    }
+
+    @Override
     public Optional<Order> findByDemandId(Long demandId) {
         if (demandId == null) {
             return Optional.empty();

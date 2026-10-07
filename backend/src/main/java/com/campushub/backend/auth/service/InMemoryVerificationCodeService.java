@@ -18,6 +18,7 @@ public class InMemoryVerificationCodeService implements VerificationCodeService 
 
     private static final long EXPIRES_IN_SECONDS = 300L;
     private static final long RESEND_COOLDOWN_SECONDS = 60L;
+    private static final int MAX_VERIFY_ATTEMPTS = 5;
 
     private final CampusEmailPolicy campusEmailPolicy;
     private final VerificationEmailSender verificationEmailSender;
@@ -49,7 +50,7 @@ public class InMemoryVerificationCodeService implements VerificationCodeService 
         Instant expiresAt = now.plusSeconds(EXPIRES_IN_SECONDS);
         String normalizedStudentId = normalizeStudentId(studentId);
         verificationEmailSender.sendRegistrationCode(normalizedEmail, code, EXPIRES_IN_SECONDS);
-        records.put(normalizedEmail, new VerificationRecord(code, expiresAt, now, normalizedStudentId));
+        records.put(normalizedEmail, new VerificationRecord(code, expiresAt, now, normalizedStudentId, 0));
         return new EmailVerificationIssue(normalizedEmail, code, EXPIRES_IN_SECONDS, expiresAt);
     }
 
@@ -66,9 +67,18 @@ public class InMemoryVerificationCodeService implements VerificationCodeService 
             return false;
         }
         if (!record.code().equals(verificationCode.trim())) {
+            int newErrorCount = record.errorCount() + 1;
+            if (newErrorCount >= MAX_VERIFY_ATTEMPTS) {
+                // 错误尝试超阈值后锁定该验证码，需重新申请
+                records.remove(normalizedEmail);
+            } else {
+                records.put(normalizedEmail, new VerificationRecord(
+                    record.code(), record.expiresAt(), record.sentAt(), record.studentId(), newErrorCount));
+            }
             return false;
         }
 
+        // 成功后立即失效，避免验证码被重复使用
         records.remove(normalizedEmail);
         return true;
     }
@@ -88,6 +98,6 @@ public class InMemoryVerificationCodeService implements VerificationCodeService 
         return studentId == null ? null : studentId.trim();
     }
 
-    private record VerificationRecord(String code, Instant expiresAt, Instant sentAt, String studentId) {
+    private record VerificationRecord(String code, Instant expiresAt, Instant sentAt, String studentId, int errorCount) {
     }
 }

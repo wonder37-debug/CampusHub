@@ -31,14 +31,17 @@ public class FileUploadController {
     /** Allowed image extensions */
     private static final Set<String> ALLOWED_EXTENSIONS = Set.of("jpg", "jpeg", "png", "webp");
 
-    /** Max single file size: 5 MB */
-    private static final long MAX_FILE_SIZE = 5 * 1024 * 1024;
-
     /** Max files per upload request */
     private static final int MAX_FILES_PER_REQUEST = 6;
 
-    public FileUploadController(@Value("${app.upload.dir:uploads}") String uploadDir) {
+    private final long maxFileSize;
+
+    public FileUploadController(
+        @Value("${app.upload.dir:uploads}") String uploadDir,
+        @Value("${app.upload.max-file-size-bytes:10485760}") long maxFileSize
+    ) {
         this.uploadRoot = Paths.get(uploadDir).toAbsolutePath().normalize();
+        this.maxFileSize = maxFileSize;
         try {
             Files.createDirectories(this.uploadRoot);
         } catch (IOException e) {
@@ -68,8 +71,8 @@ public class FileUploadController {
             }
 
             // Validate file size
-            if (file.getSize() > MAX_FILE_SIZE) {
-                errors.add(file.getOriginalFilename() + " 超过 5MB 限制");
+            if (file.getSize() > maxFileSize) {
+                errors.add(file.getOriginalFilename() + " 超过 " + (maxFileSize / (1024 * 1024)) + "MB 限制");
                 continue;
             }
 

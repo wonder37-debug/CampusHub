@@ -108,6 +108,165 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /auth/password-reset/code:
+    post:
+      summary: 发送密码重置验证码
+      description: >-
+        账号枚举防护：无论邮箱是否注册，接口均返回 200 + expiresIn，不通过响应差异暴露账号是否存在。
+        仅当邮箱已注册时才真实发送验证码。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        '200':
+          description: 验证码已发送（不存在邮箱也返回相同结构）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse'
+        '400':
+          description: 参数校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: 发送过于频繁（resend cooldown 60s）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /auth/password-reset:
+    post:
+      summary: 密码重置
+      description: >-
+        先校验验证码再查询用户，无论邮箱是否注册、验证码是否正确，失败统一返回 401 AUTH_FAILED，
+        不暴露账号是否存在。验证码成功使用后立即失效，不能重复使用；错误 5 次后锁定，需重新申请。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email,verificationCode,newPassword]
+              properties:
+                email:
+                  type: string
+                  format: email
+                verificationCode:
+                  type: string
+                newPassword:
+                  type: string
+                  minLength: 8
+      responses:
+        '200':
+          description: 重置成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse'
+        '401':
+          description: 验证码无效或已过期（不区分账号是否存在）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /auth/change-password:
+    post:
+      summary: 修改密码（已登录用户）
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [oldPassword,newPassword]
+              properties:
+                oldPassword:
+                  type: string
+                newPassword:
+                  type: string
+                  minLength: 8
+      responses:
+        '200':
+          description: 修改成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 原密码不正确
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /upload/images:
+    post:
+      summary: 上传图片（单张 ≤10MB，单次最多 6 张）
+      description: >-
+        支持jpg/jpeg/png/webp，单文件上限 10MB（与 spring.servlet.multipart.max-file-size 一致），
+        单次最多 6 张。返回可访问的图片 URL 列表。访问路径形如 /api/v1/uploads/YYYY/MM/filename。
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                files:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                  maxItems: 6
+      responses:
+        '200':
+          description: 上传成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardResponse'
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      urls:
+                        type: array
+                        items:
+                          type: string
+                      uploaded:
+                        type: integer
+                      failed:
+                        type: integer
+                      errors:
+                        type: array
+                        items:
+                          type: string
+        '400':
+          description: 文件过大/格式不支持/未选择文件
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /demands:
     post:
       summary: 发布需求
@@ -172,8 +331,32 @@ paths:
           name: sort
           schema:
             type: string
-            enum: [time, distance, reward]
+            enum: [time, distance, reward, recommend]
             default: time
+        - in: query
+          name: campusZone
+          schema:
+            type: string
+            enum: [GULOU, XIANLIN, SUZHOU]
+        - in: query
+          name: location
+          schema:
+            type: string
+        - in: query
+          name: startTimeFrom
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: startTimeTo
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: includeOwn
+          schema:
+            type: boolean
+            default: false
       responses:
         '200':
           description: 列表
@@ -365,6 +548,41 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /orders/{orderId}/arbitration:
+    post:
+      summary: 发起订单仲裁
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: orderId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason:
+                  type: string
+                  maxLength: 500
+      responses:
+        '200':
+          description: 仲裁已发起，订单进入 IN_ARBITRATION
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+        '409':
+          description: 订单不在可仲裁状态（仅 ACCEPTED/IN_PROGRESS 可发起）
           content:
             application/json:
               schema:
@@ -640,6 +858,127 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /admin/orders/arbitration:
+    get:
+      summary: 管理员查询仲裁中订单列表
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+        - in: query
+          name: size
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: 仲裁中订单列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardResponse'
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Order'
+                      page:
+                        type: integer
+                      size:
+                        type: integer
+                      total:
+                        type: integer
+        '403':
+          description: 权限不足（需管理员）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /admin/orders/{orderId}/arbitration/resolve:
+    post:
+      summary: 管理员裁决仲裁订单（完成或取消）
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: orderId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [outcome,reason]
+              properties:
+                outcome:
+                  type: string
+                  enum: [complete, cancel]
+                reason:
+                  type: string
+                  maxLength: 500
+      responses:
+        '200':
+          description: 裁决完成
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+        '409':
+          description: 订单不在仲裁中
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 权限不足（需管理员）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /admin/orders/{orderId}:
+    delete:
+      summary: 管理员删除订单（同时取消关联需求并解冻悬赏）
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: orderId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse'
+        '403':
+          description: 权限不足（需管理员）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /admin/stats:
     get:
       summary: 管理员仪表盘统计数据（日活、订单数、分类分布等）
@@ -677,8 +1016,28 @@ components:
       properties:
         errors:
           type: object
+    PublicUserSummary:
+      type: object
+      description: 公开用户摘要（Demand/Order/Review 等公开接口返回，不含 email/studentId/balance/frozenBalance 等敏感字段）
+      properties:
+        id:
+          type: string
+        nickname:
+          type: string
+        avatarUrl:
+          type: string
+        role:
+          type: string
+          description: 用户角色（USER/ADMIN）
+        status:
+          type: string
+          description: 用户状态（ACTIVE/BANNED）
+        creditScore:
+          type: integer
+          description: 信用分
     UserSummary:
       type: object
+      description: 本人/管理员视角的用户摘要（/auth/login、/users/me、/admin/users 等），含敏感字段
       properties:
         id:
           type: string
@@ -777,7 +1136,7 @@ components:
           $ref: '#/components/schemas/AuthData'
     DemandCreate:
       type: object
-      required: [title,category]
+      required: [title,category,campusZone]
       properties:
         title:
           type: string
@@ -786,9 +1145,15 @@ components:
         description:
           type: string
           maxLength: 2000
+        note:
+          type: string
+          maxLength: 500
         category:
           type: string
-          enum: [取快递, 学习辅导, 二手交易, 活动组队, 其他]
+          enum: [EXPRESS, ERRAND, STUDY_TUTORING, SECOND_HAND, TEAM_UP, HELP, OTHER]
+        campusZone:
+          type: string
+          enum: [GULOU, XIANLIN, SUZHOU]
         location:
           type: string
           maxLength: 256
@@ -801,11 +1166,32 @@ components:
         reward:
           type: number
           minimum: 0
+        interactionMode:
+          type: string
+          enum: [DIRECT_ACCEPT, SELECT_ONE, SELECT_MANY, HELP]
+          description: 互动模式（OTHER 分类可由用户指定，其余分类按 category 推导）
+        targetParticipantCount:
+          type: integer
+          minimum: 1
+          maximum: 100
+          description: 目标参与人数（仅 SELECT_MANY 必填）
         tags:
           type: array
           items:
             type: string
           maxItems: 20
+        images:
+          type: array
+          items:
+            type: string
+            description: 已上传图片的 URL（由 /upload/images 返回）
+        contactInfo:
+          type: string
+          maxLength: 200
+          description: 联系方式（仅对接单人、发布者和管理员可见）
+        anonymous:
+          type: boolean
+          default: false
     Demand:
       type: object
       properties:
@@ -816,7 +1202,14 @@ components:
         publisherDisplayName:
           type: string
         publisher:
-          $ref: '#/components/schemas/UserSummary'
+          $ref: '#/components/schemas/PublicUserSummary'
+        publisherStudentIdMasked:
+          type: string
+          nullable: true
+          description: 脱敏学号（仅非匿名或本人/管理员可见时不脱敏）
+        publisherIdentityVisible:
+          type: boolean
+          description: 发布者身份是否对当前用户可见
         title:
           type: string
         description:
@@ -884,9 +1277,9 @@ components:
         demand:
           $ref: '#/components/schemas/Demand'
         provider:
-          $ref: '#/components/schemas/UserSummary'
+          $ref: '#/components/schemas/PublicUserSummary'
         requester:
-          $ref: '#/components/schemas/UserSummary'
+          $ref: '#/components/schemas/PublicUserSummary'
         status:
           type: string
         createdAt:
@@ -915,14 +1308,25 @@ components:
           type: string
         orderId:
           type: string
-        authorId:
+          nullable: true
+        responseId:
           type: string
+          nullable: true
+        demandId:
+          type: string
+          nullable: true
         targetId:
+          type: string
+        targetName:
           type: string
         rating:
           type: integer
+          minimum: 1
+          maximum: 5
         comment:
           type: string
+        author:
+          $ref: '#/components/schemas/PublicUserSummary'
         createdAt:
           type: string
           format: date-time

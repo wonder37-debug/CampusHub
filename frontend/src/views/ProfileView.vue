@@ -165,7 +165,7 @@ onMounted(() => {
         </div>
         <div class="mini-stat">
           <span class="subtle">冻结金额</span>
-          <strong>{{ formatMoney(store.currentUser.frozenBalance) }}</strong>
+          <strong>{{ formatMoney(store.currentUser?.frozenBalance ?? 0) }}</strong>
         </div>
         <div class="mini-stat">
           <span class="subtle">信用等级</span>

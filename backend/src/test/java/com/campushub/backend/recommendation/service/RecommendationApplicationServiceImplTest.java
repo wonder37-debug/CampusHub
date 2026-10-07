@@ -12,6 +12,7 @@ import com.campushub.backend.auth.repository.UserRepository;
 import com.campushub.backend.common.api.PageResponse;
 import com.campushub.backend.common.model.PageQuery;
 import com.campushub.backend.demand.domain.DemandCategory;
+import com.campushub.backend.demand.domain.DemandSort;
 import com.campushub.backend.demand.domain.DemandStatus;
 import com.campushub.backend.demand.dto.DemandDetailResponse;
 import com.campushub.backend.demand.dto.DemandQuery;
@@ -341,6 +342,29 @@ class RecommendationApplicationServiceImplTest {
             demand.setCreatedAt(createdAt);
             demandRepository.save(demand);
         });
+    }
+
+    @Test
+    void shouldPageAfterRecommendationSoHighScoreItemEntersFirstPage() {
+        // 高 reward 但 createdAt 较早的需求：按 TIME 排序会落在第二页，但推荐打分应让它进入第一页
+        DemandDetailResponse highRewardOld = createDemandWithReward("高报酬早需求", "OTHER", new BigDecimal("10.00"));
+        demandRepository.findById(highRewardOld.id()).ifPresent(demand -> {
+            demand.setCreatedAt(LocalDateTime.now().minusDays(2));
+            demandRepository.save(demand);
+        });
+        createDemandWithReward("低报酬新A", "SECOND_HAND", BigDecimal.ONE);
+        createDemandWithReward("低报酬新B", "SECOND_HAND", BigDecimal.ONE);
+
+        // size=2 page=1：推荐打分后高报酬早需求应进入第一页第一位，total 与候选集合一致
+        PageResponse<DemandSummaryResponse> page = recommendationApplicationService.recommendDemandList(
+            accepterId,
+            new DemandQuery(null, null, null, null, null, null, DemandSort.RECOMMEND, new PageQuery(1, 2))
+        );
+
+        assertEquals(3, page.total(), "total 应等于推荐候选集合大小，而非 TIME 分页后的页内条数");
+        assertEquals(2, page.items().size());
+        assertEquals(highRewardOld.id(), page.items().get(0).id(),
+            "高推荐分需求（按 TIME 在第二页）应通过先推荐后分页进入最终第一页");
     }
 
     private DemandDetailResponse createDemandWithReward(String title, String category, BigDecimal reward) {

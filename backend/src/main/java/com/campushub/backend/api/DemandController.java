@@ -29,13 +29,10 @@ import com.campushub.backend.order.repository.OrderRepository;
 import com.campushub.backend.order.service.OrderApplicationService;
 import com.campushub.backend.recommendation.domain.ActionType;
 import com.campushub.backend.recommendation.domain.UserActionLog;
-import com.campushub.backend.recommendation.dto.RecommendationItemResponse;
 import com.campushub.backend.recommendation.repository.UserActionLogRepository;
 import com.campushub.backend.recommendation.service.RecommendationApplicationService;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -121,6 +118,34 @@ public class DemandController {
     ) {
         CurrentUser currentUser = requestUserExtractor.tryExtract(request);
         DemandSort resolvedSort = parseSort(sort);
+
+        // sort=RECOMMEND：先获取候选需求、完成推荐打分/排序/diversity rerank，再执行分页，
+        // 避免“先分页后推荐”导致高推荐分需求永远无法进入第一页
+        if (resolvedSort == DemandSort.RECOMMEND && currentUser != null) {
+            PageResponse<DemandSummaryResponse> recPage = recommendationApplicationService.recommendDemandList(
+                currentUser.userId(),
+                new DemandQuery(q, category, campusZone, location, startTimeFrom, startTimeTo, DemandSort.RECOMMEND, new PageQuery(page, Math.min(size, 50)))
+            );
+            List<Long> recDemandIds = recPage.items().stream().map(DemandSummaryResponse::id).toList();
+            if (recDemandIds.isEmpty()) {
+                return ApiResponse.success(new PageResponse<>(List.of(), recPage.page(), recPage.size(), recPage.total()));
+            }
+            Map<Long, Demand> recDemandMap = demandRepository.findAllById(recDemandIds).stream()
+                .collect(Collectors.toMap(Demand::getId, d -> d));
+            Set<Long> recPublisherIds = recDemandMap.values().stream().map(Demand::getPublisherId).filter(Objects::nonNull).collect(Collectors.toSet());
+            Map<Long, User> recUserMap = recPublisherIds.isEmpty() ? Map.of()
+                : userRepository.findAllById(recPublisherIds).stream().collect(Collectors.toMap(User::getId, u -> u));
+            Map<Long, Order> recOrderMap = orderRepository.findAllByDemandIdIn(recDemandIds).stream()
+                .collect(Collectors.toMap(Order::getDemandId, o -> o));
+            List<DemandView> recItems = recDemandIds.stream()
+                .map(recDemandMap::get)
+                .filter(Objects::nonNull)
+                .map(demand -> apiViewMapper.toDemandView(demand, currentUser, recUserMap, recOrderMap))
+                .toList();
+            return ApiResponse.success(new PageResponse<>(recItems, recPage.page(), recPage.size(), recPage.total()));
+        }
+
+        // 普通 TIME / REWARD / DISTANCE 排序保持现有语义
         PageResponse<DemandSummaryResponse> rawPage = demandApplicationService.list(
             new DemandQuery(
                 q,
@@ -150,46 +175,7 @@ public class DemandController {
             .filter(Objects::nonNull)
             .map(demand -> apiViewMapper.toDemandView(demand, currentUser, userMap, orderMap))
             .toList();
-        if (resolvedSort == DemandSort.RECOMMEND && currentUser != null) {
-            items = reorderWithRecommendations(items, currentUser.userId(), q, category, campusZone, location, startTimeFrom, startTimeTo, page, size);
-        }
         return ApiResponse.success(new PageResponse<>(items, rawPage.page(), rawPage.size(), rawPage.total()));
-    }
-
-    private List<DemandView> reorderWithRecommendations(
-        List<DemandView> items, Long userId, String q, String category, String campusZone,
-        String location, LocalDateTime startTimeFrom, LocalDateTime startTimeTo, int page, int size
-    ) {
-        try {
-            DemandQuery recQuery = new DemandQuery(
-                q, category, campusZone, location, startTimeFrom, startTimeTo,
-                DemandSort.RECOMMEND, new PageQuery(page, Math.min(size, 50))
-            );
-            PageResponse<RecommendationItemResponse> recPage = recommendationApplicationService.recommend(userId, recQuery);
-            if (recPage.items().isEmpty()) {
-                return items;
-            }
-            Map<Long, Integer> orderIndex = new LinkedHashMap<>();
-            for (int i = 0; i < recPage.items().size(); i++) {
-                orderIndex.put(recPage.items().get(i).demandId(), i);
-            }
-            List<DemandView> reordered = new ArrayList<>(items);
-            reordered.sort((a, b) -> {
-                Integer idxA = orderIndex.get(getDemandId(a));
-                Integer idxB = orderIndex.get(getDemandId(b));
-                if (idxA != null && idxB != null) return Integer.compare(idxA, idxB);
-                if (idxA != null) return -1;
-                if (idxB != null) return 1;
-                return 0;
-            });
-            return reordered;
-        } catch (Exception e) {
-            return items;
-        }
-    }
-
-    private Long getDemandId(DemandView view) {
-        return view.id();
     }
 
     private DemandSort parseSort(String sort) {

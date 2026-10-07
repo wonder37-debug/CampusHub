@@ -421,42 +421,7 @@ DEALLOCATE PREPARE stmt;
 
 -- ==========================================================
 
--- 6. 资产流水表 (ast_ledger)
-
--- ==========================================================
-
-CREATE TABLE IF NOT EXISTS`ast_ledger` (
-
-  `id` bigint NOT NULL AUTO_INCREMENT PRIMARY KEY,
-
-  `user_id` bigint NOT NULL COMMENT '资产归属人ID',
-
-  `amount` decimal(10,2) NOT NULL COMMENT '变动金额',
-
-  `direction` varchar(10) NOT NULL COMMENT '方向(IN/OUT/FREEZE/UNFREEZE)',
-
-  `biz_order_id` bigint DEFAULT NULL COMMENT '关联业务订单ID',
-
-  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '流水发生时间',
-
-  CONSTRAINT `chk_ledger_direction` CHECK (`direction` IN ('IN','OUT','FREEZE','UNFREEZE'))
-
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='不可变资产流水表';
-
-
-
--- 幂等创建索引（Spring sql.init always mode 重复执行安全）
-SET @idx_exists = (SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'ast_ledger' AND index_name = 'idx_ledger_user');
-SET @sql = IF(@idx_exists = 0, 'CREATE INDEX idx_ledger_user ON ast_ledger(user_id)', 'SELECT 1');
-PREPARE stmt FROM @sql;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
-
-
-
--- ==========================================================
-
--- 7. 通知表 (sys_notification)
+-- 6. 通知表 (sys_notification)
 
 -- ==========================================================
 
@@ -488,7 +453,7 @@ CREATE TABLE IF NOT EXISTS`sys_notification` (
 
 -- ==========================================================
 
--- 8. 推荐/用户行为日志表 (rec_user_action_log)
+-- 7. 推荐/用户行为日志表 (rec_user_action_log)
 
 -- ==========================================================
 

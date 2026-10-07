@@ -450,6 +450,51 @@ class OrderApplicationServiceImplTest {
         assertTrue(acceptSuccess.get() + updateSuccess.get() >= 1);
     }
 
+    @Test
+    void shouldNotDoubleCompleteOrderUnderConcurrentConfirmation() throws Exception {
+        DemandDetailResponse demand = createDemand();
+        OrderDetailResponse accepted = orderApplicationService.accept(accepterId, demand.id(), new AcceptOrderCommand("我来"));
+        orderApplicationService.updateStatus(accepterId, accepted.orderId(),
+            new UpdateOrderStatusCommand("IN_PROGRESS", "开始处理", null));
+        // accepter 先确认完成（提交凭证），等待 publisher 确认
+        orderApplicationService.updateStatus(accepterId, accepted.orderId(),
+            new UpdateOrderStatusCommand("COMPLETED", "已完成并上传凭证", 2));
+
+        // publisher 并发两次确认完成：Order 行锁应保证只有一个完成并结算，另一个被拒绝
+        java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newFixedThreadPool(2);
+        java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(2);
+        java.util.concurrent.atomic.AtomicInteger success = new java.util.concurrent.atomic.AtomicInteger(0);
+        java.util.concurrent.atomic.AtomicInteger rejected = new java.util.concurrent.atomic.AtomicInteger(0);
+
+        for (int i = 0; i < 2; i++) {
+            executor.submit(() -> {
+                try {
+                    start.await();
+                    orderApplicationService.updateStatus(publisherId, accepted.orderId(),
+                        new UpdateOrderStatusCommand("COMPLETED", "确认完成", null));
+                    success.incrementAndGet();
+                } catch (BusinessException e) {
+                    rejected.incrementAndGet();
+                } catch (Exception e) {
+                    // ignore framework errors
+                } finally {
+                    done.countDown();
+                }
+            });
+        }
+        start.countDown();
+        assertTrue(done.await(30, java.util.concurrent.TimeUnit.SECONDS));
+        executor.shutdown();
+
+        // 不变量：并发确认完成只能一个成功结算，另一个被并发保护拒绝（重复完成/订单已 COMPLETED）
+        assertEquals(1, success.get(), "并发确认完成只能一个成功结算");
+        assertTrue(rejected.get() >= 1, "另一个应被并发保护拒绝");
+        com.campushub.backend.order.domain.Order finalOrder = orderRepository.findById(accepted.orderId()).orElseThrow();
+        assertEquals(com.campushub.backend.order.domain.OrderStatus.COMPLETED, finalOrder.getStatus(),
+            "最终订单状态应为 COMPLETED");
+    }
+
     private DemandDetailResponse createDemand() {
         DemandDetailResponse demand = demandApplicationService.publish(
             publisherId,

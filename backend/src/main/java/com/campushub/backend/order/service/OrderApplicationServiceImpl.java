@@ -187,7 +187,7 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         if (command == null || command.targetStatus() == null || command.targetStatus().isBlank()) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "targetStatus must not be blank");
         }
-        Order order = findOrder(orderId);
+        Order order = findOrderForUpdate(orderId);
         Demand demand = findDemand(order.getDemandId());
         if (!order.isParticipant(operatorId)) {
             throw new BusinessException(ErrorCode.PERMISSION_DENIED, "only order participants can update order status");
@@ -223,7 +223,7 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
 
     @Override
     public OrderDetailResponse requestArbitration(Long operatorId, Long orderId, RequestOrderArbitrationCommand command) {
-        Order order = findOrder(orderId);
+        Order order = findOrderForUpdate(orderId);
         if (!order.isParticipant(operatorId)) {
             throw new BusinessException(ErrorCode.PERMISSION_DENIED, "only order participants can request arbitration");
         }
@@ -276,16 +276,16 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
     public void autoCompleteOverdueOrders(Long userId) {
         List<Order> orders = orderRepository.findByParticipant(userId);
         LocalDateTime now = LocalDateTime.now();
-        for (Order order : orders) {
-            if (order.getStatus() != OrderStatus.IN_PROGRESS || !userId.equals(order.getPublisherId())) {
+        for (Order summary : orders) {
+            if (summary.getStatus() != OrderStatus.IN_PROGRESS || !userId.equals(summary.getPublisherId())) {
                 continue;
             }
-            if (!hasCompletionConfirmation(order, order.getAccepterId())) {
+            if (!hasCompletionConfirmation(summary, summary.getAccepterId())) {
                 continue;
             }
-            LocalDateTime providerConfirmTime = order.getStatusHistory().stream()
+            LocalDateTime providerConfirmTime = summary.getStatusHistory().stream()
                 .filter(entry -> entry.operatorId() != null
-                    && entry.operatorId().equals(order.getAccepterId())
+                    && entry.operatorId().equals(summary.getAccepterId())
                     && entry.fromStatus() == OrderStatus.IN_PROGRESS
                     && entry.toStatus() == OrderStatus.IN_PROGRESS
                     && PROVIDER_CONFIRMED_NOTE.equals(entry.note()))
@@ -296,6 +296,11 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
                 continue;
             }
 
+            // 加 Order 行锁，确保并发自动完成不会重复结算
+            Order order = orderRepository.findByIdForUpdate(summary.getId()).orElse(null);
+            if (order == null || order.getStatus() != OrderStatus.IN_PROGRESS) {
+                continue;
+            }
             Demand demand = findDemand(order.getDemandId());
             order.setStatus(OrderStatus.COMPLETED);
             order.setCompletedAt(now);
@@ -451,6 +456,14 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "orderId must not be null");
         }
         return orderRepository.findById(orderId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "order not found"));
+    }
+
+    private Order findOrderForUpdate(Long orderId) {
+        if (orderId == null) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "orderId must not be null");
+        }
+        return orderRepository.findByIdForUpdate(orderId)
             .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "order not found"));
     }
 

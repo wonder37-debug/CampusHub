@@ -4,7 +4,7 @@ import com.campushub.backend.api.view.DemandView;
 import com.campushub.backend.api.view.OrderTimelineView;
 import com.campushub.backend.api.view.OrderView;
 import com.campushub.backend.api.view.ReviewView;
-import com.campushub.backend.api.view.UserSummaryView;
+import com.campushub.backend.api.view.PublicUserSummaryView;
 import com.campushub.backend.auth.domain.User;
 import com.campushub.backend.auth.repository.UserRepository;
 import com.campushub.backend.common.security.CurrentUser;
@@ -53,21 +53,17 @@ public class ApiViewMapper {
         User publisherUser = demand.getPublisherId() == null ? null : resolveUser(demand.getPublisherId(), userMap);
         Long publisherId = canSeePublisher ? demand.getPublisherId() : null;
         String publisherDisplayName = canSeePublisher ? demand.getPublisherDisplayName() : demand.getAnonymousCode();
-        UserSummaryView publisher = publisherUser == null
+        PublicUserSummaryView publisher = publisherUser == null
             ? null
             : canSeePublisher
-                ? UserSummaryView.from(publisherUser)
-                : new UserSummaryView(
-                    null,
-                    null,
+                ? PublicUserSummaryView.from(publisherUser)
+                : new PublicUserSummaryView(
                     null,
                     demand.getAnonymousCode() != null ? demand.getAnonymousCode() : "匿名校友",
                     publisherUser.getAvatarUrl(),
                     publisherUser.getRole().name(),
                     publisherUser.getStatus().name(),
-                    publisherUser.getCreditScore(),
-                    null,
-                    null
+                    publisherUser.getCreditScore()
                 );
 
         boolean publisherIdentityVisible = publisherUser != null
@@ -162,8 +158,8 @@ public class ApiViewMapper {
             order.getUpdatedAt(),
             order.getCompletedAt(),
             demand == null ? null : toDemandView(demand, currentUser, userMap, orderByDemandMap),
-            requester == null ? null : anonymizeUserSummary(UserSummaryView.from(requester), canSeePublisher, anonymousCode),
-            provider == null ? null : UserSummaryView.from(provider),
+            requester == null ? null : anonymizePublicUserSummary(PublicUserSummaryView.from(requester), canSeePublisher, anonymousCode),
+            provider == null ? null : PublicUserSummaryView.from(provider),
             order.getStatusHistory().stream().map(this::toTimelineView).toList(),
             reviews,
             currentUserReviewed,
@@ -201,9 +197,9 @@ public class ApiViewMapper {
         User author = userRepository.findById(review.authorId()).orElse(null);
         User target = userRepository.findById(review.targetId()).orElse(null);
 
-        UserSummaryView authorView = author == null ? null
-            : anonymizeUserSummary(
-                UserSummaryView.from(author),
+        PublicUserSummaryView authorView = author == null ? null
+            : anonymizePublicUserSummary(
+                PublicUserSummaryView.from(author),
                 canSeePublisher || publisherId == null || !publisherId.equals(review.authorId()),
                 anonymousCode
             );
@@ -227,9 +223,9 @@ public class ApiViewMapper {
     private ReviewView toReviewView(Review review, boolean canSeePublisher, Long publisherId, String anonymousCode) {
         User author = userRepository.findById(review.getAuthorId()).orElse(null);
         User target = userRepository.findById(review.getTargetId()).orElse(null);
-        UserSummaryView authorView = author == null ? null
-            : anonymizeUserSummary(
-                UserSummaryView.from(author),
+        PublicUserSummaryView authorView = author == null ? null
+            : anonymizePublicUserSummary(
+                PublicUserSummaryView.from(author),
                 canSeePublisher || publisherId == null || !publisherId.equals(review.getAuthorId()),
                 anonymousCode
             );
@@ -255,21 +251,17 @@ public class ApiViewMapper {
             || currentUser != null && (currentUser.isAdmin() || demand.getPublisherId().equals(currentUser.userId()));
     }
 
-    private UserSummaryView anonymizeUserSummary(UserSummaryView original, boolean canSee, String anonymousCode) {
+    private PublicUserSummaryView anonymizePublicUserSummary(PublicUserSummaryView original, boolean canSee, String anonymousCode) {
         if (canSee || original == null) {
             return original;
         }
-        return new UserSummaryView(
-            original.id(),
-            null,
+        return new PublicUserSummaryView(
             null,
             anonymousCode != null ? anonymousCode : "匿名校友",
             original.avatarUrl(),
             original.role(),
             original.status(),
-            original.creditScore(),
-            original.balance(),
-            original.frozenBalance()
+            original.creditScore()
         );
     }
 

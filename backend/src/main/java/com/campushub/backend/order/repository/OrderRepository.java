@@ -15,6 +15,15 @@ public interface OrderRepository {
 
     Optional<Order> findById(Long orderId);
 
+    /**
+     * 按主键查询订单并加行锁（FOR UPDATE），用于订单状态机核心写路径的并发控制。
+     *
+     * <p>覆盖普通状态更新、双方确认完成、发起仲裁、管理员仲裁裁决、自动完成等场景，
+     * 确保并发请求不能产生重复完成、重复结算、非法状态迁移。必须在事务中调用，
+     * 锁持续到事务结束（含状态更新与 reward 结算）。与 Demand 的 {@code findByIdForUpdate} 设计保持一致。</p>
+     */
+    Optional<Order> findByIdForUpdate(Long orderId);
+
     Optional<Order> findByDemandId(Long demandId);
 
     List<Order> findAllByDemandIdIn(Collection<Long> demandIds);

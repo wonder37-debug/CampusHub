@@ -8,7 +8,7 @@ public record DemandView(
     Long id,
     Long publisherId,
     String publisherDisplayName,
-    UserSummaryView publisher,
+    PublicUserSummaryView publisher,
     String publisherStudentIdMasked,
     boolean publisherIdentityVisible,
     String title,

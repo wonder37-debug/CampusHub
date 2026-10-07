@@ -235,7 +235,7 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "arbitration outcome must not be blank");
         }
         String reason = normalizeRejectReason(command.reason());
-        Order order = findOrder(orderId);
+        Order order = findOrderForUpdate(orderId);
         if (order.getStatus() != OrderStatus.IN_ARBITRATION) {
             throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "order is not in arbitration");
         }
@@ -321,6 +321,14 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "orderId must not be null");
         }
         return orderRepository.findById(orderId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "order not found"));
+    }
+
+    private Order findOrderForUpdate(Long orderId) {
+        if (orderId == null) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "orderId must not be null");
+        }
+        return orderRepository.findByIdForUpdate(orderId)
             .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "order not found"));
     }
 

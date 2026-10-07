@@ -9,7 +9,7 @@ public record ReviewView(
     String comment,
     Long targetId,
     String targetName,
-    UserSummaryView author,
+    PublicUserSummaryView author,
     LocalDateTime createdAt
 ) {
 }

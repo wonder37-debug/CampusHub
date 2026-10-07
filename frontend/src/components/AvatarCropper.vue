@@ -7,7 +7,7 @@ const props = withDefaults(defineProps<{
   maxSizeMB?: number
 }>(), {
   size: 80,
-  maxSizeMB: 5
+  maxSizeMB: 10
 })
 
 const emit = defineEmits<{

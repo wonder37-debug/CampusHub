@@ -2,6 +2,7 @@ package com.campushub.backend.auth.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -307,6 +308,49 @@ class AuthApplicationServiceImplTest {
 
         LoginResult result = authApplicationService.login(new LoginCommand("20260009", "NewPassword1"));
         assertNotNull(result.token());
+    }
+
+    @Test
+    void shouldNotRevealEmailExistenceWhenSendingPasswordResetCode() {
+        // 账号枚举防护：不存在的邮箱不应抛 RESOURCE_NOT_FOUND，返回与正常流程一致的伪 issue
+        EmailVerificationIssue issue = authApplicationService.sendPasswordResetCode("nobody@example.edu.cn");
+        assertEquals(300L, issue.expiresInSeconds());
+        assertNull(issue.verificationCode(), "伪 issue 不应携带真实验证码");
+    }
+
+    @Test
+    void shouldRejectPasswordResetWithInvalidCodeWithoutLeakingUserExistence() {
+        // 无论邮箱是否注册，错误验证码统一返回 AUTH_FAILED，不暴露账号是否存在
+        BusinessException ex = assertThrows(
+            BusinessException.class,
+            () -> authApplicationService.resetPassword(
+                new PasswordResetCommand("nobody@example.edu.cn", "000000", "NewPassword1")
+            )
+        );
+        assertEquals(ErrorCode.AUTH_FAILED, ex.getErrorCode());
+    }
+
+    @Test
+    void shouldRejectPasswordResetWithInvalidCodeForExistingEmail() {
+        EmailVerificationIssue registerIssue = authApplicationService.sendRegistrationCode("reset2@example.edu.cn", "20260010");
+        authApplicationService.register(
+            new RegisterCommand(
+                "reset2@example.edu.cn",
+                registerIssue.verificationCode(),
+                "20260010",
+                "Password1",
+                "reset2-user",
+                null
+            )
+        );
+        // 已注册邮箱 + 错误验证码：统一返回 AUTH_FAILED（不区分用户存在性）
+        BusinessException ex = assertThrows(
+            BusinessException.class,
+            () -> authApplicationService.resetPassword(
+                new PasswordResetCommand("reset2@example.edu.cn", "999999", "NewPassword1")
+            )
+        );
+        assertEquals(ErrorCode.AUTH_FAILED, ex.getErrorCode());
     }
 
     static class RecordingVerificationEmailSender implements VerificationEmailSender {
