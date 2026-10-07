@@ -1,9 +1,13 @@
 package com.campushub.backend.api;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.campushub.backend.api.view.DemandView;
+import com.campushub.backend.api.view.OrderView;
 import com.campushub.backend.auth.domain.User;
 import com.campushub.backend.auth.domain.UserRole;
 import com.campushub.backend.auth.domain.UserStatus;
@@ -13,9 +17,14 @@ import com.campushub.backend.demand.domain.Demand;
 import com.campushub.backend.demand.domain.DemandCategory;
 import com.campushub.backend.demand.domain.DemandStatus;
 import com.campushub.backend.demand.domain.InteractionMode;
+import com.campushub.backend.order.domain.Order;
+import com.campushub.backend.order.domain.OrderStatus;
+import com.campushub.backend.order.domain.OrderStatusHistoryEntry;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -26,7 +35,7 @@ import org.junit.jupiter.api.Test;
  */
 class ApiViewMapperPrivacyTest {
 
-    private final ApiViewMapper mapper = new ApiViewMapper(null, null, null, null);
+    private final ApiViewMapper mapper = new ApiViewMapper(null, null, null, null, null);
 
     private User newUser(Long id, String email, String studentId, String nickname) {
         return new User(id, email, studentId, "hash", nickname, "avatar.png",
@@ -114,5 +123,84 @@ class ApiViewMapperPrivacyTest {
         DemandView view = mapper.toDemandView(demand, self, Map.of(1L, publisher), Map.of());
 
         assertEquals("13800000000", view.contactInfo(), "发布者本人应可见联系方式");
+    }
+
+    // ===== Order 私密边界：acceptNote / 履约凭证 / 完整状态历史 / 仲裁结果 仅订单双方与管理员可见 =====
+
+    private Order newOrderWithPrivateFields() {
+        List<OrderStatusHistoryEntry> history = List.of(
+            new OrderStatusHistoryEntry(
+                OrderStatus.IN_ARBITRATION, OrderStatus.COMPLETED, 99L,
+                "ARBITRATION_RESOLVED:争议原因", LocalDateTime.now())
+        );
+        return new Order(100L, 10L, 1L, 2L, OrderStatus.COMPLETED, "接单备注", true, 2,
+            LocalDateTime.now(), LocalDateTime.now(), LocalDateTime.now(), history);
+    }
+
+    private OrderView toOrderViewFor(Order order, CurrentUser currentUser) {
+        Demand demand = newDemand(10L, 1L, "发布者", false, null, "13900000000");
+        User publisher = newUser(1L, "pub@edu.cn", "20260001", "发布者");
+        User accepter = newUser(2L, "acc@edu.cn", "20260002", "接单者");
+        return mapper.toOrderView(order, currentUser,
+            Map.of(10L, demand),
+            Map.of(1L, publisher, 2L, accepter),
+            Map.of(), Set.of(), Map.of());
+    }
+
+    @Test
+    void shouldNotExposeOrderPrivateFieldsToOutsider() {
+        Order order = newOrderWithPrivateFields();
+        CurrentUser outsider = new CurrentUser(3L, UserRole.USER);
+
+        OrderView view = toOrderViewFor(order, outsider);
+
+        assertNull(view.acceptNote(), "第三方不可见接单备注");
+        assertFalse(view.proofSubmitted(), "第三方不可见履约凭证状态");
+        assertEquals(0, view.proofImageCount(), "第三方不可见履约凭证数量");
+        assertTrue(view.statusHistory().isEmpty(), "第三方不可见完整状态历史");
+        assertNull(view.arbitrationResult(), "第三方不可见仲裁内部信息");
+    }
+
+    @Test
+    void shouldExposeOrderPrivateFieldsToPublisher() {
+        Order order = newOrderWithPrivateFields();
+        CurrentUser publisher = new CurrentUser(1L, UserRole.USER);
+
+        OrderView view = toOrderViewFor(order, publisher);
+
+        assertEquals("接单备注", view.acceptNote());
+        assertTrue(view.proofSubmitted());
+        assertEquals(2, view.proofImageCount());
+        assertEquals(1, view.statusHistory().size());
+        assertNotNull(view.arbitrationResult());
+        assertTrue(view.arbitrationResult().contains("裁决结果"));
+    }
+
+    @Test
+    void shouldExposeOrderPrivateFieldsToAccepter() {
+        Order order = newOrderWithPrivateFields();
+        CurrentUser accepter = new CurrentUser(2L, UserRole.USER);
+
+        OrderView view = toOrderViewFor(order, accepter);
+
+        assertEquals("接单备注", view.acceptNote());
+        assertTrue(view.proofSubmitted());
+        assertEquals(2, view.proofImageCount());
+        assertEquals(1, view.statusHistory().size());
+        assertNotNull(view.arbitrationResult());
+    }
+
+    @Test
+    void shouldExposeOrderPrivateFieldsToAdmin() {
+        Order order = newOrderWithPrivateFields();
+        CurrentUser admin = new CurrentUser(99L, UserRole.ADMIN);
+
+        OrderView view = toOrderViewFor(order, admin);
+
+        assertEquals("接单备注", view.acceptNote());
+        assertTrue(view.proofSubmitted());
+        assertEquals(2, view.proofImageCount());
+        assertEquals(1, view.statusHistory().size());
+        assertNotNull(view.arbitrationResult());
     }
 }

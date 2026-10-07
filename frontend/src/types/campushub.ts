@@ -62,6 +62,7 @@ export interface DemandRecord {
   reward: number
   interactionMode: InteractionMode
   targetParticipantCount?: number | null
+  selectedParticipantCount?: number | null
   status: DemandStatus
   anonymous: boolean
   anonymousCode: string | null
@@ -113,7 +114,7 @@ export interface OrderRecord {
   serviceProviderCreditScore: number
   serviceProviderStudentId?: string
   status: OrderStatus
-  note: string
+  note: string | null
   proofSubmitted: boolean
   proofImageCount: number
   createdAt: string

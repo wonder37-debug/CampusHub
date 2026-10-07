@@ -21,6 +21,7 @@ public record DemandView(
     BigDecimal reward,
     String interactionMode,
     Integer targetParticipantCount,
+    Integer selectedParticipantCount,
     List<String> tags,
     String status,
     boolean anonymous,

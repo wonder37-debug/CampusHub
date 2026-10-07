@@ -25,6 +25,16 @@ public interface UserActionLogRepository {
     List<UserActionLog> findByUserIdAndActionType(Long userId, ActionType actionType);
 
     /**
+     * 查询某个用户在指定时间点之后的行为日志（时间窗口下推 SQL，避免全量加载）。
+     */
+    List<UserActionLog> findByUserIdSince(Long userId, LocalDateTime since);
+
+    /**
+     * 查询某个用户在指定时间点之后、指定动作类型的行为日志（时间窗口下推 SQL）。
+     */
+    List<UserActionLog> findByUserIdAndActionTypeSince(Long userId, ActionType actionType, LocalDateTime since);
+
+    /**
      * 判断指定用户在某时间点之后是否已对某需求产生过 VIEW 行为。
      *
      * <p>用于 recordView 去重的 bounded/exists 查询，避免加载用户全部 VIEW 历史。

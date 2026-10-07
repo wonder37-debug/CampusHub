@@ -34,6 +34,12 @@ import java.util.stream.Collectors;
 @Repository
 public class MyBatisDemandRepository implements DemandRepository {
 
+    /**
+     * 推荐候选池上限：避免 PENDING 需求量增长后全表扫描与全量内存排序。
+     * 按 createdAt DESC 取最近的候选，500 条足以支撑评分、diversity rerank 与分页。
+     */
+    static final int CANDIDATE_POOL_SIZE = 500;
+
     private final DemandMapper demandMapper;
 
     public MyBatisDemandRepository(DemandMapper demandMapper) {
@@ -256,6 +262,8 @@ public class MyBatisDemandRepository implements DemandRepository {
             return List.of();
         }
         LambdaQueryWrapper<DemandEntity> wrapper = buildCandidateWrapper(userId, query);
+        wrapper.orderByDesc(DemandEntity::getCreatedAt);
+        wrapper.last("LIMIT " + CANDIDATE_POOL_SIZE);
         return demandMapper.selectList(wrapper).stream().map(DemandEntity::toDomain).toList();
     }
 
@@ -316,6 +324,9 @@ public class MyBatisDemandRepository implements DemandRepository {
                 wrapper.le(DemandEntity::getStartTime, to);
             }
         }
+        // 排除 endTime 已过的需求（过期调度器有 5 分钟间隔，避免推荐已过期但未刷新的需求）
+        LocalDateTime now = LocalDateTime.now();
+        wrapper.and(w -> w.isNull(DemandEntity::getEndTime).or().ge(DemandEntity::getEndTime, now));
         return wrapper;
     }
 }

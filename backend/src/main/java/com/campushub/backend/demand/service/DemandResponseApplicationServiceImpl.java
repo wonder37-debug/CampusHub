@@ -78,7 +78,9 @@ public class DemandResponseApplicationServiceImpl implements DemandResponseAppli
         }
 
         // 同一用户对同一 Demand 不能重复创建有效 Response
-        if (demandResponseRepository.findActiveByDemandIdAndAuthorId(demandId, operatorId).isPresent()) {
+        // HELP 模式允许同一用户提交多条回答，不受"一人一个 active Response"限制
+        if (demand.getInteractionMode() != InteractionMode.HELP
+            && demandResponseRepository.findActiveByDemandIdAndAuthorId(demandId, operatorId).isPresent()) {
             throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "active response already exists for this demand");
         }
 

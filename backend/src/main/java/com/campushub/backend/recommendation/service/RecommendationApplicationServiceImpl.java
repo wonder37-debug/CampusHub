@@ -168,11 +168,12 @@ public class RecommendationApplicationServiceImpl implements RecommendationAppli
     // preference(category) = Σ(actionWeight × timeDecay)，归一化到 0~1。
     // VIEW=1.0, ACCEPT=3.0；>14 天的行为 decay=0 不再影响偏好。
     private Map<String, Double> buildUserPreference(Long userId) {
-        List<UserActionLog> logs = userActionLogRepository.findByUserId(userId);
+        LocalDateTime now = LocalDateTime.now();
+        // 偏好仅需 14 天内行为（computeTimeDecay 对 ≥14 天返回 0），时间窗口下推 SQL 避免全量加载
+        List<UserActionLog> logs = userActionLogRepository.findByUserIdSince(userId, now.minusDays(14));
         if (logs.isEmpty()) {
             return Map.of();
         }
-        LocalDateTime now = LocalDateTime.now();
         Map<String, Double> raw = new HashMap<>();
         for (UserActionLog log : logs) {
             if (log.getCategory() == null || log.getActionType() == null || log.getCreatedAt() == null) {
@@ -223,11 +224,12 @@ public class RecommendationApplicationServiceImpl implements RecommendationAppli
     }
 
     private RecentViews buildRecentViews(Long userId) {
-        List<UserActionLog> views = userActionLogRepository.findByUserIdAndActionType(userId, ActionType.VIEW);
+        LocalDateTime now = LocalDateTime.now();
+        // view penalty 只需 7 天内 VIEW 日志，时间窗口下推 SQL 避免全量加载
+        List<UserActionLog> views = userActionLogRepository.findByUserIdAndActionTypeSince(userId, ActionType.VIEW, now.minusDays(7));
         if (views.isEmpty()) {
             return new RecentViews(Set.of(), Set.of());
         }
-        LocalDateTime now = LocalDateTime.now();
         Set<Long> within24h = new HashSet<>();
         Set<Long> within7d = new HashSet<>();
         for (UserActionLog view : views) {

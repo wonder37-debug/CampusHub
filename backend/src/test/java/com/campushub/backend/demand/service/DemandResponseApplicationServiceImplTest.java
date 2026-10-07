@@ -1,6 +1,7 @@
 package com.campushub.backend.demand.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -1095,6 +1096,51 @@ class DemandResponseApplicationServiceImplTest {
                 responder2Id, demandId, new CreateDemandResponseCommand("迟到报名"))
         );
         assertEquals(ErrorCode.BUSINESS_CONFLICT, ex.getErrorCode());
+    }
+
+    // ==================== HELP 多回复 & SELECT_MANY 进度回归 ====================
+
+    @Test
+    void shouldAllowMultipleActiveResponsesForHelpMode() {
+        Long demandId = createHelpDemand(new BigDecimal("10.00"));
+
+        DemandResponseDetail first = demandResponseApplicationService.createResponse(
+            responder1Id, demandId, new CreateDemandResponseCommand("第一个回答"));
+        DemandResponseDetail second = demandResponseApplicationService.createResponse(
+            responder1Id, demandId, new CreateDemandResponseCommand("补充回答"));
+
+        assertEquals("PENDING", first.status());
+        assertEquals("PENDING", second.status());
+        assertNotEquals(first.id(), second.id(), "HELP 模式应允许同一用户提交多条 active Response");
+    }
+
+    @Test
+    void shouldStillRejectDuplicateActiveResponseForSelectMany() {
+        Long demandId = createTeamUpDemand(2);
+
+        demandResponseApplicationService.createResponse(
+            responder1Id, demandId, new CreateDemandResponseCommand("报名"));
+        BusinessException exception = assertThrows(
+            BusinessException.class,
+            () -> demandResponseApplicationService.createResponse(
+                responder1Id, demandId, new CreateDemandResponseCommand("再次报名"))
+        );
+        assertEquals(ErrorCode.BUSINESS_CONFLICT, exception.getErrorCode());
+    }
+
+    @Test
+    void shouldExposeSelectedParticipantCountForSelectMany() {
+        Long demandId = createTeamUpDemand(3);
+        Long r1 = demandResponseApplicationService.createResponse(
+            responder1Id, demandId, new CreateDemandResponseCommand("报名1")).id();
+        Long r2 = demandResponseApplicationService.createResponse(
+            responder2Id, demandId, new CreateDemandResponseCommand("报名2")).id();
+
+        demandResponseApplicationService.selectResponses(
+            publisherId, demandId, new SelectResponsesCommand(List.of(r1)));
+
+        assertEquals(1L, demandResponseRepository.countSelectedByDemandId(demandId),
+            "SELECT_MANY 进度应反映已选中人数");
     }
 
     // ==================== helpers ====================

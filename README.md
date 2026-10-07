@@ -40,12 +40,12 @@ CampusHub 是南京大学软件工程课程大作业项目，采用前后端分�
 
 - 校园邮箱注册（域名白名单校验，默认支持 `nju.edu.cn`、`smail.nju.edu.cn` 等）
 - 邮箱验证码注册与密码重置（未配置 SMTP 时自动退化为控制台日志输出）
-- 基于 Token 的轻量级认证（Base64 编码，有效期 1 小时）
+- 基于 JWT 的认证（HS256 签名，有效期 1 小时），角色与状态以数据库当前值为准
 - BCrypt 密码加密
 
 ### 需求管理
 
-- 六大分类：跑腿代取、委托代办、学习辅导、二手交易、活动组队、其他
+- 七大分类：跑腿代取（EXPRESS）、委托代办（ERRAND）、学习辅导（STUDY_TUTORING）、二手交易（SECOND_HAND）、活动组队（TEAM_UP）、互助问答（HELP）、其他（OTHER）
 - 三大校区：鼓楼、仙林、苏州
 - 多维筛选：关键词、分类、校区、地点、时间范围
 - 四种排序：时间、距离、报酬、推荐
@@ -69,7 +69,7 @@ CampusHub 是南京大学软件工程课程大作业项目，采用前后端分�
 
 ### 通知系统
 
-- 9 种通知类型：接单、状态变更、收到评价、待审核、审核通过/驳回、待评价提醒、仲裁申请/仲裁处理
+- 10 种通知类型：接单、状态变更、收到评价、待审核、审核通过/驳回、待评价提醒、仲裁申请/仲裁处理、Response 评价收到
 - 标记已读 / 全部已读
 - 点击通知智能跳转关联页面
 
@@ -89,7 +89,7 @@ CampusHub 是南京大学软件工程课程大作业项目，采用前后端分�
 ### 文件上传
 
 - 支持格式：jpg、jpeg、png、webp
-- 单文件上限 5MB，单次最多 6 张
+- 单文件上限 10MB，单次最多 6 张
 - 按年月目录存储，浏览器 24 小时缓存
 
 ---
@@ -308,8 +308,8 @@ app.auth.allowed-email-domains=nju.edu.cn,smail.nju.edu.cn,edu.cn
 ### 文件上传配置
 
 ```properties
-spring.servlet.multipart.max-file-size=5MB
-spring.servlet.multipart.max-request-size=32MB
+spring.servlet.multipart.max-file-size=10MB
+spring.servlet.multipart.max-request-size=64MB
 app.upload.dir=uploads
 ```
 
@@ -404,12 +404,13 @@ cd backend
 | 表名 | 说明 |
 |------|------|
 | `sys_user` | 用户主表（邮箱、学号、密码、角色、信用分、余额） |
-| `ord_demand` | 需求主表（标题、描述、分类、校区、报酬、状态、匿名） |
+| `ord_demand` | 需求主表（标题、描述、分类、校区、报酬、状态、匿名、互动模式） |
+| `ord_demand_response` | 需求响应表（留言/报名/回答，状态 PENDING/SELECTED/REJECTED/WITHDRAWN） |
 | `ord_order` | 订单主表（需求关联、双方 ID、状态、凭证） |
 | `ord_order_status_log` | 订单状态变更日志 |
 | `ord_review` | 评价表（评分、评论，单向评价） |
-| `ast_ledger` | 资产流水表（充值、冻结、解冻、转移） |
-| `sys_notification` | 站内通知表（9 种类型） |
+| `sys_notification` | 站内通知表（10 种类型） |
+| `rec_user_action_log` | 推荐系统用户行为日志表（VIEW/ACCEPT） |
 | `rec_user_action_log` | 推荐系统用户行为日志 |
 
 > 测试环境使用 H2 内存数据库（MySQL 兼容模式），schema 文件独立于生产环境，互不影响。
