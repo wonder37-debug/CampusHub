@@ -4,6 +4,7 @@ import com.campushub.backend.ai.dto.DemandDraft;
 import com.campushub.backend.ai.dto.GenerateDemandDraftCommand;
 import com.campushub.backend.common.exception.BusinessException;
 import com.campushub.backend.common.exception.ErrorCode;
+import com.campushub.backend.demand.domain.CampusZone;
 import com.campushub.backend.demand.domain.DemandCategory;
 import com.campushub.backend.demand.domain.InteractionMode;
 import java.math.BigDecimal;
@@ -12,10 +13,15 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.retry.NonTransientAiException;
+import org.springframework.ai.retry.TransientAiException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -85,12 +91,20 @@ public class AiDemandApplicationServiceImpl implements AiDemandApplicationServic
         """;
 
     private static final int TITLE_MAX_LENGTH = 200;
-    private static final int TITLE_MIN_LENGTH = 3;
     private static final int DESCRIPTION_MAX_LENGTH = 2000;
     private static final int LOCATION_MAX_LENGTH = 256;
     private static final int NOTE_MAX_LENGTH = 500;
     private static final int TAGS_MAX_SIZE = 20;
     private static final int TARGET_PARTICIPANT_COUNT_MAX = 100;
+
+    /**
+     * missingFields 白名单：只允许 DemandDraft 已知字段名，避免 AI 注入任意字符串到前端提示。
+     */
+    private static final Set<String> MISSING_FIELD_WHITELIST = Set.of(
+        "title", "description", "category", "campusZone", "location",
+        "startTime", "endTime", "reward", "tags", "interactionMode",
+        "targetParticipantCount", "note"
+    );
 
     private final ChatClient chatClient;
     private final int promptMaxLength;
@@ -152,35 +166,31 @@ public class AiDemandApplicationServiceImpl implements AiDemandApplicationServic
 
     /**
      * 服务端二次校验：保证非法 AI 输出不会直接到前端。
-     * <ul>
-     *   <li>category / interactionMode 非法 → 拒绝</li>
-     *   <li>TEAM_UP 与 SELECT_MANY 一致性 → 强制修正</li>
-     *   <li>targetParticipantCount / reward / 时间窗口非法 → 拒绝</li>
-     *   <li>字段长度超限 → 截断并保留可用部分</li>
-     *   <li>tags 数量超限 → 截断</li>
-     * </ul>
+     *
+     * <p>interactionMode 处理顺序（关键）：
+     * <ol>
+     *   <li>先校验 category 合法。</li>
+     *   <li>TEAM_UP 先强制 {@link InteractionMode#SELECT_MANY}，不管原 interactionMode（即使 null）。</li>
+     *   <li>HELP 先强制 {@link InteractionMode#HELP}，不管原 interactionMode。</li>
+     *   <li>OTHER 禁止 HELP；null 则加入 missingFields 让用户选择；非空必须合法且非 HELP。</li>
+     *   <li>固定分类（EXPRESS/ERRAND/STUDY_TUTORING/SECOND_HAND）用 {@link InteractionMode#resolve} 推导，忽略 AI 返回值。</li>
+     * </ol>
      */
     DemandDraft validate(DemandDraft raw) {
-        String category = normalizeEnum(raw.category(), DemandCategory::fromValue,
-            "category", raw.category());
-        String interactionMode = normalizeInteractionMode(raw.interactionMode());
-        Integer targetParticipantCount = raw.targetParticipantCount();
-        BigDecimal reward = raw.reward();
+        String category = normalizeEnum(raw.category(), DemandCategory::fromValue, "category", raw.category());
+        DemandCategory categoryEnum = DemandCategory.fromValue(category);
+
         List<String> missingFields = new ArrayList<>(
             raw.missingFields() == null ? List.of() : raw.missingFields());
 
-        // TEAM_UP 强制 SELECT_MANY
-        if ("TEAM_UP".equals(category)) {
-            if (!"SELECT_MANY".equals(interactionMode)) {
-                log.warn("AI 返回 TEAM_UP 但 interactionMode={}，强制修正为 SELECT_MANY", interactionMode);
-                interactionMode = "SELECT_MANY";
-            }
-        }
-        // HELP category 强制 HELP interactionMode
-        if ("HELP".equals(category) && !"HELP".equals(interactionMode)) {
-            log.warn("AI 返回 HELP 但 interactionMode={}，强制修正为 HELP", interactionMode);
-            interactionMode = "HELP";
-        }
+        // interactionMode 按 category 优先级处理
+        String interactionMode = resolveInteractionMode(categoryEnum, raw.interactionMode(), missingFields);
+
+        // campusZone 校验：非空时必须合法枚举
+        String campusZone = normalizeCampusZone(raw.campusZone());
+
+        Integer targetParticipantCount = raw.targetParticipantCount();
+        BigDecimal reward = raw.reward();
 
         // targetParticipantCount 校验：仅 SELECT_MANY 允许非空
         if (targetParticipantCount != null) {
@@ -192,7 +202,6 @@ public class AiDemandApplicationServiceImpl implements AiDemandApplicationServic
                 targetParticipantCount = null;
             }
         }
-        // SELECT_MANY 模式但 targetParticipantCount 为空，加入 missingFields
         if ("SELECT_MANY".equals(interactionMode) && targetParticipantCount == null
             && !missingFields.contains("targetParticipantCount")) {
             missingFields.add("targetParticipantCount");
@@ -228,11 +237,14 @@ public class AiDemandApplicationServiceImpl implements AiDemandApplicationServic
             .map(String::trim)
             .toList();
 
+        // missingFields 白名单 + 去重
+        List<String> normalizedMissingFields = normalizeMissingFields(missingFields);
+
         return new DemandDraft(
             title,
             description,
             category,
-            raw.campusZone(),
+            campusZone,
             location,
             raw.startTime(),
             raw.endTime(),
@@ -241,8 +253,61 @@ public class AiDemandApplicationServiceImpl implements AiDemandApplicationServic
             interactionMode,
             targetParticipantCount,
             note,
-            List.copyOf(missingFields)
+            normalizedMissingFields
         );
+    }
+
+    /**
+     * 按 category 优先级解析 interactionMode。
+     *
+     * <p>TEAM_UP / HELP 强制覆盖原值；OTHER 禁止 HELP 且非空必须合法；固定分类用 resolve 推导。
+     */
+    private String resolveInteractionMode(DemandCategory category, String rawMode, List<String> missingFields) {
+        if (category == DemandCategory.TEAM_UP) {
+            // TEAM_UP 先强制 SELECT_MANY，不管原 interactionMode（即使 null 或非法）
+            if (rawMode != null && !rawMode.isBlank()) {
+                InteractionMode parsed = InteractionMode.fromValue(rawMode);
+                if (parsed != null && parsed != InteractionMode.SELECT_MANY) {
+                    log.warn("AI 返回 TEAM_UP 但 interactionMode={}，强制修正为 SELECT_MANY", rawMode);
+                }
+            }
+            return InteractionMode.SELECT_MANY.name();
+        }
+        if (category == DemandCategory.HELP) {
+            // HELP 先强制 HELP，不管原 interactionMode（即使 null 或非法）
+            if (rawMode != null && !rawMode.isBlank()) {
+                InteractionMode parsed = InteractionMode.fromValue(rawMode);
+                if (parsed != null && parsed != InteractionMode.HELP) {
+                    log.warn("AI 返回 HELP 但 interactionMode={}，强制修正为 HELP", rawMode);
+                }
+            }
+            return InteractionMode.HELP.name();
+        }
+        if (category == DemandCategory.OTHER) {
+            // OTHER 由用户最终确认；AI 返回的值必须合法且不能是 HELP
+            if (rawMode == null || rawMode.isBlank()) {
+                if (!missingFields.contains("interactionMode")) {
+                    missingFields.add("interactionMode");
+                }
+                return null;
+            }
+            InteractionMode parsed = InteractionMode.fromValue(rawMode);
+            if (parsed == null) {
+                log.warn("AI 返回非法 interactionMode={}", rawMode);
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED,
+                    "AI 返回内容无法识别，请重新描述需求");
+            }
+            if (parsed == InteractionMode.HELP) {
+                // OTHER 禁止 HELP
+                log.warn("AI 返回 OTHER 但 interactionMode=HELP，禁止");
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED,
+                    "AI 返回内容无法识别，请重新描述需求");
+            }
+            return parsed.name();
+        }
+        // 固定分类：用 resolve 推导（忽略 AI 返回的 interactionMode）
+        InteractionMode resolved = InteractionMode.resolve(category);
+        return resolved == null ? InteractionMode.DIRECT_ACCEPT.name() : resolved.name();
     }
 
     private String normalizeEnum(String value, java.util.function.Function<String, DemandCategory> resolver,
@@ -260,18 +325,17 @@ public class AiDemandApplicationServiceImpl implements AiDemandApplicationServic
         return resolved.name();
     }
 
-    private String normalizeInteractionMode(String value) {
+    private String normalizeCampusZone(String value) {
         if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return CampusZone.valueOf(value.trim().toUpperCase(Locale.ROOT)).name();
+        } catch (IllegalArgumentException exception) {
+            log.warn("AI 返回非法 campusZone={}", value);
             throw new BusinessException(ErrorCode.VALIDATION_FAILED,
                 "AI 返回内容无法识别，请重新描述需求");
         }
-        InteractionMode resolved = InteractionMode.fromValue(value);
-        if (resolved == null) {
-            log.warn("AI 返回非法 interactionMode={}", value);
-            throw new BusinessException(ErrorCode.VALIDATION_FAILED,
-                "AI 返回内容无法识别，请重新描述需求");
-        }
-        return resolved.name();
     }
 
     private LocalDateTime parseTime(String value, String fieldName) {
@@ -298,22 +362,39 @@ public class AiDemandApplicationServiceImpl implements AiDemandApplicationServic
         return value.length() > maxLength ? value.substring(0, maxLength) : value;
     }
 
+    /**
+     * missingFields 白名单 + 去重：只保留 DemandDraft 已知字段名，避免 AI 注入任意字符串到前端提示。
+     */
+    private List<String> normalizeMissingFields(List<String> missingFields) {
+        LinkedHashSet<String> deduped = new LinkedHashSet<>();
+        for (String field : missingFields) {
+            if (field == null || field.isBlank()) {
+                continue;
+            }
+            String trimmed = field.trim();
+            if (MISSING_FIELD_WHITELIST.contains(trimmed)) {
+                deduped.add(trimmed);
+            }
+        }
+        return List.copyOf(deduped);
+    }
+
     private BusinessException translateProviderException(Exception exception) {
         String message = exception.getMessage() == null ? "" : exception.getMessage();
         String lower = message.toLowerCase();
-        // 429 限流：提示用户稍后重试
+        // 429 限流：优先处理，提示用户稍后重试
         if (lower.contains("429") || lower.contains("too many requests") || lower.contains("rate limit")
             || lower.contains("quota")) {
             log.warn("AI provider 返回限流");
             return new BusinessException(ErrorCode.VALIDATION_FAILED, "AI 服务繁忙，请稍后重试");
         }
-        // 结构化输出解析失败：通常是模型返回非 JSON
-        if (exception.getClass().getName().startsWith("org.springframework.ai")) {
-            log.warn("AI 调用失败：{}", exception.getClass().getSimpleName());
-            return new BusinessException(ErrorCode.VALIDATION_FAILED, "AI 返回内容无法识别，请重新描述需求");
+        // Spring AI provider 异常（401/403/5xx/超时）→ INTERNAL_ERROR，不泄露内部细节
+        if (exception instanceof NonTransientAiException || exception instanceof TransientAiException) {
+            log.warn("AI provider 异常：{}", exception.getClass().getSimpleName());
+            return new BusinessException(ErrorCode.INTERNAL_ERROR, "AI 服务暂时不可用，请稍后重试");
         }
-        // 其他 provider 异常（401/403/5xx/超时）：统一兜底，不泄露内部细节
-        log.warn("AI provider 异常：{}", exception.getClass().getSimpleName());
-        return new BusinessException(ErrorCode.INTERNAL_ERROR, "AI 服务暂时不可用，请稍后重试");
+        // JSON / structured output 解析失败 → VALIDATION_FAILED
+        log.warn("AI 结构化输出解析失败：{}", exception.getClass().getSimpleName());
+        return new BusinessException(ErrorCode.VALIDATION_FAILED, "AI 返回内容无法识别，请重新描述需求");
     }
 }

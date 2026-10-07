@@ -20,6 +20,8 @@ import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.retry.NonTransientAiException;
+import org.springframework.ai.retry.TransientAiException;
 
 /**
  * AI 需求草稿生成服务单元测试。通过 Mockito mock ChatClient 链式调用，
@@ -212,11 +214,11 @@ class AiDemandApplicationServiceImplTest {
     }
 
     @Test
-    void shouldRejectInvalidInteractionMode() {
+    void shouldRejectInvalidInteractionModeForOther() {
         DemandDraft raw = new DemandDraft(
             "标题",
             "描述",
-            "EXPRESS",
+            "OTHER",
             "XIANLIN",
             "图书馆",
             "2026-10-08T10:00:00",
@@ -234,6 +236,213 @@ class AiDemandApplicationServiceImplTest {
             () -> service.generateDraft(new GenerateDemandDraftCommand("随便说点什么")));
 
         assertEquals(ErrorCode.VALIDATION_FAILED, exception.getErrorCode());
+    }
+
+    @Test
+    void shouldRejectHelpModeForOtherCategory() {
+        DemandDraft raw = new DemandDraft(
+            "标题",
+            "描述",
+            "OTHER",
+            "XIANLIN",
+            "图书馆",
+            "2026-10-08T10:00:00",
+            "2026-10-08T12:00:00",
+            BigDecimal.ZERO,
+            List.of(),
+            "HELP",
+            null,
+            null,
+            List.of()
+        );
+        when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(raw);
+
+        BusinessException exception = assertThrows(BusinessException.class,
+            () -> service.generateDraft(new GenerateDemandDraftCommand("其他需求")));
+
+        assertEquals(ErrorCode.VALIDATION_FAILED, exception.getErrorCode());
+    }
+
+    @Test
+    void shouldAcceptOtherCategoryWithSelectOneMode() {
+        DemandDraft raw = new DemandDraft(
+            "其他需求",
+            "描述",
+            "OTHER",
+            "XIANLIN",
+            "图书馆",
+            "2026-10-08T10:00:00",
+            "2026-10-08T12:00:00",
+            BigDecimal.ZERO,
+            List.of(),
+            "SELECT_ONE",
+            null,
+            null,
+            List.of()
+        );
+        when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(raw);
+
+        DemandDraft result = service.generateDraft(new GenerateDemandDraftCommand("其他需求"));
+
+        assertEquals("OTHER", result.category());
+        assertEquals("SELECT_ONE", result.interactionMode());
+    }
+
+    @Test
+    void shouldForceSelectManyForTeamUpWithNullInteractionMode() {
+        DemandDraft raw = new DemandDraft(
+            "组队打球",
+            "组队打球",
+            "TEAM_UP",
+            "XIANLIN",
+            "操场",
+            "2026-10-10T14:00:00",
+            "2026-10-10T17:00:00",
+            BigDecimal.ZERO,
+            List.of(),
+            null,
+            3,
+            null,
+            List.of()
+        );
+        when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(raw);
+
+        DemandDraft result = service.generateDraft(new GenerateDemandDraftCommand("组队打球"));
+
+        assertEquals("TEAM_UP", result.category());
+        // TEAM_UP + null interactionMode 仍强制 SELECT_MANY
+        assertEquals("SELECT_MANY", result.interactionMode());
+        assertEquals(3, result.targetParticipantCount());
+    }
+
+    @Test
+    void shouldForceHelpInteractionModeForHelpCategory() {
+        DemandDraft raw = new DemandDraft(
+            "求助问题",
+            "求助问题",
+            "HELP",
+            "XIANLIN",
+            "图书馆",
+            "2026-10-08T10:00:00",
+            "2026-10-08T12:00:00",
+            BigDecimal.ZERO,
+            List.of(),
+            null,
+            null,
+            null,
+            List.of()
+        );
+        when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(raw);
+
+        DemandDraft result = service.generateDraft(new GenerateDemandDraftCommand("求助"));
+
+        assertEquals("HELP", result.category());
+        // HELP category 即使 interactionMode=null 也强制 HELP
+        assertEquals("HELP", result.interactionMode());
+    }
+
+    @Test
+    void shouldRejectInvalidCampusZone() {
+        DemandDraft raw = new DemandDraft(
+            "标题",
+            "描述",
+            "EXPRESS",
+            "INVALID_ZONE",
+            "图书馆",
+            "2026-10-08T10:00:00",
+            "2026-10-08T12:00:00",
+            BigDecimal.ZERO,
+            List.of(),
+            "DIRECT_ACCEPT",
+            null,
+            null,
+            List.of()
+        );
+        when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(raw);
+
+        BusinessException exception = assertThrows(BusinessException.class,
+            () -> service.generateDraft(new GenerateDemandDraftCommand("取快递")));
+
+        assertEquals(ErrorCode.VALIDATION_FAILED, exception.getErrorCode());
+    }
+
+    @Test
+    void shouldAcceptNullCampusZone() {
+        DemandDraft raw = new DemandDraft(
+            "取快递",
+            "描述",
+            "EXPRESS",
+            null,
+            "图书馆",
+            "2026-10-08T10:00:00",
+            "2026-10-08T12:00:00",
+            BigDecimal.ZERO,
+            List.of(),
+            "DIRECT_ACCEPT",
+            null,
+            null,
+            List.of("campusZone")
+        );
+        when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(raw);
+
+        DemandDraft result = service.generateDraft(new GenerateDemandDraftCommand("取快递"));
+
+        assertNull(result.campusZone());
+    }
+
+    @Test
+    void shouldNormalizeCampusZoneCaseInsensitive() {
+        DemandDraft raw = new DemandDraft(
+            "取快递",
+            "描述",
+            "EXPRESS",
+            "xianlin",
+            "图书馆",
+            "2026-10-08T10:00:00",
+            "2026-10-08T12:00:00",
+            BigDecimal.ZERO,
+            List.of(),
+            "DIRECT_ACCEPT",
+            null,
+            null,
+            List.of()
+        );
+        when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(raw);
+
+        DemandDraft result = service.generateDraft(new GenerateDemandDraftCommand("取快递"));
+
+        assertEquals("XIANLIN", result.campusZone());
+    }
+
+    @Test
+    void shouldDeduplicateAndWhitelistMissingFields() {
+        DemandDraft raw = new DemandDraft(
+            "买咖啡",
+            "描述",
+            "ERRAND",
+            null,
+            null,
+            null,
+            null,
+            null,
+            List.of(),
+            "DIRECT_ACCEPT",
+            null,
+            null,
+            List.of("campusZone", "campusZone", "location", "reward", "invalidField", "anotherJunk", "  startTime  ", "")
+        );
+        when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(raw);
+
+        DemandDraft result = service.generateDraft(new GenerateDemandDraftCommand("帮我找人买咖啡"));
+
+        // 白名单过滤掉 invalidField/anotherJunk，去重 campusZone，trim startTime
+        assertTrue(result.missingFields().contains("campusZone"));
+        assertTrue(result.missingFields().contains("location"));
+        assertTrue(result.missingFields().contains("reward"));
+        assertTrue(result.missingFields().contains("startTime"));
+        assertEquals(4, result.missingFields().size());
+        assertTrue(!result.missingFields().contains("invalidField"));
+        assertTrue(!result.missingFields().contains("anotherJunk"));
     }
 
     @Test
@@ -362,7 +571,7 @@ class AiDemandApplicationServiceImplTest {
     @Test
     void shouldTranslateProviderRateLimitError() {
         when(callResponseSpec.entity(eq(DemandDraft.class)))
-            .thenThrow(new RuntimeException("429 Too Many Requests"));
+            .thenThrow(new NonTransientAiException("429 Too Many Requests"));
 
         BusinessException exception = assertThrows(BusinessException.class,
             () -> service.generateDraft(new GenerateDemandDraftCommand("取快递")));
@@ -372,9 +581,9 @@ class AiDemandApplicationServiceImplTest {
     }
 
     @Test
-    void shouldTranslateProvider401ErrorWithoutLeakingSecrets() {
+    void shouldTranslateNonTransientAiExceptionAsInternalErrorWithoutLeakingSecrets() {
         when(callResponseSpec.entity(eq(DemandDraft.class)))
-            .thenThrow(new RuntimeException("401 Unauthorized: invalid api key"));
+            .thenThrow(new NonTransientAiException("401 Unauthorized: invalid api key"));
 
         BusinessException exception = assertThrows(BusinessException.class,
             () -> service.generateDraft(new GenerateDemandDraftCommand("取快递")));
@@ -385,12 +594,13 @@ class AiDemandApplicationServiceImplTest {
         assertFalseContains(exception.getMessage(), "api");
         assertFalseContains(exception.getMessage(), "key");
         assertFalseContains(exception.getMessage(), "Authorization");
+        assertFalseContains(exception.getMessage(), "401");
     }
 
     @Test
-    void shouldTranslateProvider500ErrorWithoutLeakingInternals() {
+    void shouldTranslateTransientAiExceptionAsInternalErrorWithoutLeakingInternals() {
         when(callResponseSpec.entity(eq(DemandDraft.class)))
-            .thenThrow(new RuntimeException("500 Internal Server Error: upstream timeout"));
+            .thenThrow(new TransientAiException("500 Internal Server Error: upstream timeout"));
 
         BusinessException exception = assertThrows(BusinessException.class,
             () -> service.generateDraft(new GenerateDemandDraftCommand("取快递")));
@@ -399,6 +609,23 @@ class AiDemandApplicationServiceImplTest {
         assertEquals("AI 服务暂时不可用，请稍后重试", exception.getMessage());
         assertFalseContains(exception.getMessage(), "upstream");
         assertFalseContains(exception.getMessage(), "internal");
+        assertFalseContains(exception.getMessage(), "500");
+    }
+
+    @Test
+    void shouldTranslateStructuredOutputParseFailureAsValidationFailed() {
+        // 结构化输出解析失败：模型返回非 JSON，BeanOutputConverter 抛 RuntimeException
+        when(callResponseSpec.entity(eq(DemandDraft.class)))
+            .thenThrow(new RuntimeException("Failed to convert response to DemandDraft: not a JSON"));
+
+        BusinessException exception = assertThrows(BusinessException.class,
+            () -> service.generateDraft(new GenerateDemandDraftCommand("取快递")));
+
+        assertEquals(ErrorCode.VALIDATION_FAILED, exception.getErrorCode());
+        assertEquals("AI 返回内容无法识别，请重新描述需求", exception.getMessage());
+        // 不泄露 provider 内部细节
+        assertFalseContains(exception.getMessage(), "convert");
+        assertFalseContains(exception.getMessage(), "JSON");
     }
 
     @Test
