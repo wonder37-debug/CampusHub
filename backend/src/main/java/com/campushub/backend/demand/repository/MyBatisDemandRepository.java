@@ -263,6 +263,7 @@ public class MyBatisDemandRepository implements DemandRepository {
         }
         LambdaQueryWrapper<DemandEntity> wrapper = buildCandidateWrapper(userId, query);
         wrapper.orderByDesc(DemandEntity::getCreatedAt);
+        wrapper.orderByDesc(DemandEntity::getId);
         wrapper.last("LIMIT " + CANDIDATE_POOL_SIZE);
         return demandMapper.selectList(wrapper).stream().map(DemandEntity::toDomain).toList();
     }
@@ -327,6 +328,8 @@ public class MyBatisDemandRepository implements DemandRepository {
         // 排除 endTime 已过的需求（过期调度器有 5 分钟间隔，避免推荐已过期但未刷新的需求）
         LocalDateTime now = LocalDateTime.now();
         wrapper.and(w -> w.isNull(DemandEntity::getEndTime).or().ge(DemandEntity::getEndTime, now));
+        // SQL 层提前排除已有 Order 的需求，使 LIMIT 作用于"真正有效候选"而非包含大量随后会被过滤的记录
+        wrapper.notInSql(DemandEntity::getId, "SELECT demand_id FROM ord_order");
         return wrapper;
     }
 }

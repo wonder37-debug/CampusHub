@@ -54,6 +54,10 @@ public class ApiViewMapper {
     }
 
     public DemandView toDemandView(Demand demand, CurrentUser currentUser, Map<Long, User> userMap, Map<Long, Order> orderMap) {
+        return toDemandView(demand, currentUser, userMap, orderMap, null);
+    }
+
+    public DemandView toDemandView(Demand demand, CurrentUser currentUser, Map<Long, User> userMap, Map<Long, Order> orderMap, Map<Long, Long> selectedCountMap) {
         boolean canSeePublisher = canSeeDemandPublisher(demand, currentUser);
         User publisherUser = demand.getPublisherId() == null ? null : resolveUser(demand.getPublisherId(), userMap);
         Long publisherId = canSeePublisher ? demand.getPublisherId() : null;
@@ -98,7 +102,7 @@ public class ApiViewMapper {
             demand.getReward(),
             demand.getInteractionMode() == null ? "DIRECT_ACCEPT" : demand.getInteractionMode().name(),
             demand.getTargetParticipantCount(),
-            resolveSelectedParticipantCount(demand),
+            resolveSelectedParticipantCount(demand, selectedCountMap),
             demand.getTags(),
             demand.getStatus().name(),
             demand.isAnonymous(),
@@ -130,11 +134,18 @@ public class ApiViewMapper {
 
     /**
      * SELECT_MANY 组队进度：已选中人数。仅 SELECT_MANY 模式输出，其余模式返回 null。
+     * 列表场景传入 selectedCountMap（batch 预加载）避免 N+1；单条场景 fallback 到 countSelectedByDemandId。
      */
-    private Integer resolveSelectedParticipantCount(Demand demand) {
+    private Integer resolveSelectedParticipantCount(Demand demand, Map<Long, Long> selectedCountMap) {
         if (demand == null || demand.getId() == null
-            || demand.getInteractionMode() != InteractionMode.SELECT_MANY
-            || demandResponseRepository == null) {
+            || demand.getInteractionMode() != InteractionMode.SELECT_MANY) {
+            return null;
+        }
+        if (selectedCountMap != null) {
+            Long count = selectedCountMap.get(demand.getId());
+            return count == null ? 0 : count.intValue();
+        }
+        if (demandResponseRepository == null) {
             return null;
         }
         return (int) demandResponseRepository.countSelectedByDemandId(demand.getId());
@@ -237,7 +248,8 @@ public class ApiViewMapper {
             review.orderId(),
             review.rating(),
             review.comment(),
-            review.targetId(),
+            (!canSeePublisher && publisherId != null && publisherId.equals(review.targetId()))
+                ? null : review.targetId(),
             targetName,
             authorView,
             review.createdAt()
@@ -279,7 +291,8 @@ public class ApiViewMapper {
             review.getOrderId(),
             review.getRating(),
             review.getComment(),
-            review.getTargetId(),
+            (!canSeePublisher && publisherId != null && publisherId.equals(review.getTargetId()))
+                ? null : review.getTargetId(),
             targetName,
             authorView,
             review.getCreatedAt()

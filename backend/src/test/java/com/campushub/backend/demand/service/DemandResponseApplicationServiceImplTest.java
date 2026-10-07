@@ -1,5 +1,6 @@
 package com.campushub.backend.demand.service;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -13,6 +14,7 @@ import com.campushub.backend.auth.domain.UserStatus;
 import com.campushub.backend.auth.repository.UserRepository;
 import com.campushub.backend.common.exception.BusinessException;
 import com.campushub.backend.common.exception.ErrorCode;
+import com.campushub.backend.demand.domain.DemandResponse;
 import com.campushub.backend.demand.domain.DemandStatus;
 import com.campushub.backend.demand.domain.ResponseStatus;
 import com.campushub.backend.demand.dto.CreateDemandResponseCommand;
@@ -31,6 +33,7 @@ import com.campushub.backend.review.service.ReviewApplicationService;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -1141,6 +1144,45 @@ class DemandResponseApplicationServiceImplTest {
 
         assertEquals(1L, demandResponseRepository.countSelectedByDemandId(demandId),
             "SELECT_MANY 进度应反映已选中人数");
+    }
+
+    // ==================== schema 验证：HELP 多 active Response（无唯一约束） ====================
+
+    @Test
+    void schemaAllowsMultipleActiveResponsesForSameDemandAuthor() {
+        // 直接在 DB 层验证：ord_demand_response 无唯一约束，HELP 场景同一 demand+author 可多条 PENDING
+        Long demandId = createHelpDemand(new BigDecimal("10.00"));
+        DemandResponse r1 = demandResponseRepository.save(new DemandResponse(
+            null, demandId, responder1Id, "第一条", ResponseStatus.PENDING,
+            LocalDateTime.now(), LocalDateTime.now()));
+        DemandResponse r2 = demandResponseRepository.save(new DemandResponse(
+            null, demandId, responder1Id, "第二条", ResponseStatus.PENDING,
+            LocalDateTime.now(), LocalDateTime.now()));
+
+        assertThat(r1.getId()).isNotNull();
+        assertThat(r2.getId()).isNotNull();
+        assertThat(r1.getId()).isNotEqualTo(r2.getId());
+    }
+
+    // ==================== batch selectedParticipantCount（避免列表 N+1） ====================
+
+    @Test
+    void shouldBatchCountSelectedByDemandIds() {
+        Long demand1 = createTeamUpDemand(3);
+        Long demand2 = createTeamUpDemand(2);
+        Long r1 = demandResponseApplicationService.createResponse(
+            responder1Id, demand1, new CreateDemandResponseCommand("报名1")).id();
+        Long r2 = demandResponseApplicationService.createResponse(
+            responder2Id, demand1, new CreateDemandResponseCommand("报名2")).id();
+        Long r3 = demandResponseApplicationService.createResponse(
+            responder1Id, demand2, new CreateDemandResponseCommand("报名3")).id();
+
+        demandResponseApplicationService.selectResponses(
+            publisherId, demand1, new SelectResponsesCommand(List.of(r1)));
+
+        Map<Long, Long> counts = demandResponseRepository.countSelectedByDemandIds(List.of(demand1, demand2));
+        assertEquals(1L, counts.get(demand1), "demand1 已选 1 人");
+        assertEquals(0L, counts.getOrDefault(demand2, 0L), "demand2 未选人，batch 查询应返回 0");
     }
 
     // ==================== helpers ====================

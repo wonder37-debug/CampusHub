@@ -11,7 +11,9 @@ import org.springframework.stereotype.Repository;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Repository
@@ -121,6 +123,24 @@ public class MyBatisDemandResponseRepository implements DemandResponseRepository
         return demandResponseMapper.selectCount(new LambdaQueryWrapper<DemandResponseEntity>()
                 .eq(DemandResponseEntity::getDemandId, demandId)
                 .eq(DemandResponseEntity::getStatus, ResponseStatus.SELECTED.name()));
+    }
+
+    @Override
+    public Map<Long, Long> countSelectedByDemandIds(Collection<Long> demandIds) {
+        if (demandIds == null || demandIds.isEmpty()) {
+            return Map.of();
+        }
+        // batch 查询：一次 in 取出所有 SELECTED Response 的 demandId，Java 端聚合，避免列表场景 N+1
+        List<DemandResponseEntity> entities = demandResponseMapper.selectList(
+            new LambdaQueryWrapper<DemandResponseEntity>()
+                .select(DemandResponseEntity::getDemandId)
+                .eq(DemandResponseEntity::getStatus, ResponseStatus.SELECTED.name())
+                .in(DemandResponseEntity::getDemandId, demandIds));
+        Map<Long, Long> result = new HashMap<>();
+        for (DemandResponseEntity entity : entities) {
+            result.merge(entity.getDemandId(), 1L, Long::sum);
+        }
+        return result;
     }
 
     @Override

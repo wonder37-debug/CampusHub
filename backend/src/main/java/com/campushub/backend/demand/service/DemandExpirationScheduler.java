@@ -6,30 +6,42 @@ import com.campushub.backend.demand.repository.DemandRepository;
 import com.campushub.backend.order.service.RewardSettlementService;
 import java.time.LocalDateTime;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * 定时任务：每 5 分钟扫描一次所有 PENDING 状态的需求，
  * 若 endTime 已过期则将状态自动更新为 EXPIRED，并释放尚未结算的冻结悬赏。
  *
- * <p>过期与解冻在同一个事务内完成；对每条需求重新加 FOR UPDATE 行锁并校验当前状态仍为 PENDING，
- * 避免与 accept/withdraw/selectResponse/acceptAnswer 等持锁路径并发产生状态覆盖或重复解冻。</p>
+ * <p>每条需求的"加锁 → 状态确认 → EXPIRED → reward refund"在独立事务（REQUIRES_NEW）内完成，
+ * 单条失败只回滚当前需求并记录错误，不影响其他需求的过期处理。</p>
  */
 @Component
 public class DemandExpirationScheduler {
 
+    private static final Logger log = LoggerFactory.getLogger(DemandExpirationScheduler.class);
+
     private final DemandRepository demandRepository;
     private final RewardSettlementService rewardSettlementService;
+    private final TransactionTemplate transactionTemplate;
 
-    public DemandExpirationScheduler(DemandRepository demandRepository, RewardSettlementService rewardSettlementService) {
+    public DemandExpirationScheduler(
+        DemandRepository demandRepository,
+        RewardSettlementService rewardSettlementService,
+        PlatformTransactionManager transactionManager
+    ) {
         this.demandRepository = demandRepository;
         this.rewardSettlementService = rewardSettlementService;
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
+        this.transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
     @Scheduled(fixedRate = 300_000)
-    @Transactional(rollbackFor = Exception.class)
     public void expireOverdueDemands() {
         LocalDateTime now = LocalDateTime.now();
         List<Demand> pendingDemands = demandRepository.findByStatus(DemandStatus.PENDING);
@@ -37,7 +49,14 @@ public class DemandExpirationScheduler {
             if (snapshot.getEndTime() == null || !snapshot.getEndTime().isBefore(now)) {
                 continue;
             }
-            expireOne(snapshot.getId(), now);
+            try {
+                transactionTemplate.execute(status -> {
+                    expireOne(snapshot.getId(), now);
+                    return null;
+                });
+            } catch (Exception e) {
+                log.error("Failed to expire demand {}: {}", snapshot.getId(), e.getMessage(), e);
+            }
         }
     }
 

@@ -5,25 +5,32 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.campushub.backend.api.view.DemandView;
 import com.campushub.backend.api.view.OrderView;
+import com.campushub.backend.api.view.ReviewView;
 import com.campushub.backend.auth.domain.User;
 import com.campushub.backend.auth.domain.UserRole;
 import com.campushub.backend.auth.domain.UserStatus;
+import com.campushub.backend.auth.repository.UserRepository;
 import com.campushub.backend.common.security.CurrentUser;
 import com.campushub.backend.demand.domain.CampusZone;
 import com.campushub.backend.demand.domain.Demand;
 import com.campushub.backend.demand.domain.DemandCategory;
 import com.campushub.backend.demand.domain.DemandStatus;
 import com.campushub.backend.demand.domain.InteractionMode;
+import com.campushub.backend.demand.repository.DemandRepository;
 import com.campushub.backend.order.domain.Order;
 import com.campushub.backend.order.domain.OrderStatus;
 import com.campushub.backend.order.domain.OrderStatusHistoryEntry;
+import com.campushub.backend.review.dto.ReviewResponse;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
@@ -202,5 +209,62 @@ class ApiViewMapperPrivacyTest {
         assertEquals(2, view.proofImageCount());
         assertEquals(1, view.statusHistory().size());
         assertNotNull(view.arbitrationResult());
+    }
+
+    // ===== 匿名 Demand Review 的 targetId 脱敏 =====
+
+    private ApiViewMapper reviewMapper(Demand demand, User publisher, User author, User target) {
+        DemandRepository demandRepo = mock(DemandRepository.class);
+        UserRepository userRepo = mock(UserRepository.class);
+        when(demandRepo.findById(demand.getId())).thenReturn(Optional.of(demand));
+        when(userRepo.findById(publisher.getId())).thenReturn(Optional.of(publisher));
+        if (author != null) when(userRepo.findById(author.getId())).thenReturn(Optional.of(author));
+        if (target != null) when(userRepo.findById(target.getId())).thenReturn(Optional.of(target));
+        return new ApiViewMapper(demandRepo, userRepo, null, null, null);
+    }
+
+    @Test
+    void shouldNotExposeAnonymousDemandPublisherIdInReviewTargetToOutsider() {
+        User publisher = newUser(1L, "pub@edu.cn", "20260001", "发布者真名");
+        User author = newUser(2L, "auth@edu.cn", "20260002", "评价者");
+        Demand demand = newDemand(10L, 1L, "匿名校友", true, "匿名校友ABCD", null);
+        ApiViewMapper m = reviewMapper(demand, publisher, author, publisher);
+
+        ReviewResponse review = new ReviewResponse(1L, 100L, null, 10L, 2L, 1L, 5, "好评", LocalDateTime.now());
+        ReviewView view = m.toAnonymizedReviewView(review, new CurrentUser(3L, UserRole.USER));
+
+        assertNull(view.targetId(), "匿名 Demand 的 Review targetId 不得暴露真实 publisherId");
+        assertEquals("匿名校友ABCD", view.targetName());
+    }
+
+    @Test
+    void shouldExposeRealTargetIdForNonAnonymousDemand() {
+        User publisher = newUser(1L, "pub@edu.cn", "20260001", "发布者");
+        User author = newUser(2L, "auth@edu.cn", "20260002", "评价者");
+        Demand demand = newDemand(10L, 1L, "发布者", false, null, null);
+        ApiViewMapper m = reviewMapper(demand, publisher, author, publisher);
+
+        ReviewResponse review = new ReviewResponse(1L, 100L, null, 10L, 2L, 1L, 5, "好评", LocalDateTime.now());
+        ReviewView view = m.toAnonymizedReviewView(review, new CurrentUser(3L, UserRole.USER));
+
+        assertEquals(1L, view.targetId(), "非匿名 Demand 的 Review targetId 保持真实值");
+        assertEquals("发布者", view.targetName());
+    }
+
+    @Test
+    void shouldRevealTargetIdToPublisherSelfAndAdmin() {
+        User publisher = newUser(1L, "pub@edu.cn", "20260001", "发布者真名");
+        User author = newUser(2L, "auth@edu.cn", "20260002", "评价者");
+        Demand demand = newDemand(10L, 1L, "匿名校友", true, "匿名校友ABCD", null);
+        ApiViewMapper m = reviewMapper(demand, publisher, author, publisher);
+
+        ReviewResponse review = new ReviewResponse(1L, 100L, null, 10L, 2L, 1L, 5, "好评", LocalDateTime.now());
+
+        ReviewView selfView = m.toAnonymizedReviewView(review, new CurrentUser(1L, UserRole.USER));
+        assertEquals(1L, selfView.targetId(), "发布者本人应可见真实 targetId");
+        assertEquals("发布者真名", selfView.targetName());
+
+        ReviewView adminView = m.toAnonymizedReviewView(review, new CurrentUser(99L, UserRole.ADMIN));
+        assertEquals(1L, adminView.targetId(), "Admin 应可见真实 targetId");
     }
 }

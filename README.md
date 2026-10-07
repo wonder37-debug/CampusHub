@@ -411,9 +411,20 @@ cd backend
 | `ord_review` | 评价表（评分、评论，单向评价） |
 | `sys_notification` | 站内通知表（10 种类型） |
 | `rec_user_action_log` | 推荐系统用户行为日志表（VIEW/ACCEPT） |
-| `rec_user_action_log` | 推荐系统用户行为日志 |
 
 > 测试环境使用 H2 内存数据库（MySQL 兼容模式），schema 文件独立于生产环境，互不影响。
+
+### 生产数据库升级
+
+新安装环境由 `init_schema.sql` 自动建表（含普通索引，HELP 同一用户可多条 active Response）。
+
+已有生产数据库（`SPRING_PROFILES_ACTIVE=prod` 时 `spring.sql.init.mode=never`，不会自动执行建表脚本）需手动执行 migration：
+
+```bash
+mysql -u<user> -p campushub < backend/src/main/resources/migrations/V20261007__drop_response_unique_index.sql
+```
+
+该脚本幂等删除旧的 `uk_response_demand_author_active` 唯一约束，使 HELP 模式同一用户可提交多条 active Response。不存在该索引时执行 `SELECT 1`，不会失败。SELECT_ONE/SELECT_MANY 的"一人一个 active Response"规则由 Service 层在 Demand 行锁保护下校验。
 
 ---
 

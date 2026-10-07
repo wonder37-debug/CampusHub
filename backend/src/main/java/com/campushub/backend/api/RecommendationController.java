@@ -9,11 +9,16 @@ import com.campushub.backend.common.security.CurrentUser;
 import com.campushub.backend.common.security.RequestUserExtractor;
 import com.campushub.backend.demand.domain.DemandSort;
 import com.campushub.backend.demand.dto.DemandQuery;
+import com.campushub.backend.demand.domain.Demand;
 import com.campushub.backend.demand.repository.DemandRepository;
+import com.campushub.backend.demand.repository.DemandResponseRepository;
 import com.campushub.backend.recommendation.dto.RecommendationItemResponse;
 import com.campushub.backend.recommendation.service.RecommendationApplicationService;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -25,17 +30,20 @@ public class RecommendationController {
 
     private final RecommendationApplicationService recommendationApplicationService;
     private final DemandRepository demandRepository;
+    private final DemandResponseRepository demandResponseRepository;
     private final RequestUserExtractor requestUserExtractor;
     private final ApiViewMapper apiViewMapper;
 
     public RecommendationController(
         RecommendationApplicationService recommendationApplicationService,
         DemandRepository demandRepository,
+        DemandResponseRepository demandResponseRepository,
         RequestUserExtractor requestUserExtractor,
         ApiViewMapper apiViewMapper
     ) {
         this.recommendationApplicationService = recommendationApplicationService;
         this.demandRepository = demandRepository;
+        this.demandResponseRepository = demandResponseRepository;
         this.requestUserExtractor = requestUserExtractor;
         this.apiViewMapper = apiViewMapper;
     }
@@ -55,16 +63,25 @@ public class RecommendationController {
             currentUser.userId(),
             new DemandQuery(q, category, campusZone, location, null, null, DemandSort.RECOMMEND, new PageQuery(page, size))
         );
+        if (rawPage.items().isEmpty()) {
+            return ApiResponse.success(new PageResponse<>(List.of(), rawPage.page(), rawPage.size(), rawPage.total()));
+        }
+        // batch 加载 Demand + selectedCount，避免逐项 findById 和 selectedParticipantCount N+1
+        List<Long> demandIds = rawPage.items().stream().map(RecommendationItemResponse::demandId).toList();
+        Map<Long, Demand> demandMap = demandRepository.findAllById(demandIds).stream()
+            .collect(Collectors.toMap(Demand::getId, d -> d));
+        Map<Long, Long> selectedCountMap = demandResponseRepository.countSelectedByDemandIds(demandIds);
         List<RecommendedDemandView> items = rawPage.items().stream()
-            .map(item -> toRecommendedDemandView(item, currentUser))
+            .map(item -> {
+                Demand demand = demandMap.get(item.demandId());
+                if (demand == null) {
+                    return null;
+                }
+                DemandView view = apiViewMapper.toDemandView(demand, currentUser, null, null, selectedCountMap);
+                return new RecommendedDemandView(item.rank(), item.score(), item.reasonTags(), view);
+            })
+            .filter(Objects::nonNull)
             .toList();
         return ApiResponse.success(new PageResponse<>(items, rawPage.page(), rawPage.size(), rawPage.total()));
-    }
-
-    private RecommendedDemandView toRecommendedDemandView(RecommendationItemResponse item, CurrentUser currentUser) {
-        DemandView demand = demandRepository.findById(item.demandId())
-            .map(saved -> apiViewMapper.toDemandView(saved, currentUser))
-            .orElseThrow();
-        return new RecommendedDemandView(item.rank(), item.score(), item.reasonTags(), demand);
     }
 }

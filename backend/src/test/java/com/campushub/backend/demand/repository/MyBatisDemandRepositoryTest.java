@@ -36,11 +36,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 @MybatisPlusTest
 @ActiveProfiles("local")
 @Import(MyBatisDemandRepository.class)
-@Sql(scripts = "classpath:schema-demand.sql")
+@Sql(scripts = {"classpath:schema-demand.sql", "classpath:schema-order.sql"})
 class MyBatisDemandRepositoryTest {
 
     @Autowired
     private MyBatisDemandRepository repository;
+
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
 
     @Test
     void save_insert_assigns_id_and_findById_returns_persisted_demand() {
@@ -624,6 +627,43 @@ class MyBatisDemandRepositoryTest {
     @Test
     void findCandidatePage_returns_empty_when_query_null() {
         assertThat(repository.findCandidatePage(10L, null)).isEmpty();
+    }
+
+    @Test
+    void findCandidatePage_excludes_demands_with_order_at_sql_level() {
+        Demand withOrder = repository.save(newDemand("有单", DemandCategory.OTHER));
+        Demand withoutOrder = repository.save(newDemand("无单", DemandCategory.OTHER));
+        jdbcTemplate.update(
+            "INSERT INTO ord_order (demand_id, publisher_id, accepter_id, status, accept_note, proof_submitted, proof_image_count, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            withOrder.getId(), 20L, 30L, "ACCEPTED", null, false, 0, LocalDateTime.now(), LocalDateTime.now());
+
+        List<Demand> candidates = repository.findCandidatePage(10L, new DemandQuery(null, null, null, null, null, null, DemandSort.TIME, new PageQuery(1, 20)));
+
+        assertThat(candidates).extracting(Demand::getId).contains(withoutOrder.getId());
+        assertThat(candidates).extracting(Demand::getId).doesNotContain(withOrder.getId());
+    }
+
+    @Test
+    void findCandidatePage_orders_by_created_at_desc_then_id_desc_as_tiebreaker() {
+        LocalDateTime now = LocalDateTime.now();
+        Demand d1 = repository.save(newDemand("d1", DemandCategory.OTHER));
+        d1.setCreatedAt(now);
+        repository.save(d1);
+        Demand d2 = repository.save(newDemand("d2", DemandCategory.OTHER));
+        d2.setCreatedAt(now);
+        repository.save(d2);
+        Demand older = repository.save(newDemand("older", DemandCategory.OTHER));
+        older.setCreatedAt(now.minusHours(1));
+        repository.save(older);
+
+        List<Demand> candidates = repository.findCandidatePage(10L, new DemandQuery(null, null, null, null, null, null, DemandSort.TIME, new PageQuery(1, 20)));
+
+        // 相同 createdAt 时，id 大的在前（deterministic tie-breaker）
+        Long first = candidates.get(0).getId();
+        Long second = candidates.get(1).getId();
+        assertThat(first).isGreaterThan(second);
+        // 更旧的在最后
+        assertThat(candidates).extracting(Demand::getId).last().isEqualTo(older.getId());
     }
 
     @Test
