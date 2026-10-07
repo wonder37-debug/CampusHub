@@ -8,6 +8,7 @@ public enum ErrorCode {
     RESOURCE_NOT_FOUND(1003, HttpStatus.NOT_FOUND),
     PERMISSION_DENIED(1004, HttpStatus.FORBIDDEN),
     BUSINESS_CONFLICT(1005, HttpStatus.CONFLICT),
+    RATE_LIMITED(1006, HttpStatus.TOO_MANY_REQUESTS),
     INTERNAL_ERROR(5000, HttpStatus.INTERNAL_SERVER_ERROR);
 
     private final int code;

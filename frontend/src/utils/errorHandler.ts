@@ -101,7 +101,8 @@ export function translateApiError(payload: any): string {
     UNAUTHORIZED: '请先登录后再继续',
     FORBIDDEN: '没有权限执行该操作',
     // 业务冲突的兜底文案改为更友好、引导用户的具体提示，避免吓人的“系统状态冲突”
-    BUSINESS_CONFLICT: '当前操作未能完成，请刷新页面后重试；若仍有问题，请稍后再试。'
+    BUSINESS_CONFLICT: '当前操作未能完成，请刷新页面后重试；若仍有问题，请稍后试。',
+    RATE_LIMITED: '请求过于频繁，请稍后再试'
   }
 
   const errorCode = String(payload?.errorCode ?? payload?.codeName ?? '').trim().toUpperCase()

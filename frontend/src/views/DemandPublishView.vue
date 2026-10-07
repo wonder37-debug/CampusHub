@@ -479,48 +479,24 @@ function isLegalCampusZone(value: string | null): value is CampusZone {
 }
 
 function applyAiDraft(draft: import('@/types/campushub').AiDemandDraft): void {
-  // 1. AI 有明确值的字段覆盖；AI null 的字段保留用户已输入值（不凭空填默认值）
-  if (draft.title) form.title = draft.title
-  if (draft.description) form.description = draft.description
-  if (draft.location) form.location = draft.location
-  if (draft.startTime) form.startDateTime = toDateTimeLocal(draft.startTime)
-  if (draft.endTime) form.endDateTime = toDateTimeLocal(draft.endTime)
-
-  // 2. reward：AI null 必须清空（form.reward 默认 '10' 有业务意义，不能保留默认值导致用户误提交 10 元）
-  //    reward=0 是有效值，必须保留，不能误判为空
-  if (draft.reward == null) {
-    form.reward = ''
-  } else if (Number.isFinite(draft.reward) && draft.reward >= 0) {
-    form.reward = String(draft.reward)
-  }
-
-  // 3. campusZone：AI 有合法值则覆盖
-  if (isLegalCampusZone(draft.campusZone)) form.campusZone = draft.campusZone
-
-  // 4. category 改变时清理旧 interactionMode/targetParticipantCount，避免旧状态残留冲突
-  //    （例如旧 TEAM_UP + targetParticipantCount=3，新 AI EXPRESS 应清理 targetParticipantCount）
-  if (isLegalCategory(draft.category) && draft.category !== form.category) {
-    form.category = draft.category
-    form.interactionMode = ''
-    form.targetParticipantCount = ''
-  }
-
-  // 5. tags：AI 有值则覆盖
-  if (Array.isArray(draft.tags) && draft.tags.length > 0) {
-    form.tags = draft.tags.join(',')
-  }
-
-  // 6. interactionMode：仅 OTHER 分类由用户/AI 选择，其余分类后端会按规则推导
-  if (form.category === 'OTHER' && draft.interactionMode) {
-    form.interactionMode = draft.interactionMode
-  }
-
-  // 7. targetParticipantCount：仅 SELECT_MANY 模式（TEAM_UP 或 OTHER+SELECT_MANY）由 AI 设置
-  if (effectiveInteractionMode.value === 'SELECT_MANY'
-    && draft.targetParticipantCount != null
-    && Number.isFinite(draft.targetParticipantCount)) {
-    form.targetParticipantCount = String(draft.targetParticipantCount)
-  }
+  // AI-managed fields 完全替换：每次 AI 成功生成的 DemandDraft 当作全新草稿，不是旧草稿的 patch。
+  // AI null → 清空对应字段；AI [] → 清空数组/字符串字段；AI 有值 → 直接写入。
+  // 非 AI-managed fields（images/contactInfo/anonymous）不修改，保留用户已有值。
+  form.title = draft.title ?? ''
+  form.description = draft.description ?? ''
+  form.location = draft.location ?? ''
+  form.startDateTime = draft.startTime ? toDateTimeLocal(draft.startTime) : ''
+  form.endDateTime = draft.endTime ? toDateTimeLocal(draft.endTime) : ''
+  // reward：null → 清空（不保留默认 '10'，避免用户误提交 10 元）；0 → '0'（有效值，不误判为空）
+  form.reward = draft.reward == null ? '' : String(draft.reward)
+  // tags：数组完全替换，[] → ''，['打印','资料'] → '打印,资料'（不 append 旧值）
+  form.tags = Array.isArray(draft.tags) ? draft.tags.join(',') : ''
+  // category/campusZone：合法值覆盖，非法/null → 清空（整体替换，避免旧 category 残留）
+  form.category = (isLegalCategory(draft.category) ? draft.category : '') as typeof form.category
+  form.campusZone = (isLegalCampusZone(draft.campusZone) ? draft.campusZone : '') as typeof form.campusZone
+  // interactionMode/targetParticipantCount：完全由本次 AI 决定，null → 清空（避免旧 category 的依赖字段残留）
+  form.interactionMode = draft.interactionMode ?? ''
+  form.targetParticipantCount = draft.targetParticipantCount == null ? '' : String(draft.targetParticipantCount)
 
   // missingFields 提示：转换为中文标签，引导用户补充
   if (draft.missingFields && draft.missingFields.length > 0) {

@@ -305,6 +305,203 @@ describe('DemandPublishView - AI 帮我发布', () => {
     expect((wrapper.find('#demand-category').element as HTMLSelectElement).value).toBe('EXPRESS')
   })
 
+  it('AI interactionMode=null 清空旧 mode（OTHER）', async () => {
+    // 先选 OTHER + interactionMode=SELECT_ONE
+    await wrapper.find('#demand-category').setValue('OTHER')
+    const modeSelect = wrapper.find('#demand-interaction-mode')
+    await modeSelect.setValue('SELECT_ONE')
+    expect((modeSelect.element as HTMLSelectElement).value).toBe('SELECT_ONE')
+
+    // AI 返回 OTHER + interactionMode=null
+    mockGenerate.mockResolvedValue(buildDraft({
+      title: '其他需求',
+      description: '描述',
+      category: 'OTHER',
+      campusZone: 'XIANLIN',
+      location: '图书馆',
+      startTime: '2026-10-08T10:00:00',
+      endTime: '2026-10-08T12:00:00',
+      reward: 0,
+      tags: [],
+      interactionMode: null,
+      targetParticipantCount: null,
+      missingFields: ['interactionMode']
+    }))
+    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
+    await wrapper.find('[data-testid="ai-prompt-input"]').setValue('其他需求')
+    await wrapper.find('[data-testid="ai-generate-button"]').trigger('click')
+    await flushPromises()
+
+    // 旧 SELECT_ONE 已清空，不能残留
+    expect((wrapper.find('#demand-interaction-mode').element as HTMLSelectElement).value).toBe('')
+  })
+
+  it('AI tags=[] 清空旧 tags', async () => {
+    await wrapper.find('#demand-tags').setValue('跑腿,代取')
+    expect((wrapper.find('#demand-tags').element as HTMLInputElement).value).toBe('跑腿,代取')
+
+    mockGenerate.mockResolvedValue(buildDraft({
+      title: '取快递',
+      description: '描述',
+      category: 'EXPRESS',
+      campusZone: 'XIANLIN',
+      location: '图书馆',
+      startTime: '2026-10-08T10:00:00',
+      endTime: '2026-10-08T12:00:00',
+      reward: 10,
+      tags: [],
+      missingFields: []
+    }))
+    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
+    await wrapper.find('[data-testid="ai-prompt-input"]').setValue('取快递')
+    await wrapper.find('[data-testid="ai-generate-button"]').trigger('click')
+    await flushPromises()
+
+    // 旧 tags 已清空，不 append
+    expect((wrapper.find('#demand-tags').element as HTMLInputElement).value).toBe('')
+  })
+
+  it('AI targetParticipantCount=null 清空旧人数（TEAM_UP）', async () => {
+    await wrapper.find('#demand-category').setValue('TEAM_UP')
+    await wrapper.find('#demand-target-count').setValue('3')
+
+    mockGenerate.mockResolvedValue(buildDraft({
+      title: '组队',
+      description: '描述',
+      category: 'TEAM_UP',
+      campusZone: 'XIANLIN',
+      location: '操场',
+      startTime: '2026-10-10T14:00:00',
+      endTime: '2026-10-10T17:00:00',
+      reward: 0,
+      tags: [],
+      interactionMode: null,
+      targetParticipantCount: null,
+      missingFields: ['targetParticipantCount']
+    }))
+    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
+    await wrapper.find('[data-testid="ai-prompt-input"]').setValue('组队')
+    await wrapper.find('[data-testid="ai-generate-button"]').trigger('click')
+    await flushPromises()
+
+    // TEAM_UP 仍显示 target count 输入框，但值已清空（null → ''）
+    expect((wrapper.find('#demand-target-count').element as HTMLInputElement).value).toBe('')
+  })
+
+  it('连续两次 AI 生成：最终完全等于第二次草稿，不残留第一次', async () => {
+    // 第一次：TEAM_UP + count=3 + reward=20 + tags=['跑腿']
+    mockGenerate.mockResolvedValueOnce(buildDraft({
+      title: '组队打球',
+      description: '描述',
+      category: 'TEAM_UP',
+      campusZone: 'XIANLIN',
+      location: '操场',
+      startTime: '2026-10-10T14:00:00',
+      endTime: '2026-10-10T17:00:00',
+      reward: 20,
+      tags: ['跑腿'],
+      interactionMode: 'SELECT_MANY',
+      targetParticipantCount: 3,
+      missingFields: []
+    }))
+    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
+    await wrapper.find('[data-testid="ai-prompt-input"]').setValue('组队')
+    await wrapper.find('[data-testid="ai-generate-button"]').trigger('click')
+    await flushPromises()
+
+    // 第二次：EXPRESS + null + null + []
+    mockGenerate.mockResolvedValueOnce(buildDraft({
+      title: '代取快递',
+      description: '描述2',
+      category: 'EXPRESS',
+      campusZone: 'GULOU',
+      location: '图书馆',
+      startTime: '2026-10-08T10:00:00',
+      endTime: '2026-10-08T12:00:00',
+      reward: null,
+      tags: [],
+      interactionMode: null,
+      targetParticipantCount: null,
+      missingFields: ['reward']
+    }))
+    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
+    await wrapper.find('[data-testid="ai-prompt-input"]').setValue('取快递')
+    await wrapper.find('[data-testid="ai-generate-button"]').trigger('click')
+    await flushPromises()
+
+    // 最终完全等于第二次草稿，不残留第一次的 3/20/跑腿
+    expect((wrapper.find('#demand-category').element as HTMLSelectElement).value).toBe('EXPRESS')
+    expect((wrapper.find('#demand-reward').element as HTMLInputElement).value).toBe('')
+    expect((wrapper.find('#demand-tags').element as HTMLInputElement).value).toBe('')
+    // EXPRESS 不显示 target count（DIRECT_ACCEPT），旧的 3 已清空
+    expect(wrapper.find('#demand-target-count').exists()).toBe(false)
+  })
+
+  it('localStorage 污染：AI 返回 null/[] 清空 localStorage 旧值', async () => {
+    // 模拟 localStorage 有旧草稿
+    localStorage.setItem('campushub.demand.draft', JSON.stringify({
+      title: '', description: '', category: 'TEAM_UP', campusZone: '', location: '',
+      startDateTime: '', endDateTime: '', reward: '10', targetParticipantCount: '3',
+      interactionMode: '', tags: '旧标签', images: [], contactInfo: '', anonymous: false
+    }))
+    // 重新 mount 触发 onMounted loadDemandDraft
+    wrapper.unmount()
+    wrapper = mount(DemandPublishView, {
+      global: { stubs: { ImageUploader: true } }
+    })
+    await flushPromises()
+    // localStorage 恢复了旧值
+    expect((wrapper.find('#demand-reward').element as HTMLInputElement).value).toBe('10')
+    expect((wrapper.find('#demand-tags').element as HTMLInputElement).value).toBe('旧标签')
+
+    // AI 返回 null/[]
+    mockGenerate.mockResolvedValue(buildDraft({
+      title: '取快递',
+      description: '描述',
+      category: 'EXPRESS',
+      campusZone: 'XIANLIN',
+      location: '图书馆',
+      startTime: '2026-10-08T10:00:00',
+      endTime: '2026-10-08T12:00:00',
+      reward: null,
+      tags: [],
+      interactionMode: null,
+      targetParticipantCount: null,
+      missingFields: ['reward']
+    }))
+    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
+    await wrapper.find('[data-testid="ai-prompt-input"]').setValue('取快递')
+    await wrapper.find('[data-testid="ai-generate-button"]').trigger('click')
+    await flushPromises()
+
+    // localStorage 的旧值被 AI null/[] 清空，不能 fallback
+    expect((wrapper.find('#demand-reward').element as HTMLInputElement).value).toBe('')
+    expect((wrapper.find('#demand-tags').element as HTMLInputElement).value).toBe('')
+  })
+
+  it('AI 请求失败时表单完全保持原状态，不清空', async () => {
+    // 设置旧数据
+    await wrapper.find('#demand-reward').setValue('10')
+    await wrapper.find('#demand-tags').setValue('旧标签')
+    await wrapper.find('#demand-category').setValue('TEAM_UP')
+    await wrapper.find('#demand-target-count').setValue('3')
+
+    // AI 请求失败（500）
+    mockGenerate.mockRejectedValue(new Error('AI 服务暂时不可用，请稍后重试'))
+    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
+    await wrapper.find('[data-testid="ai-prompt-input"]').setValue('取快递')
+    await wrapper.find('[data-testid="ai-generate-button"]').trigger('click')
+    await flushPromises()
+
+    // 表单完全保持原状态，不能清空
+    expect((wrapper.find('#demand-reward').element as HTMLInputElement).value).toBe('10')
+    expect((wrapper.find('#demand-tags').element as HTMLInputElement).value).toBe('旧标签')
+    expect((wrapper.find('#demand-category').element as HTMLSelectElement).value).toBe('TEAM_UP')
+    expect((wrapper.find('#demand-target-count').element as HTMLInputElement).value).toBe('3')
+    // 错误提示展示
+    expect(wrapper.find('[data-testid="ai-error"]').exists()).toBe(true)
+  })
+
   it('取消按钮关闭 Dialog（未生成时）', async () => {
     await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
     expect(wrapper.find('[data-testid="ai-modal"]').exists()).toBe(true)

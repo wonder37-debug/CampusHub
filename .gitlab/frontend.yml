@@ -33,10 +33,24 @@ frontend:static-check:
         - .gitlab/frontend.yml
         - .gitlab-ci.yml
 
+frontend:test:
+  extends: .frontend-template
+  stage: static-check
+  timeout: 10m
+  script:
+    - npm ci --prefer-online --no-audit --no-fund
+    - npm test
+  rules:
+    - changes:
+        - frontend/**/*
+        - .gitlab/frontend.yml
+        - .gitlab-ci.yml
+
 frontend:build:
   extends: .frontend-template
   stage: build
   timeout: 15m
+  needs: ["frontend:static-check", "frontend:test"]
   script:
     - npm ci --prefer-online --no-audit --no-fund
     - npm run build
