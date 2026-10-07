@@ -2,10 +2,14 @@ package com.campushub.backend.ai.service;
 
 import com.campushub.backend.common.exception.BusinessException;
 import com.campushub.backend.common.exception.ErrorCode;
+import java.util.ArrayList;
 import java.util.LinkedList;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicLong;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -18,19 +22,24 @@ import org.springframework.stereotype.Component;
  *   <li><b>concurrent request limit</b>：全局最多 M 个并发请求（默认 3），避免 AI 调用打满线程池。</li>
  * </ul>
  *
- * <p><b>单实例限流</b>：状态保存在进程内存（{@link ConcurrentHashMap} + {@link Semaphore}），
- * 不依赖 Redis。多实例部署时每实例独立计数，实际限额 = 实例数 × 配置值。
- * 后续可替换为 Redis + Bucket4j 等分布式限流方案，只需实现相同接口契约。
+ * <p><b>数据结构选择（关键）</b>：
+ * <ul>
+ *   <li>rate limit 状态用 {@link ConcurrentHashMap}（{@code compute} 保证 remappingFunction 只执行一次，
+ *       避免并发 acquire 时 {@code addLast} 重复执行导致限流突破）。</li>
+ *   <li>清理游标用 {@link ConcurrentSkipListSet}（按 userId 升序，支持 {@code tailSet} 轮转游标）。
+ *       不用 {@code ConcurrentSkipListMap} 存 rate limit 状态，因为其 {@code compute} 在 CAS 重试时
+ *       可能多次执行 remappingFunction，导致限流失效。</li>
+ * </ul>
  *
  * <p><b>并发正确性</b>：单个 userId 的"获取/检查窗口/添加时间戳/判断是否过期/删除 entry"
- * 全部在 {@link ConcurrentHashMap#compute} 内原子完成，不会出现 split state
- * （线程 A 拿旧 list、线程 B 删 entry、线程 C 创建新 list 导致同 userId 两个独立 state）。
+ * 全部在 {@link ConcurrentHashMap#compute} 内原子完成，不会出现 split state。
+ * 清理与并发 acquire 操作同一 userId 时，{@code compute} 互斥等待，不会误删正在使用的 limiter state。
  *
- * <p><b>空闲清理</b>：不引入后台清理线程。acquire 时按 1/100 概率顺便清理过期 entry
- * （单次最多扫描 64 个 entry，O(batch) 而非 O(N)，避免大规模用户时阻塞请求路径；
- * ConcurrentHashMap 迭代顺序不保证，多次触发可渐进清理所有过期 entry）。清理规则：
- * 只有当该用户的所有 request timestamps 都已经离开当前 window，才删除该 userId entry。
- * 每个 entry 的清理在 compute 内原子完成，不产生 split state。
+ * <p><b>空闲清理（轮转游标）</b>：不引入后台清理线程。acquire 时按 1/100 概率触发清理。
+ * 使用 {@link ConcurrentSkipListSet}（按 userId 升序）+ {@link AtomicLong} 游标，每次从游标之后
+ * 扫描固定批量（64 个 entry），扫描完更新游标；到末尾后重置游标从头开始。这保证清理有稳定
+ * progress——随着请求持续执行，所有 entry 最终都会被覆盖到，不会反复处理同一小批。
+ * 单次清理 O(batch) 而非 O(N)，不阻塞请求路径。
  *
  * <p>安全要求：不记录 JWT / Authorization header，只用 userId 计数；不把用户身份信息传给 LLM。
  */
@@ -40,8 +49,14 @@ public class AiDemandRateLimiter {
     private static final int EVICT_PROBABILITY = 100;
     /** 单次清理最多扫描的 entry 数，避免大规模用户时 O(N) 阻塞请求路径。 */
     private static final int MAX_EVICT_BATCH = 64;
+    /** 游标初始值（小于任何有效 userId），保证首次清理从头开始。 */
+    private static final long CURSOR_RESET = Long.MIN_VALUE;
 
+    /** rate limit 状态：userId → 滑动窗口时间戳列表。ConcurrentHashMap.compute 保证 remappingFunction 只执行一次。 */
     private final ConcurrentHashMap<Long, LinkedList<Long>> userRequests = new ConcurrentHashMap<>();
+    /** 活跃 userId 有序集合，用于清理游标轮转（ConcurrentSkipListSet 按自然顺序排序，支持 tailSet）。 */
+    private final ConcurrentSkipListSet<Long> userOrder = new ConcurrentSkipListSet<>();
+    private final AtomicLong evictCursor = new AtomicLong(CURSOR_RESET);
     private final Semaphore concurrentSlots;
     private final long windowMs;
     private final int maxRequestsPerWindow;
@@ -75,7 +90,7 @@ public class AiDemandRateLimiter {
         if (!concurrentSlots.tryAcquire()) {
             throw new BusinessException(ErrorCode.RATE_LIMITED, "AI 服务繁忙，请稍后重试");
         }
-        // 2. per-user rate limit（compute 原子操作，避免 split state）
+        // 2. per-user rate limit（ConcurrentHashMap.compute 原子操作，remappingFunction 只执行一次）
         if (!tryAcquireUserSlot(userId, now)) {
             concurrentSlots.release();
             throw new BusinessException(ErrorCode.RATE_LIMITED, "请求过于频繁，请稍后再试");
@@ -91,7 +106,8 @@ public class AiDemandRateLimiter {
 
     /**
      * 单个 userId 的"移除过期时间戳/检查窗口/添加时间戳/判断是否过期/删除 entry"全部在 compute 内原子完成。
-     * 返回 null 则删除 entry（仅当所有时间戳过期且本次拒绝——实际不会发生，因为清空后 size=0 < max 必 accept）。
+     * ConcurrentHashMap.compute 保证 remappingFunction 只执行一次（不会因 CAS 重试导致 addLast 重复）。
+     * 清理与 acquire 操作同一 userId 时，compute 互斥等待，不会误删正在使用的 limiter state。
      */
     private boolean tryAcquireUserSlot(Long userId, long now) {
         boolean[] accepted = {false};
@@ -109,29 +125,75 @@ public class AiDemandRateLimiter {
             accepted[0] = true;
             return timestamps;
         });
+        // entry 存在（accept 新建/追加 或 reject 保留），记录到 userOrder 供清理游标使用（Set 去重）
+        userOrder.add(userId);
         return accepted[0];
     }
 
     /**
-     * 清理空闲用户的过期 entry。遍历用 forEach（弱一致），每个 entry 用 compute 原子清理。
-     * 清理规则：移除窗口外时间戳后，若 list 为空则删除 entry。
+     * 清理空闲用户的过期 entry（轮转游标方案）。
      *
-     * <p><b>扫描规模限制</b>：单次最多扫描 {@link #MAX_EVICT_BATCH} 个 entry（O(batch) 而非 O(N)），
-     * 避免大规模用户时阻塞请求路径。ConcurrentHashMap 迭代顺序不保证，每次取不同子集，
-     * 多次触发可渐进清理所有过期 entry。每个 entry 的 compute 仍是原子的，不产生 split state。
+     * <p>从游标之后按 userId 升序扫描 {@link #userOrder}，最多 {@link #MAX_EVICT_BATCH} 个，
+     * 先收集 key 快照（避免迭代时 compute 修改导致视图异常），再逐个用 ConcurrentHashMap.compute 原子清理。
+     * 扫到批量上限则更新游标到最后扫描的 key（下次从这里之后继续）；扫到末尾则重置游标从头开始。
+     * 这保证清理有稳定 progress，所有 entry 最终都会被覆盖到。
+     *
+     * <p>清理规则：移除窗口外时间戳后，若 list 为空则删除 entry（只有当用户的所有 timestamps
+     * 都已离开 window 才删除）。用户正在并发 acquire 时，compute 互斥等待其完成，
+     * 看到非空 list（含刚加的时间戳）不会删除，不会误删正在使用的 limiter state。
      * package-private 便于单元测试直接调用。
      */
     void evictExpiredEntries(long now) {
-        userRequests.entrySet().stream()
-            .limit(MAX_EVICT_BATCH)
-            .forEach(entry ->
-                userRequests.compute(entry.getKey(), (key, existing) -> {
-                    if (existing == null) {
-                        return null;
-                    }
-                    existing.removeIf(ts -> now - ts > windowMs);
-                    return existing.isEmpty() ? null : existing;
-                })
-            );
+        long cursorValue = evictCursor.get();
+        // 先收集要扫描的 userId 快照（从游标之后按升序取 MAX_EVICT_BATCH 个）
+        List<Long> keysToScan = new ArrayList<>(MAX_EVICT_BATCH);
+        for (Long userId : userOrder.tailSet(cursorValue, false)) {
+            keysToScan.add(userId);
+            if (keysToScan.size() >= MAX_EVICT_BATCH) {
+                break;
+            }
+        }
+        if (keysToScan.isEmpty()) {
+            // 到末尾，重置游标从头开始
+            evictCursor.set(CURSOR_RESET);
+            return;
+        }
+        // 逐个 compute 清理（ConcurrentHashMap.compute 原子，remappingFunction 只执行一次）
+        for (Long userId : keysToScan) {
+            boolean[] removed = {false};
+            userRequests.compute(userId, (key, existing) -> {
+                if (existing == null) {
+                    // entry 已不存在（可能被其他线程清理）
+                    removed[0] = true;
+                    return null;
+                }
+                existing.removeIf(ts -> now - ts > windowMs);
+                if (existing.isEmpty()) {
+                    // 所有时间戳过期，删除 entry
+                    removed[0] = true;
+                    return null;
+                }
+                return existing;
+            });
+            if (removed[0]) {
+                // entry 已删除，从 userOrder 移除（下次清理不再扫描）
+                userOrder.remove(userId);
+            }
+        }
+        Long lastScanned = keysToScan.get(keysToScan.size() - 1);
+        if (keysToScan.size() < MAX_EVICT_BATCH) {
+            // 扫到末尾（不足一个批量），重置游标从头开始
+            evictCursor.set(CURSOR_RESET);
+        } else {
+            // 游标设到最后扫描的 key，下次从该 key 之后继续，保证稳定 progress 且不跳过 entry
+            evictCursor.set(lastScanned);
+        }
+    }
+
+    /**
+     * 当前活跃用户 entry 数（package-private，仅供单元测试验证清理 progress）。
+     */
+    int activeUserCount() {
+        return userRequests.size();
     }
 }

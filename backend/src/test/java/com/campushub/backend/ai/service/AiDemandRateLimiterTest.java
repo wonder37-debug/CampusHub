@@ -145,6 +145,60 @@ class AiDemandRateLimiterTest {
     }
 
     @Test
+    void shouldEvictWithStableProgressAcrossBatches() throws InterruptedException {
+        // 200 个用户，单次清理批量 64，验证多次 evict 能持续推进覆盖所有 entry（不反复处理同一小批）
+        // 注意：acquire 路径有 1/100 概率触发 evict，cursor 可能被更新到中间位置，
+        //       因此不依赖第一次 evict 的具体数量，而是验证 activeUserCount 持续减少最终为 0
+        AiDemandRateLimiter r = limiter(100L, 5, 300);
+        for (long uid = 1; uid <= 200; uid++) {
+            r.acquire(uid);
+            r.release();
+        }
+        assertEquals(200, r.activeUserCount());
+
+        // 等待窗口过期
+        Thread.sleep(150L);
+        long now = System.currentTimeMillis();
+
+        // 多次 evict：activeUserCount 持续减少（或不增）最终为 0
+        // 这验证稳定 progress——每次 evict 清理不同 batch，不反复处理同一小批
+        int prevCount = 200;
+        for (int i = 0; i < 8 && r.activeUserCount() > 0; i++) {
+            r.evictExpiredEntries(now);
+            int currentCount = r.activeUserCount();
+            assertTrue(currentCount <= prevCount,
+                "activeUserCount 应持续减少或不增，第 " + i + " 次 evict 后=" + currentCount + " prev=" + prevCount);
+            prevCount = currentCount;
+        }
+        assertEquals(0, r.activeUserCount(), "多次 evict 后应全部清理（稳定 progress，不反复处理同一小批）");
+
+        // 空 map 再 evict 不报错（游标重置）
+        r.evictExpiredEntries(now);
+        assertEquals(0, r.activeUserCount());
+    }
+
+    @Test
+    void shouldNotDeleteEntryForUserWithinWindowDuringEvict() throws InterruptedException {
+        // 用户在窗口内有未过期时间戳时，evict 不应删除其 entry
+        AiDemandRateLimiter r = limiter(60_000L, 5, 10);
+        Long user = 70L;
+
+        r.acquire(user);
+        r.release();
+        // 未等窗口过期，直接 evict
+        r.evictExpiredEntries(System.currentTimeMillis());
+
+        // entry 仍存在（时间戳未过期），用户不能突破限流
+        // acquire 4 次成功（共 5 次，含第一次），第 6 次拒绝
+        for (int i = 0; i < 4; i++) {
+            assertDoesNotThrow(() -> r.acquire(user));
+            r.release();
+        }
+        BusinessException ex = assertThrows(BusinessException.class, () -> r.acquire(user));
+        assertEquals(ErrorCode.RATE_LIMITED, ex.getErrorCode());
+    }
+
+    @Test
     void shouldNotProduceSplitLimiterStateUnderConcurrentAcquire() throws InterruptedException {
         // 高并发同 userId acquire，验证不会因 map entry 清理造成两个独立 list（绕过限流）
         AiDemandRateLimiter r = limiter(60_000L, 5, 50);
