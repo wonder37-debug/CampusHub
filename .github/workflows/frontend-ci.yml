@@ -19,12 +19,18 @@ env:
   NPM_CONFIG_FUND: 'false'
   NPM_CONFIG_PROGRESS: 'false'
 
+# 最小权限：前端 CI 只需读取仓库内容。build job 单独提升 actions: write 以便上传 artifact。
+permissions:
+  contents: read
+
 jobs:
   static-check:
     name: Static Check (Type Check)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Set up Node 20
         uses: actions/setup-node@v4
@@ -46,6 +52,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Set up Node 20
         uses: actions/setup-node@v4
@@ -66,8 +74,14 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     needs: [static-check, test]
+    # build job 需要上传 artifact，单独声明 actions: write
+    permissions:
+      contents: read
+      actions: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Set up Node 20
         uses: actions/setup-node@v4

@@ -92,6 +92,39 @@ describe('translateApiError - 通用错误码映射', () => {
   })
 })
 
+describe('translateApiError - RATE_LIMITED 场景', () => {
+  it('全局并发满：保留后端“AI 服务繁忙”message', () => {
+    expect(translateApiError({
+      code: 1006,
+      errorCode: 'RATE_LIMITED',
+      message: 'AI 服务繁忙，请稍后重试'
+    })).toBe('AI 服务繁忙，请稍后重试')
+  })
+
+  it('单用户超限：保留后端“请求过于频繁”message', () => {
+    expect(translateApiError({
+      code: 1006,
+      errorCode: 'RATE_LIMITED',
+      message: '请求过于频繁，请稍后再试'
+    })).toBe('请求过于频繁，请稍后再试')
+  })
+
+  it('RATE_LIMITED 无中文 message 时回退通用文案', () => {
+    expect(translateApiError({ code: 1006, errorCode: 'RATE_LIMITED' }))
+      .toBe('请求过于频繁，请稍后再试')
+  })
+
+  it('RATE_LIMITED 英文 message 时回退通用文案（不泄露英文）', () => {
+    const msg = translateApiError({
+      code: 1006,
+      errorCode: 'RATE_LIMITED',
+      message: 'too many requests'
+    })
+    expect(msg).toBe('请求过于频繁，请稍后再试')
+    expect(msg).not.toContain('too many')
+  })
+})
+
 describe('handleError', () => {
   it('中文 Error 消息直接返回', () => {
     expect(handleError(new Error('你已经提交过了，无需重复提交。'))).toBe('你已经提交过了，无需重复提交。')

@@ -122,6 +122,16 @@ export function translateApiError(payload: any): string {
     return codeMap.BUSINESS_CONFLICT
   }
 
+  // RATE_LIMITED: 优先保留后端针对具体场景返回的中文 message
+  // （区分“AI 服务繁忙，请稍后重试”全局并发满 与 “请求过于频繁，请稍后再试”单用户超限），
+  // 后端无可用中文 message 时回退到通用文案。用中文字符判断（避免 "AI" 等缩写被误判为英文）
+  if (errorCode === 'RATE_LIMITED' || code === 1006) {
+    if (rawMessage && /[\u4e00-\u9fff]/.test(rawMessage)) {
+      return rawMessage
+    }
+    return codeMap.RATE_LIMITED
+  }
+
   if (errorCode && codeMap[errorCode]) {
     return codeMap[errorCode]
   }

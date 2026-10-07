@@ -26,9 +26,11 @@ import org.springframework.stereotype.Component;
  * 全部在 {@link ConcurrentHashMap#compute} 内原子完成，不会出现 split state
  * （线程 A 拿旧 list、线程 B 删 entry、线程 C 创建新 list 导致同 userId 两个独立 state）。
  *
- * <p><b>空闲清理</b>：不引入后台清理线程。acquire 时按 1/100 概率顺便清理所有用户的过期 entry
- * （forEach + compute，空 list 返回 null 删除 entry）。清理规则：只有当该用户的所有 request timestamps
- * 都已经离开当前 window，才删除该 userId entry。
+ * <p><b>空闲清理</b>：不引入后台清理线程。acquire 时按 1/100 概率顺便清理过期 entry
+ * （单次最多扫描 64 个 entry，O(batch) 而非 O(N)，避免大规模用户时阻塞请求路径；
+ * ConcurrentHashMap 迭代顺序不保证，多次触发可渐进清理所有过期 entry）。清理规则：
+ * 只有当该用户的所有 request timestamps 都已经离开当前 window，才删除该 userId entry。
+ * 每个 entry 的清理在 compute 内原子完成，不产生 split state。
  *
  * <p>安全要求：不记录 JWT / Authorization header，只用 userId 计数；不把用户身份信息传给 LLM。
  */
@@ -36,6 +38,8 @@ import org.springframework.stereotype.Component;
 public class AiDemandRateLimiter {
 
     private static final int EVICT_PROBABILITY = 100;
+    /** 单次清理最多扫描的 entry 数，避免大规模用户时 O(N) 阻塞请求路径。 */
+    private static final int MAX_EVICT_BATCH = 64;
 
     private final ConcurrentHashMap<Long, LinkedList<Long>> userRequests = new ConcurrentHashMap<>();
     private final Semaphore concurrentSlots;
@@ -109,19 +113,25 @@ public class AiDemandRateLimiter {
     }
 
     /**
-     * 清理所有用户的过期 entry。遍历用 forEach（弱一致），每个 entry 用 compute 原子清理。
+     * 清理空闲用户的过期 entry。遍历用 forEach（弱一致），每个 entry 用 compute 原子清理。
      * 清理规则：移除窗口外时间戳后，若 list 为空则删除 entry。
+     *
+     * <p><b>扫描规模限制</b>：单次最多扫描 {@link #MAX_EVICT_BATCH} 个 entry（O(batch) 而非 O(N)），
+     * 避免大规模用户时阻塞请求路径。ConcurrentHashMap 迭代顺序不保证，每次取不同子集，
+     * 多次触发可渐进清理所有过期 entry。每个 entry 的 compute 仍是原子的，不产生 split state。
      * package-private 便于单元测试直接调用。
      */
     void evictExpiredEntries(long now) {
-        userRequests.forEach((userId, list) ->
-            userRequests.compute(userId, (key, existing) -> {
-                if (existing == null) {
-                    return null;
-                }
-                existing.removeIf(ts -> now - ts > windowMs);
-                return existing.isEmpty() ? null : existing;
-            })
-        );
+        userRequests.entrySet().stream()
+            .limit(MAX_EVICT_BATCH)
+            .forEach(entry ->
+                userRequests.compute(entry.getKey(), (key, existing) -> {
+                    if (existing == null) {
+                        return null;
+                    }
+                    existing.removeIf(ts -> now - ts > windowMs);
+                    return existing.isEmpty() ? null : existing;
+                })
+            );
     }
 }
