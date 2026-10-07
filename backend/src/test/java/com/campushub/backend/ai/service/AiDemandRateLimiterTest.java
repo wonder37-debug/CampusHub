@@ -242,4 +242,105 @@ class AiDemandRateLimiterTest {
             "应有恰好 5 个 accept，实际 " + accepted.get());
         assertEquals(threads - 5, rejected.get());
     }
+
+    // ========== userRequests 与 userOrder 一致性测试 ==========
+
+    @Test
+    void shouldKeepUserRequestsAndUserOrderConsistentAfterAcquire() {
+        // 正常 acquire 后，userRequests 包含 userId 当且仅当 userOrder 包含 userId
+        AiDemandRateLimiter r = limiter(60_000L, 5, 10);
+        Long user = 80L;
+
+        // acquire 前：两者都不包含
+        assertTrue(r.isUserStateConsistent(user));
+
+        r.acquire(user);
+        r.release();
+        // acquire 后：两者都包含
+        assertTrue(r.isUserStateConsistent(user),
+            "acquire 后 userRequests 与 userOrder 不一致");
+
+        // reject（达上限）后 entry 仍保留，userOrder 仍包含，一致性保持
+        for (int i = 0; i < 4; i++) {
+            assertDoesNotThrow(() -> r.acquire(user));
+            r.release();
+        }
+        assertThrows(BusinessException.class, () -> r.acquire(user));
+        assertTrue(r.isUserStateConsistent(user),
+            "reject 后 userRequests 与 userOrder 不一致");
+    }
+
+    @Test
+    void shouldKeepUserRequestsAndUserOrderConsistentAfterEvict() throws InterruptedException {
+        // entry 被清理后，userOrder 中也不再保留该 userId
+        AiDemandRateLimiter r = limiter(100L, 5, 10);
+        Long user = 81L;
+
+        r.acquire(user);
+        r.release();
+        assertTrue(r.isUserStateConsistent(user));
+
+        // 等待窗口过期
+        Thread.sleep(150L);
+        r.evictExpiredEntries(System.currentTimeMillis());
+
+        // evict 后：两者都不包含
+        assertTrue(r.isUserStateConsistent(user),
+            "evict 后 userRequests 与 userOrder 不一致");
+    }
+
+    @Test
+    void shouldKeepConsistencyUnderConcurrentAcquireAndEvict() throws InterruptedException {
+        // 并发 acquire + evict 同一 userId，验证一致性保持 + 不突破 per-user rate limit
+        // 这是核心竞态测试：acquire 的 compute（add entry + userOrder.add）与 evict 的 compute
+        // （可能删除 entry + userOrder.remove）对同一 userId 互斥，不会产生 split state
+        AiDemandRateLimiter r = limiter(60_000L, 5, 50);
+        Long user = 82L;
+
+        int threads = 16;
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
+        CountDownLatch start = new CountDownLatch(1);
+        CountDownLatch done = new CountDownLatch(threads);
+        AtomicInteger accepted = new AtomicInteger(0);
+
+        // 一半线程 acquire，一半线程 evict，循环多次制造竞态
+        for (int i = 0; i < threads; i++) {
+            final boolean isAcquire = (i % 2 == 0);
+            pool.submit(() -> {
+                try {
+                    start.await();
+                    for (int j = 0; j < 20; j++) {
+                        if (isAcquire) {
+                            try {
+                                r.acquire(user);
+                                accepted.incrementAndGet();
+                                r.release();
+                            } catch (BusinessException ignored) {
+                                // 限流拒绝是预期的
+                            }
+                        } else {
+                            r.evictExpiredEntries(System.currentTimeMillis());
+                        }
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                } finally {
+                    done.countDown();
+                }
+            });
+        }
+
+        start.countDown();
+        assertTrue(done.await(15, TimeUnit.SECONDS));
+        pool.shutdown();
+
+        // 并发后一致性：userRequests 包含 user 当且仅当 userOrder 包含 user
+        assertTrue(r.isUserStateConsistent(user),
+            "并发 acquire/evict 后 userRequests 与 userOrder 不一致（split state）");
+        // 不突破 per-user rate limit：windowMs=60000（测试内不过期），maxPerWindow=5，accepted 应恰好 5
+        assertTrue(accepted.get() <= 5,
+            "accepted=" + accepted.get() + " 突破 maxPerWindow=5，存在 split state");
+        assertEquals(5, accepted.get(),
+            "应有恰好 5 个 accept，实际 " + accepted.get() + "（evict 不应误删未过期 entry 导致限流重置）");
+    }
 }

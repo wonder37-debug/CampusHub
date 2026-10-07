@@ -31,8 +31,11 @@ import org.springframework.stereotype.Component;
  *       可能多次执行 remappingFunction，导致限流失效。</li>
  * </ul>
  *
- * <p><b>并发正确性</b>：单个 userId 的"获取/检查窗口/添加时间戳/判断是否过期/删除 entry"
+ * <p><b>并发正确性</b>：单个 userId 的"获取/检查窗口/添加时间戳/判断是否过期/删除 entry/userOrder 注册/移除"
  * 全部在 {@link ConcurrentHashMap#compute} 内原子完成，不会出现 split state。
+ * <b>userRequests 与 userOrder 一致性</b>：userOrder.add（acquire 时）和 userOrder.remove（evict 删除时）
+ * 都在对应 compute 的 remapping function 内执行，保证 entry 创建/保留时 userOrder 同步注册、entry 删除时
+ * userOrder 同步移除，不会出现 "userRequests 有 entry 但 userOrder 没有" 或反过来的不一致。
  * 清理与并发 acquire 操作同一 userId 时，{@code compute} 互斥等待，不会误删正在使用的 limiter state。
  *
  * <p><b>空闲清理（轮转游标）</b>：不引入后台清理线程。acquire 时按 1/100 概率触发清理。
@@ -105,9 +108,12 @@ public class AiDemandRateLimiter {
     }
 
     /**
-     * 单个 userId 的"移除过期时间戳/检查窗口/添加时间戳/判断是否过期/删除 entry"全部在 compute 内原子完成。
-     * ConcurrentHashMap.compute 保证 remappingFunction 只执行一次（不会因 CAS 重试导致 addLast 重复）。
-     * 清理与 acquire 操作同一 userId 时，compute 互斥等待，不会误删正在使用的 limiter state。
+     * 单个 userId 的"移除过期时间戳/检查窗口/添加时间戳/判断是否过期/删除 entry/userOrder 注册"
+     * 全部在 compute 内原子完成。ConcurrentHashMap.compute 保证 remappingFunction 只执行一次
+     * （不会因 CAS 重试导致 addLast 重复），且对同一 userId 互斥，与 evict 的 compute 串行。
+     *
+     * <p><b>userOrder 同步</b>：userOrder.add 在 compute 临界区内执行，保证 entry 创建/保留时
+     * userOrder 同步注册，不会出现 "userRequests 有 entry 但 userOrder 没有该 userId" 的不一致。
      */
     private boolean tryAcquireUserSlot(Long userId, long now) {
         boolean[] accepted = {false};
@@ -118,15 +124,17 @@ public class AiDemandRateLimiter {
             if (timestamps.size() >= maxRequestsPerWindow) {
                 // 拒绝：保留 list（非空，有 max 个未过期时间戳）
                 accepted[0] = false;
+                // entry 保留，在 compute 临界区内同步 userOrder 注册
+                userOrder.add(userId);
                 return timestamps;
             }
             // 接受：添加本次时间戳
             timestamps.addLast(now);
             accepted[0] = true;
+            // entry 创建/保留，在 compute 临界区内同步 userOrder 注册
+            userOrder.add(userId);
             return timestamps;
         });
-        // entry 存在（accept 新建/追加 或 reject 保留），记录到 userOrder 供清理游标使用（Set 去重）
-        userOrder.add(userId);
         return accepted[0];
     }
 
@@ -159,26 +167,23 @@ public class AiDemandRateLimiter {
             return;
         }
         // 逐个 compute 清理（ConcurrentHashMap.compute 原子，remappingFunction 只执行一次）
+        // userOrder.remove 在 compute 临界区内同步执行，保证 entry 删除与 userOrder 移除一致，
+        // 不会出现 "userRequests 已删 entry 但 userOrder 仍保留 userId" 的不一致
         for (Long userId : keysToScan) {
-            boolean[] removed = {false};
             userRequests.compute(userId, (key, existing) -> {
                 if (existing == null) {
-                    // entry 已不存在（可能被其他线程清理）
-                    removed[0] = true;
+                    // entry 已不存在，同步从 userOrder 移除
+                    userOrder.remove(userId);
                     return null;
                 }
                 existing.removeIf(ts -> now - ts > windowMs);
                 if (existing.isEmpty()) {
-                    // 所有时间戳过期，删除 entry
-                    removed[0] = true;
+                    // 所有时间戳过期，删除 entry，同步从 userOrder 移除
+                    userOrder.remove(userId);
                     return null;
                 }
                 return existing;
             });
-            if (removed[0]) {
-                // entry 已删除，从 userOrder 移除（下次清理不再扫描）
-                userOrder.remove(userId);
-            }
         }
         Long lastScanned = keysToScan.get(keysToScan.size() - 1);
         if (keysToScan.size() < MAX_EVICT_BATCH) {
@@ -195,5 +200,14 @@ public class AiDemandRateLimiter {
      */
     int activeUserCount() {
         return userRequests.size();
+    }
+
+    /**
+     * 验证 userRequests 与 userOrder 对某 userId 的状态一致性（package-private，仅供单元测试）。
+     * 一致意味着：userRequests 包含 userId 当且仅当 userOrder 包含 userId。
+     * 由于 userOrder.add/remove 都在对应 compute 临界区内同步执行，该一致性应始终成立。
+     */
+    boolean isUserStateConsistent(Long userId) {
+        return userRequests.containsKey(userId) == userOrder.contains(userId);
     }
 }
