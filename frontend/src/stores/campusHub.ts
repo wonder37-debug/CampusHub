@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import type {
   AdminDashboardSummary,
   AccountRecord,
+  AiDemandDraft,
   AuthFormInput,
   CategoryStat,
   CampusZone,
@@ -287,6 +288,24 @@ function mapDemandResponseRecord(raw: any): DemandResponseRecord {
 
 function nextId(prefix: string): string {
   return `${prefix}-${Math.random().toString(36).slice(2, 9)}`
+}
+
+function normalizeAiDemandDraft(raw: any): AiDemandDraft {
+  return {
+    title: raw?.title == null ? null : String(raw.title),
+    description: raw?.description == null ? null : String(raw.description),
+    category: raw?.category == null ? null : String(raw.category),
+    campusZone: raw?.campusZone == null ? null : String(raw.campusZone),
+    location: raw?.location == null ? null : String(raw.location),
+    startTime: raw?.startTime == null ? null : String(raw.startTime),
+    endTime: raw?.endTime == null ? null : String(raw.endTime),
+    reward: raw?.reward == null ? null : Number(raw.reward),
+    tags: Array.isArray(raw?.tags) ? raw.tags.map((tag: any) => String(tag)) : [],
+    interactionMode: raw?.interactionMode == null ? null : String(raw.interactionMode),
+    targetParticipantCount: raw?.targetParticipantCount == null ? null : Number(raw.targetParticipantCount),
+    note: raw?.note == null ? null : String(raw.note),
+    missingFields: Array.isArray(raw?.missingFields) ? raw.missingFields.map((f: any) => String(f)) : []
+  }
 }
 
 export const useCampusHubStore = defineStore('campusHub', {
@@ -1247,6 +1266,31 @@ export const useCampusHubStore = defineStore('campusHub', {
         return Number(payload?.balance ?? payload?.available ?? payload ?? 0)
       } catch {
         return 0
+      }
+    }
+
+    ,
+    async generateDemandDraft(prompt: string): Promise<AiDemandDraft> {
+      if (!this.currentUserId) {
+        throw new Error('请先登录后再使用 AI 帮我发布')
+      }
+      const trimmed = prompt.trim()
+      if (!trimmed) {
+        throw new Error('请先描述你想发布的需求')
+      }
+      try {
+        const payload = await requestJson<any>('/ai/demand-draft', {
+          method: 'POST',
+          body: JSON.stringify({ prompt: trimmed })
+        }, this.token)
+        return normalizeAiDemandDraft(payload)
+      } catch (err) {
+        const e = err as Error & { status?: number }
+        // 未登录/会话过期
+        if (e?.status === 401) {
+          throw new Error('登录已过期，请重新登录后再使用 AI 帮我发布')
+        }
+        throw err
       }
     }
   }

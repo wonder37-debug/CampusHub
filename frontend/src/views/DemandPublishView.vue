@@ -426,6 +426,120 @@ async function checkRewardBalance(): Promise<void> {
     // ignore balance check errors
   }
 }
+
+// ========== AI 帮我发布 ==========
+const AI_DIALOG_FIELD_LABELS: Record<string, string> = {
+  title: '标题',
+  description: '描述',
+  category: '分类',
+  campusZone: '校区',
+  location: '地点',
+  startTime: '开始时间',
+  endTime: '结束时间',
+  reward: '报酬',
+  tags: '标签',
+  interactionMode: '互动模式',
+  targetParticipantCount: '目标人数',
+  note: '备注'
+}
+
+const aiDialogOpen = ref(false)
+const aiPrompt = ref('')
+const aiLoading = ref(false)
+const aiError = ref('')
+const aiMissingHint = ref('')
+
+function openAiDialog(): void {
+  aiError.value = ''
+  aiMissingHint.value = ''
+  aiPrompt.value = ''
+  aiDialogOpen.value = true
+}
+
+function closeAiDialog(): void {
+  if (aiLoading.value) return
+  aiDialogOpen.value = false
+}
+
+function toDateTimeLocal(iso: string | null): string {
+  if (!iso) return ''
+  const normalized = iso.trim().replace(' ', 'T')
+  if (normalized.length >= 16) {
+    return normalized.substring(0, 16)
+  }
+  return normalized
+}
+
+function isLegalCategory(value: string | null): value is typeof DEMAND_CATEGORY_OPTIONS[number] {
+  return !!value && (DEMAND_CATEGORY_OPTIONS as readonly string[]).includes(value)
+}
+
+function isLegalCampusZone(value: string | null): value is CampusZone {
+  if (!value) return false
+  return (['GULOU', 'XIANLIN', 'SUZHOU'] as const).includes(value as CampusZone)
+}
+
+function applyAiDraft(draft: import('@/types/campushub').AiDemandDraft): void {
+  if (draft.title) form.title = draft.title
+  if (draft.description) form.description = draft.description
+  if (isLegalCategory(draft.category)) form.category = draft.category
+  if (isLegalCampusZone(draft.campusZone)) form.campusZone = draft.campusZone
+  if (draft.location) form.location = draft.location
+  if (draft.startTime) form.startDateTime = toDateTimeLocal(draft.startTime)
+  if (draft.endTime) form.endDateTime = toDateTimeLocal(draft.endTime)
+  if (draft.reward != null && Number.isFinite(draft.reward) && draft.reward >= 0) {
+    form.reward = String(draft.reward)
+  } else if (draft.missingFields.includes('reward')) {
+    // AI 未识别到报酬时清空默认值，避免"显示 10 却提示补充报酬"的矛盾
+    form.reward = ''
+  }
+  if (Array.isArray(draft.tags) && draft.tags.length > 0) {
+    form.tags = draft.tags.join(',')
+  }
+  // 仅 OTHER 分类由用户选择 interactionMode，其余分类后端会按规则推导
+  if (form.category === 'OTHER' && draft.interactionMode) {
+    form.interactionMode = draft.interactionMode
+  }
+  if (draft.targetParticipantCount != null && Number.isFinite(draft.targetParticipantCount)) {
+    form.targetParticipantCount = String(draft.targetParticipantCount)
+  }
+
+  // missingFields 提示：转换为中文标签，引导用户补充
+  if (draft.missingFields && draft.missingFields.length > 0) {
+    const labels = draft.missingFields
+      .map((f) => AI_DIALOG_FIELD_LABELS[f] || f)
+      .filter(Boolean)
+    aiMissingHint.value = labels.length > 0
+      ? `AI 已帮你填写部分内容，请补充：${labels.join('、')}`
+      : ''
+  } else {
+    aiMissingHint.value = ''
+  }
+
+  // 回填后触发一次校验，让现有表单校验接管
+  runValidations()
+}
+
+async function generateAiDraft(): Promise<void> {
+  aiError.value = ''
+  aiMissingHint.value = ''
+  const prompt = aiPrompt.value.trim()
+  if (!prompt) {
+    aiError.value = '请先描述你想发布的需求'
+    return
+  }
+  if (aiLoading.value) return
+  aiLoading.value = true
+  try {
+    const draft = await store.generateDemandDraft(prompt)
+    applyAiDraft(draft)
+    aiDialogOpen.value = false
+  } catch (err) {
+    aiError.value = handleError(err, 'AI 服务暂时不可用，请稍后重试')
+  } finally {
+    aiLoading.value = false
+  }
+}
 </script>
 
 <template>
@@ -462,6 +576,13 @@ async function checkRewardBalance(): Promise<void> {
             <p class="page-summary">填写标题、地点和时间后即可发布，让同学更快看到你的需求。</p>
           </div>
           <button type="button" class="button primary" @click="router.back()">← 返回</button>
+        </div>
+
+        <div class="ai-entry">
+          <button type="button" class="button ai-button" data-testid="ai-publish-entry" @click="openAiDialog">
+            ✨ AI 帮我发布
+          </button>
+          <p class="ai-entry-hint">用一句话描述需求，AI 帮你生成草稿，再检查后发布。</p>
         </div>
 
         <div class="form-grid two-column">
@@ -586,7 +707,44 @@ async function checkRewardBalance(): Promise<void> {
         </div>
 
         <p v-if="message" class="hero-badge">{{ message }}</p>
+        <p v-if="aiMissingHint" class="hero-badge ai-success-hint" data-testid="ai-missing-hint">{{ aiMissingHint }}</p>
         <p v-if="error" class="hero-badge" style="background: rgba(181, 71, 71, 0.14); color: var(--danger)">{{ error }}</p>
+
+        <!-- AI 帮我发布 Dialog -->
+        <div v-if="aiDialogOpen" class="ai-modal-mask" data-testid="ai-modal" @click.self="closeAiDialog">
+          <div class="ai-modal" role="dialog" aria-modal="true" aria-labelledby="ai-modal-title">
+            <div class="ai-modal-head">
+              <h3 id="ai-modal-title">✨ AI 帮我发布</h3>
+              <button type="button" class="ai-modal-close" :disabled="aiLoading" @click="closeAiDialog">×</button>
+            </div>
+            <div class="ai-modal-body">
+              <label for="ai-prompt-input" class="ai-modal-label">描述一下你想发布的需求</label>
+              <textarea
+                id="ai-prompt-input"
+                v-model="aiPrompt"
+                class="ai-prompt-input"
+                rows="4"
+                maxlength="1000"
+                placeholder="例如：明天下午三点帮我从菜鸟驿站取快递送到南区宿舍，给10元"
+                :disabled="aiLoading"
+                data-testid="ai-prompt-input"
+              ></textarea>
+              <p v-if="aiError" class="ai-error" data-testid="ai-error">{{ aiError }}</p>
+            </div>
+            <div class="ai-modal-foot">
+              <button type="button" class="button" :disabled="aiLoading" @click="closeAiDialog">取消</button>
+              <button
+                type="button"
+                class="button primary"
+                :disabled="aiLoading || !aiPrompt.trim()"
+                data-testid="ai-generate-button"
+                @click="generateAiDraft"
+              >
+                {{ aiLoading ? '生成中...' : '生成需求草稿' }}
+              </button>
+            </div>
+          </div>
+        </div>
       </template>
     </section>
 
@@ -689,5 +847,148 @@ input[type="datetime-local"]:hover::-webkit-calendar-picker-indicator {
   font-size: 12px;
   padding: 2px 8px;
   border-radius: 10px;
+}
+
+/* ========== AI 帮我发布 ========== */
+.ai-entry {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 24px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.ai-entry-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted, rgba(0, 0, 0, 0.55));
+}
+
+.ai-button {
+  background: linear-gradient(135deg, rgba(31, 95, 83, 0.92), rgba(46, 125, 110, 0.92));
+  color: #fff;
+  border: none;
+  border-radius: 14px;
+  padding: 8px 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  white-space: nowrap;
+}
+
+.ai-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(31, 95, 83, 0.22);
+}
+
+.ai-modal-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.42);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+}
+
+.ai-modal {
+  width: 100%;
+  max-width: 520px;
+  background: #fff;
+  border-radius: 18px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.22);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.ai-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.ai-modal-head h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.ai-modal-close {
+  background: none;
+  border: none;
+  font-size: 22px;
+  line-height: 1;
+  color: rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.ai-modal-close:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.ai-modal-body {
+  padding: 20px;
+}
+
+.ai-modal-label {
+  display: block;
+  font-size: 13px;
+  color: var(--text-strong, rgba(0, 0, 0, 0.85));
+  margin-bottom: 8px;
+}
+
+.ai-prompt-input {
+  width: 100%;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: rgba(255, 255, 255, 0.92);
+  border-radius: 14px;
+  padding: 12px 14px;
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.ai-prompt-input:focus {
+  border-color: rgba(31, 95, 83, 0.46);
+  box-shadow: 0 0 0 4px rgba(31, 95, 83, 0.12);
+}
+
+.ai-missing-hint {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  background: rgba(245, 158, 11, 0.12);
+  color: #92400e;
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+.ai-error {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  background: rgba(181, 71, 71, 0.12);
+  color: var(--danger, #b54747);
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+.ai-success-hint {
+  background: rgba(245, 158, 11, 0.14);
+  color: #92400e;
+}
+
+.ai-modal-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 20px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
 }
 </style>

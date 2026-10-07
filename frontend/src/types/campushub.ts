@@ -246,3 +246,23 @@ export interface LabelOption<T extends string = string> {
   value: T
   label: string
 }
+
+/**
+ * AI 生成的需求草稿，仅作为前端回填的中间结构，不直接提交。
+ * 与后端 com.campushub.backend.ai.dto.DemandDraft 对应。
+ */
+export interface AiDemandDraft {
+  title: string | null
+  description: string | null
+  category: string | null
+  campusZone: string | null
+  location: string | null
+  startTime: string | null
+  endTime: string | null
+  reward: number | null
+  tags: string[]
+  interactionMode: string | null
+  targetParticipantCount: number | null
+  note: string | null
+  missingFields: string[]
+}
