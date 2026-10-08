@@ -206,6 +206,8 @@ export function formatNotificationType(type: NotificationType): string {
       return '申请仲裁'
     case 'ORDER_ARBITRATION_RESOLVED':
       return '仲裁结果'
+    case 'RESPONSE_REVIEW_RECEIVED':
+      return 'Response 评价收到'
   }
 }
 

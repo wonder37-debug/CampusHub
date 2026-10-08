@@ -153,15 +153,8 @@ public class RecommendationApplicationServiceImpl implements RecommendationAppli
     }
 
     private List<Demand> filterCandidateDemands(Long userId, DemandQuery query) {
-        List<Demand> candidates = demandRepository.findCandidatePage(userId, query);
-        if (candidates.isEmpty()) {
-            return List.of();
-        }
-        Set<Long> demandIdsWithOrder = orderRepository.findDemandIdsWithOrder(
-            candidates.stream().map(Demand::getId).toList());
-        return candidates.stream()
-            .filter(demand -> !demandIdsWithOrder.contains(demand.getId()))
-            .toList();
+        // findCandidatePage 已在 SQL 层排除已有 Order 的 Demand，无需重复调用 findDemandIdsWithOrder
+        return demandRepository.findCandidatePage(userId, query);
     }
 
     // ponytail: 用户偏好直接基于 rec_user_action_log 聚合，不引入额外存储。

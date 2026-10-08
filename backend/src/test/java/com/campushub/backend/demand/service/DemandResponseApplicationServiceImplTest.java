@@ -8,12 +8,15 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.campushub.backend.BackendApplication;
+import com.campushub.backend.api.view.DemandView;
 import com.campushub.backend.auth.domain.User;
 import com.campushub.backend.auth.domain.UserRole;
 import com.campushub.backend.auth.domain.UserStatus;
 import com.campushub.backend.auth.repository.UserRepository;
 import com.campushub.backend.common.exception.BusinessException;
 import com.campushub.backend.common.exception.ErrorCode;
+import com.campushub.backend.common.security.CurrentUser;
+import com.campushub.backend.demand.domain.Demand;
 import com.campushub.backend.demand.domain.DemandResponse;
 import com.campushub.backend.demand.domain.DemandStatus;
 import com.campushub.backend.demand.domain.ResponseStatus;
@@ -63,6 +66,8 @@ class DemandResponseApplicationServiceImplTest {
     private OrderApplicationService orderApplicationService;
     @Autowired
     private ReviewApplicationService reviewApplicationService;
+    @Autowired
+    private com.campushub.backend.api.ApiViewMapper apiViewMapper;
 
     private Long publisherId;
     private Long responder1Id;
@@ -1162,6 +1167,24 @@ class DemandResponseApplicationServiceImplTest {
         assertThat(r1.getId()).isNotNull();
         assertThat(r2.getId()).isNotNull();
         assertThat(r1.getId()).isNotEqualTo(r2.getId());
+    }
+
+    // ==================== DemandView.selectedParticipantCount 返回值验证 ====================
+
+    @Test
+    void shouldReturnCorrectSelectedParticipantCountInDemandView() {
+        Long demandId = createTeamUpDemand(3);
+        Long r1 = demandResponseApplicationService.createResponse(
+            responder1Id, demandId, new CreateDemandResponseCommand("报名1")).id();
+        Long r2 = demandResponseApplicationService.createResponse(
+            responder2Id, demandId, new CreateDemandResponseCommand("报名2")).id();
+        demandResponseApplicationService.selectResponses(
+            publisherId, demandId, new SelectResponsesCommand(List.of(r1)));
+
+        Demand demand = demandRepository.findById(demandId).orElseThrow();
+        DemandView view = apiViewMapper.toDemandView(demand, new CurrentUser(outsiderId, UserRole.USER));
+
+        assertEquals(1, view.selectedParticipantCount(), "DemandView.selectedParticipantCount 应反映已选中人数");
     }
 
     // ==================== batch selectedParticipantCount（避免列表 N+1） ====================

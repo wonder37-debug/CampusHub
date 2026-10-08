@@ -198,7 +198,7 @@ module/
 | 工具 | 版本要求 | 说明 |
 |------|---------|------|
 | JDK | 21 | 后端编译运行 |
-| MySQL | 8.0+ | 生产数据库（默认 `localhost:3306`） |
+| MySQL | 8.0+ | 生产数据库（连接信息通过 DB_URL/DB_USERNAME/DB_PASSWORD 环境变量注入） |
 | Node.js | 18+ | 前端构建运行 |
 | npm | 随 Node.js | 前端包管理 |
 | Maven | 无需安装 | 项目内置 `mvnw` Wrapper |

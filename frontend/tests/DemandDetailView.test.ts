@@ -182,4 +182,22 @@ describe('DemandDetailView - 重复留言/报名 UX', () => {
     resolveFn!()
     await flushPromises()
   })
+
+  it('HELP 模式下用户已有 active Response → 仍可继续提交新回答', async () => {
+    mockStore.value = createMockStore({
+      demand: buildDemand({ interactionMode: 'HELP', category: 'HELP' }),
+      responses: [buildResponse({ status: 'PENDING' })]
+    })
+    const wrapper = mountDetailView()
+    await flushPromises()
+    await flushPromises()
+
+    // HELP 模式下即使已有 active Response，仍应显示提交入口（textarea placeholder 含"回答"）
+    const textareas = wrapper.findAll('textarea')
+    const responseTextarea = textareas.filter((t: any) => /回答/.test(t.attributes('placeholder') || ''))
+    expect(responseTextarea.length).toBeGreaterThan(0)
+
+    // 同时应显示已提交回答的状态卡片
+    expect(wrapper.text()).toContain('已提交回答')
+  })
 })
