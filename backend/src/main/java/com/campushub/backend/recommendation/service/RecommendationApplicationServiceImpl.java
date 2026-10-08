@@ -9,7 +9,6 @@ import com.campushub.backend.demand.domain.DemandSort;
 import com.campushub.backend.demand.dto.DemandQuery;
 import com.campushub.backend.demand.dto.DemandSummaryResponse;
 import com.campushub.backend.demand.repository.DemandRepository;
-import com.campushub.backend.order.repository.OrderRepository;
 import com.campushub.backend.recommendation.domain.ActionType;
 import com.campushub.backend.recommendation.domain.RecommendationItem;
 import com.campushub.backend.recommendation.domain.UserActionLog;
@@ -35,20 +34,17 @@ public class RecommendationApplicationServiceImpl implements RecommendationAppli
     private static final int MAX_SAME_CATEGORY_IN_TOP = 2;
 
     private final DemandRepository demandRepository;
-    private final OrderRepository orderRepository;
     private final UserRepository userRepository;
     private final UserActionLogRepository userActionLogRepository;
     private final RecommendationSwitch recommendationSwitch;
 
     public RecommendationApplicationServiceImpl(
         DemandRepository demandRepository,
-        OrderRepository orderRepository,
         UserRepository userRepository,
         UserActionLogRepository userActionLogRepository,
         RecommendationSwitch recommendationSwitch
     ) {
         this.demandRepository = demandRepository;
-        this.orderRepository = orderRepository;
         this.userRepository = userRepository;
         this.userActionLogRepository = userActionLogRepository;
         this.recommendationSwitch = recommendationSwitch;
