@@ -315,6 +315,45 @@ class ReviewApplicationServiceImplTest {
             "Order Review 通知仍应为 REVIEW_RECEIVED");
     }
 
+    // ==================== F2: listUserReviews 双向查询 ====================
+
+    @Test
+    void shouldListReviewsGivenByUserWhenOnlyAuthor() {
+        // publisher 评价 accepter，publisher 作为 author 查询应返回自己发出的评价
+        OrderDetailResponse order = createCompletedOrder();
+        reviewApplicationService.submit(publisherId, order.orderId(), new SubmitReviewCommand(5, "很好"));
+
+        PageResponse<ReviewResponse> page = reviewApplicationService.listUserReviews(
+            publisherId, new ReviewQuery(new PageQuery(1, 20)));
+
+        assertEquals(1, page.total(), "publisher 作为 author 应查到发出的评价");
+        assertEquals(publisherId, page.items().get(0).authorId());
+    }
+
+    @Test
+    void shouldListBothGivenAndReceivedReviews() {
+        // 双方互评后，任一方查询应同时返回发出与收到的评价
+        OrderDetailResponse order = createCompletedOrder();
+        reviewApplicationService.submit(publisherId, order.orderId(), new SubmitReviewCommand(5, "接单方不错"));
+        reviewApplicationService.submit(accepterId, order.orderId(), new SubmitReviewCommand(4, "发布方靠谱"));
+
+        PageResponse<ReviewResponse> publisherPage = reviewApplicationService.listUserReviews(
+            publisherId, new ReviewQuery(new PageQuery(1, 20)));
+        assertEquals(2, publisherPage.total(), "publisher 应同时看到发出与收到的评价");
+
+        PageResponse<ReviewResponse> accepterPage = reviewApplicationService.listUserReviews(
+            accepterId, new ReviewQuery(new PageQuery(1, 20)));
+        assertEquals(2, accepterPage.total(), "accepter 应同时看到发出与收到的评价");
+    }
+
+    @Test
+    void shouldReturnEmptyWhenUserHasNoReviews() {
+        PageResponse<ReviewResponse> page = reviewApplicationService.listUserReviews(
+            outsiderId, new ReviewQuery(new PageQuery(1, 20)));
+        assertEquals(0, page.total());
+        assertTrue(page.items().isEmpty());
+    }
+
     private Long createTeamUpDemandCompleted() {
         Long demandId = demandApplicationService.publish(
             publisherId,
@@ -370,7 +409,7 @@ class ReviewApplicationServiceImplTest {
         orderApplicationService.updateStatus(
             accepterId,
             accepted.orderId(),
-            new UpdateOrderStatusCommand("COMPLETED", "完成", 2)
+            new UpdateOrderStatusCommand("COMPLETED", "完成", 2, List.of("proof1.png", "proof2.png"))
         );
         return orderApplicationService.updateStatus(
             publisherId,

@@ -330,14 +330,16 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
             throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "completion already confirmed by this user");
         }
         if (operatorIsAccepter) {
-            validateProviderProof(command.proofImageCount());
+            validateProviderProof(command.proofImageUrls());
         }
 
         LocalDateTime now = LocalDateTime.now();
         if (!hasCompletionConfirmation(order, counterpartId)) {
             if (operatorIsAccepter) {
+                List<String> proofImageUrls = command.proofImageUrls();
                 order.setProofSubmitted(true);
-                order.setProofImageCount(command.proofImageCount());
+                order.setProofImageUrls(proofImageUrls);
+                order.setProofImageCount(proofImageUrls.size());
             }
             String pendingNote = operatorIsAccepter ? PROVIDER_CONFIRMED_NOTE : REQUESTER_CONFIRMED_NOTE;
             order.addHistory(OrderStatus.IN_PROGRESS, OrderStatus.IN_PROGRESS, operatorId, pendingNote, now);
@@ -351,8 +353,10 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         order.setCompletedAt(now);
         order.setUpdatedAt(now);
         if (operatorIsAccepter && !order.isProofSubmitted()) {
+            List<String> proofImageUrls = command.proofImageUrls();
             order.setProofSubmitted(true);
-            order.setProofImageCount(command.proofImageCount());
+            order.setProofImageUrls(proofImageUrls);
+            order.setProofImageCount(proofImageUrls.size());
         }
         order.addHistory(OrderStatus.IN_PROGRESS, OrderStatus.COMPLETED, operatorId, COMPLETION_FINAL_NOTE, now);
         demand.setStatus(DemandStatus.COMPLETED);
@@ -366,9 +370,9 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         return OrderDetailResponse.from(order, DemandDetailResponse.from(demand));
     }
 
-    private void validateProviderProof(Integer proofImageCount) {
-        if (proofImageCount == null || proofImageCount < 1 || proofImageCount > 3) {
-            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "proofImageCount must be between 1 and 3");
+    private void validateProviderProof(List<String> proofImageUrls) {
+        if (proofImageUrls == null || proofImageUrls.isEmpty() || proofImageUrls.size() > 3) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "proofImageUrls must contain 1 to 3 images");
         }
     }
 

@@ -6,8 +6,9 @@ import { useRoute, useRouter } from 'vue-router'
 import { useCampusHubStore } from '@/stores/campusHub'
 import SkeletonCard from '@/components/SkeletonCard.vue'
 import ImageViewer from '@/components/ImageViewer.vue'
+import ImageUploader from '@/components/ImageUploader.vue'
 import { formatOrderStatus, formatRelativeTime, formatScore, formatCampusZone, statusToneClass } from '@/utils/format'
-import { useConfirm } from '@/composables/useDialog'
+import { useConfirm, useAlert } from '@/composables/useDialog'
 
 const route = useRoute()
 const router = useRouter()
@@ -25,6 +26,9 @@ const loadingOrder = ref(false)
 const refreshing = ref(false)
 const arbitrationDialogOpen = ref(false)
 const arbitrationReason = ref('')
+const proofImages = ref<string[]>([])
+// 关键操作（开始执行/提交完成/取消/评价/仲裁）防重复点击 loading
+const submitting = ref(false)
 
 // Image viewer
 const showImageViewer = ref(false)
@@ -164,10 +168,7 @@ const providerConfirmed = computed(() => {
   )
 })
 
-const isDemandAnonymous = computed(() => {
-  const demand = order.value?.demandDescription != null ? (order.value as any).demand : null
-  return demand?.anonymous === true || order.value?.requesterName?.includes('匿名') === true
-})
+const isDemandAnonymous = computed(() => order.value?.anonymous === true)
 
 /** 从时间线中查找仲裁发起人 ID */
 const arbitrationInitiatorId = computed(() => {
@@ -225,40 +226,62 @@ function goBack(): void {
 }
 
 async function startOrder(): Promise<void> {
-  if (order.value) await store.startOrder(order.value.id)
+  if (!order.value || submitting.value) return
+  submitting.value = true
+  try {
+    await store.startOrder(order.value.id)
+  } catch (e) {
+    error.value = handleError(e, '操作失败')
+  } finally {
+    submitting.value = false
+  }
 }
 
 async function completeOrder(): Promise<void> {
-  if (!order.value) return
+  if (!order.value || submitting.value) return
 
-  if (!await useConfirm('确认完成', '确认完成此订单？此操作不可撤销。', { danger: true })) return
-
-  message.value = ''
-  error.value = ''
-
+  submitting.value = true
   try {
-    const updatedOrder = await store.completeOrder(order.value.id)
+    // 接单方提交完成必须上传 1-3 张凭证
+    if (isProvider.value && (proofImages.value.length < 1 || proofImages.value.length > 3)) {
+      await useAlert('凭证不足', '请上传 1-3 张完成凭证图片后再提交完成。')
+      return
+    }
+
+    if (!await useConfirm('确认完成', '确认完成此订单？此操作不可撤销。', { danger: true })) return
+
+    message.value = ''
+    error.value = ''
+
+    const proofImageUrls = isProvider.value ? proofImages.value : null
+    const updatedOrder = await store.completeOrder(order.value.id, proofImageUrls)
     completionSubmitted.value = updatedOrder.status !== 'COMPLETED'
     message.value = updatedOrder.status === 'COMPLETED'
       ? '双方都已确认完成，订单已完成。'
       : '已提交完成确认，等待对方确认。'
+    if (isProvider.value) proofImages.value = []
   } catch (completeError) {
     error.value = handleError(completeError, '操作失败')
+  } finally {
+    submitting.value = false
   }
 }
 
 async function cancelOrder(): Promise<void> {
-  if (!order.value) return
+  if (!order.value || submitting.value) return
 
-  if (!await useConfirm('确认取消', '确认取消此订单？此操作不可撤销。', { danger: true })) return
-
-  message.value = ''
-  error.value = ''
+  submitting.value = true
   try {
+    if (!await useConfirm('确认取消', '确认取消此订单？此操作不可撤销。', { danger: true })) return
+
+    message.value = ''
+    error.value = ''
     await store.cancelOrder(order.value.id)
     message.value = '订单已取消。'
   } catch (cancelError) {
     error.value = handleError(cancelError, '取消失败')
+  } finally {
+    submitting.value = false
   }
 }
 
@@ -273,7 +296,7 @@ function closeArbitrationDialog(): void {
 }
 
 async function submitArbitration(): Promise<void> {
-  if (!order.value) return
+  if (!order.value || submitting.value) return
   if (!arbitrationReason.value.trim()) {
     error.value = '请填写仲裁原因'
     return
@@ -281,25 +304,31 @@ async function submitArbitration(): Promise<void> {
 
   message.value = ''
   error.value = ''
+  submitting.value = true
   try {
     await store.requestOrderArbitration(order.value.id, arbitrationReason.value)
     message.value = '已提交仲裁申请，等待管理员处理。'
     closeArbitrationDialog()
   } catch (arbitrationError) {
     error.value = handleError(arbitrationError, '发起仲裁失败')
+  } finally {
+    submitting.value = false
   }
 }
 
 async function submitReview(): Promise<void> {
-  if (!order.value) return
+  if (!order.value || submitting.value) return
   message.value = ''
   error.value = ''
+  submitting.value = true
   try {
     await store.submitReview(order.value.id, Number(reviewRating.value), reviewComment.value)
     message.value = '评价已提交。'
     reviewComment.value = ''
   } catch (e) {
     error.value = handleError(e, '评价失败')
+  } finally {
+    submitting.value = false
   }
 }
 
@@ -419,6 +448,30 @@ onMounted(() => {
         <p style="margin-top: 4px; white-space: pre-wrap;">{{ order.note || '暂无留言' }}</p>
       </div>
 
+      <!-- 完成凭证上传（接单方提交完成前） -->
+      <div v-if="order.status === 'IN_PROGRESS' && isProvider && !currentUserConfirmedCompletion" class="list-card" style="margin-top: 12px;">
+        <p class="eyebrow">完成凭证</p>
+        <p class="meta">请上传 1-3 张完成凭证图片，发布者确认完成时可查看。</p>
+        <ImageUploader v-model="proofImages" :max-count="3" />
+      </div>
+
+      <!-- 完成凭证展示（已提交凭证后供发布者/管理员查看） -->
+      <div v-if="order.proofImageUrls && order.proofImageUrls.length > 0" class="order-images">
+        <p class="eyebrow">完成凭证 ({{ order.proofImageUrls.length }})</p>
+        <div class="image-grid">
+          <a
+            v-for="(url, pIdx) in order.proofImageUrls"
+            :key="url"
+            :href="url"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="image-item"
+          >
+            <img :src="url" :alt="`凭证图片 ${pIdx + 1}`" loading="lazy" class="demand-img" />
+          </a>
+        </div>
+      </div>
+
       <p v-if="message" class="hero-badge">{{ message }}</p>
       <p v-if="error" class="hero-badge" style="background: rgba(181, 71, 71, 0.14); color: var(--danger)">{{ error }}</p>
 
@@ -426,29 +479,31 @@ onMounted(() => {
       <div v-if="hasAvailableActions || canRequestArbitration" class="order-actions-section">
         <p class="eyebrow">订单操作</p>
         <div class="card-actions">
-          <button v-if="order.status === 'ACCEPTED' && isProvider" type="button" class="button primary" @click="startOrder">开始执行</button>
+          <button v-if="order.status === 'ACCEPTED' && isProvider" type="button" class="button primary" :disabled="submitting" @click="startOrder">{{ submitting ? '处理中...' : '开始执行' }}</button>
           <button
             v-if="order.status === 'IN_PROGRESS' && isProvider && !currentUserConfirmedCompletion"
             type="button"
             class="button primary"
+            :disabled="submitting"
             @click="completeOrder"
           >
-            提交完成确认
+            {{ submitting ? '处理中...' : '提交完成确认' }}
           </button>
           <button
             v-if="order.status === 'IN_PROGRESS' && isRequester && providerConfirmed && !currentUserConfirmedCompletion"
             type="button"
             class="button primary"
+            :disabled="submitting"
             @click="completeOrder"
           >
-            确认完成
+            {{ submitting ? '处理中...' : '确认完成' }}
           </button>
           <span
             v-if="order.status === 'IN_PROGRESS' && ((isProvider && currentUserConfirmedCompletion) || (isRequester && !providerConfirmed) || (!isProvider && !isRequester) || (isRequester && currentUserConfirmedCompletion))"
             class="chip is-warning"
           >{{ completionHint || '等待接单方确认完成' }}</span>
-          <button v-if="order.status === 'ACCEPTED' && isRequester" type="button" class="button danger" @click="cancelOrder">取消订单</button>
-          <button v-if="canRequestArbitration" type="button" class="button secondary" @click="openArbitrationDialog">发起仲裁</button>
+          <button v-if="order.status === 'ACCEPTED' && isRequester" type="button" class="button danger" :disabled="submitting" @click="cancelOrder">{{ submitting ? '处理中...' : '取消订单' }}</button>
+          <button v-if="canRequestArbitration" type="button" class="button secondary" :disabled="submitting" @click="openArbitrationDialog">发起仲裁</button>
         </div>
       </div>
     </section>
@@ -502,7 +557,7 @@ onMounted(() => {
             <label for="review-comment">评价</label>
             <textarea id="review-comment" v-model="reviewComment" placeholder="分享你的体验"></textarea>
           </div>
-          <button type="button" class="button primary" @click="submitReview">提交评价</button>
+          <button type="button" class="button primary" :disabled="submitting" @click="submitReview">{{ submitting ? '处理中...' : '提交评价' }}</button>
         </div>
         <div class="list-card" v-else-if="hasSubmittedReview" style="margin-top: 12px;">
           <strong>评价</strong>
@@ -535,7 +590,7 @@ onMounted(() => {
 
         <div class="card-actions" style="justify-content: flex-end;">
           <button type="button" class="button secondary" @click="closeArbitrationDialog">取消</button>
-          <button type="button" class="button primary" :disabled="!arbitrationReason.trim()" @click="submitArbitration">提交仲裁</button>
+          <button type="button" class="button primary" :disabled="!arbitrationReason.trim() || submitting" @click="submitArbitration">{{ submitting ? '处理中...' : '提交仲裁' }}</button>
         </div>
       </div>
     </div>

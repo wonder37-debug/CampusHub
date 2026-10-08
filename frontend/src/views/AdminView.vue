@@ -4,13 +4,15 @@ import { useRoute, useRouter } from 'vue-router'
 
 import { useCampusHubStore } from '@/stores/campusHub'
 import { handleError } from '@/utils/errorHandler'
+import { useConfirm } from '@/composables/useDialog'
 import { DEMAND_CATEGORY_OPTIONS, type DemandCategory } from '@/types/campushub'
-import { campusZoneOptions, formatCampusZone, formatDemandCategory, formatDemandStatus, formatScore, formatUserRole, formatUserStatus, statusToneClass } from '@/utils/format'
+import { campusZoneOptions, formatCampusZone, formatDateTime, formatDemandCategory, formatDemandStatus, formatScore, formatUserRole, formatUserStatus, statusToneClass } from '@/utils/format'
 
 const store = useCampusHubStore()
 const router = useRouter()
 const message = ref('')
 const error = ref('')
+const dialogError = ref('')
 const userQuery = ref('')
 const userSearchField = ref('all')
 const creditSort = ref<'none' | 'asc' | 'desc'>('none')
@@ -150,6 +152,7 @@ function closeRejectDialog(): void {
   rejectingDemandId.value = ''
   rejectingDemandTitle.value = ''
   rejectReason.value = ''
+  dialogError.value = ''
 }
 
 async function submitRejectDemand(): Promise<void> {
@@ -162,7 +165,7 @@ async function submitRejectDemand(): Promise<void> {
   }
 
   if (!reason) {
-    error.value = '请填写拒绝理由后再提交'
+    dialogError.value = '请填写拒绝理由后再提交'
     return
   }
 
@@ -172,11 +175,22 @@ async function submitRejectDemand(): Promise<void> {
     closeRejectDialog()
     await refreshAdminData()
   } catch (rejectError) {
-    error.value = handleError(rejectError, '需求驳回失败')
+    dialogError.value = handleError(rejectError, '需求驳回失败')
   }
 }
 
 async function toggleUserStatus(userId: string, banned: boolean): Promise<void> {
+  // banned=true 表示当前已封禁，操作为解禁；banned=false 表示当前正常，操作为封禁
+  const confirmTitle = banned ? '确认解禁' : '确认封禁'
+  const confirmMessage = banned
+    ? '确认解禁该用户？解禁后用户可正常登录并使用平台功能。'
+    : '确认封禁该用户？封禁后用户将无法登录和操作，且无法发布或接单。'
+  const confirmed = await useConfirm(confirmTitle, confirmMessage, {
+    danger: !banned,
+    confirmText: banned ? '确认解禁' : '确认封禁'
+  })
+  if (!confirmed) return
+
   try {
     if (banned) {
       await store.unbanUser(userId)
@@ -208,6 +222,7 @@ function closeArbitrationDialog(): void {
   arbitrationOrderId.value = ''
   arbitrationOrderTitle.value = ''
   arbitrationReason.value = ''
+  dialogError.value = ''
 }
 
 async function submitArbitrationResolution(): Promise<void> {
@@ -217,7 +232,7 @@ async function submitArbitrationResolution(): Promise<void> {
   }
 
   if (!arbitrationReason.value.trim()) {
-    error.value = '请填写裁决说明'
+    dialogError.value = '请填写裁决说明'
     return
   }
 
@@ -227,7 +242,7 @@ async function submitArbitrationResolution(): Promise<void> {
     closeArbitrationDialog()
     await refreshAdminData()
   } catch (resolveError) {
-    error.value = handleError(resolveError, '仲裁处理失败')
+    dialogError.value = handleError(resolveError, '仲裁处理失败')
   }
 }
 
@@ -243,6 +258,7 @@ function closeDeleteOrderDialog(): void {
   deletingOrderId.value = ''
   deletingOrderTitle.value = ''
   deleteReason.value = ''
+  dialogError.value = ''
 }
 
 async function submitDeleteOrder(): Promise<void> {
@@ -257,7 +273,7 @@ async function submitDeleteOrder(): Promise<void> {
     closeDeleteOrderDialog()
     await refreshAdminData()
   } catch (deleteError) {
-    error.value = handleError(deleteError, '删除订单失败')
+    dialogError.value = handleError(deleteError, '删除订单失败')
   }
 }
 </script>
@@ -413,7 +429,7 @@ async function submitDeleteOrder(): Promise<void> {
             </div>
             <div class="card-head">
               <h3>{{ order.demandTitle }}</h3>
-              <strong>{{ order.createdAt }}</strong>
+              <strong>{{ formatDateTime(order.createdAt) }}</strong>
             </div>
             <p class="meta">需求方：{{ order.requesterName }} ｜ 接单方：{{ order.serviceProviderName }}</p>
             <p v-if="order.completionHint" class="meta" style="margin-top: 8px; white-space: pre-wrap;">{{ order.completionHint }}</p>
@@ -472,6 +488,8 @@ async function submitDeleteOrder(): Promise<void> {
           <p class="input-help">建议填写具体原因，方便申请方修改后重新提交。</p>
         </div>
 
+        <p v-if="dialogError" class="hero-badge" style="background: rgba(181, 71, 71, 0.14); color: var(--danger)">{{ dialogError }}</p>
+
         <div class="card-actions" style="justify-content: flex-end;">
           <button type="button" class="button secondary" @click="closeRejectDialog">取消</button>
           <button type="button" class="button primary" :disabled="!rejectReason.trim()" @click="submitRejectDemand">确认拒绝</button>
@@ -504,6 +522,8 @@ async function submitDeleteOrder(): Promise<void> {
           <textarea id="arbitration-reason" v-model="arbitrationReason" rows="5" placeholder="请填写管理员裁决依据，系统会通知订单双方"></textarea>
         </div>
 
+        <p v-if="dialogError" class="hero-badge" style="background: rgba(181, 71, 71, 0.14); color: var(--danger)">{{ dialogError }}</p>
+
         <div class="card-actions" style="justify-content: flex-end;">
           <button type="button" class="button secondary" @click="closeArbitrationDialog">取消</button>
           <button type="button" class="button primary" :disabled="!arbitrationReason.trim()" @click="submitArbitrationResolution">确认裁决</button>
@@ -528,6 +548,8 @@ async function submitDeleteOrder(): Promise<void> {
           <label for="delete-order-reason">删除原因</label>
           <textarea id="delete-order-reason" v-model="deleteReason" rows="5" placeholder="例如：违规订单、重复订单、数据修正等"></textarea>
         </div>
+
+        <p v-if="dialogError" class="hero-badge" style="background: rgba(181, 71, 71, 0.14); color: var(--danger)">{{ dialogError }}</p>
 
         <div class="card-actions" style="justify-content: flex-end;">
           <button type="button" class="button secondary" @click="closeDeleteOrderDialog">取消</button>

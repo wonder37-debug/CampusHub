@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref, computed } from 'vue'
+import { onMounted, reactive, ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { useCampusHubStore } from '@/stores/campusHub'
@@ -49,6 +49,13 @@ async function save(): Promise<void> {
     saving.value = false
   }
 }
+
+watch(() => store.currentUser, (user) => {
+  if (user) {
+    profileForm.nickname = user.nickname ?? ''
+    profileForm.avatarUrl = user.avatarUrl ?? ''
+  }
+})
 
 onMounted(() => {
   void store.fetchProfile()

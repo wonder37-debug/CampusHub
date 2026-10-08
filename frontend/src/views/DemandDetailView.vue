@@ -1,13 +1,14 @@
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue'
+import { computed, ref, watch, onMounted } from 'vue'
 import { handleError } from '@/utils/errorHandler'
 import { useRoute, useRouter } from 'vue-router'
 
 import { useCampusHubStore } from '@/stores/campusHub'
 import SkeletonCard from '@/components/SkeletonCard.vue'
 import ImageViewer from '@/components/ImageViewer.vue'
+import ImageUploader from '@/components/ImageUploader.vue'
 import { formatAcceptDisabledReason, formatCampusZone, formatDateTime, formatDemandCategory, formatDemandStatus, formatInteractionMode, formatMoney, formatOrderStatus, formatResponseStatus, formatScore, statusToneClass } from '@/utils/format'
-import { useConfirm } from '@/composables/useDialog'
+import { useConfirm, useAlert } from '@/composables/useDialog'
 
 const route = useRoute()
 const router = useRouter()
@@ -18,6 +19,8 @@ const reviewComment = ref('')
 const message = ref('')
 const error = ref('')
 const completionSubmitted = ref(false)
+// 关键操作（接单/开始执行/提交完成/评价/仲裁）防重复点击 loading
+const submitting = ref(false)
 const loadingDemand = ref(false)
 const refreshing = ref(false)
 const responseContent = ref('')
@@ -159,9 +162,28 @@ const isProvider = computed(() => {
   return store.currentUser.id === relatedOrder.value.serviceProviderId
 })
 
+// T026: 等待完成确认的提示文案，按角色（requester/provider/第三方）分支
+const waitingCompletionHint = computed(() => {
+  if (!relatedOrder.value) return ''
+  const iConfirmed = currentUserConfirmedCompletion.value
+  const otherConfirmed = providerConfirmed.value
+  if (isProvider.value) {
+    if (iConfirmed) return '你已确认完成，等待需求方确认'
+    return '等待接单方确认完成'
+  }
+  if (isRequester.value) {
+    if (iConfirmed) return '你已确认完成，等待接单方确认'
+    if (otherConfirmed) return '接单方已确认完成，等待你的确认'
+    return '等待接单方确认完成'
+  }
+  if (iConfirmed || otherConfirmed) return '等待对方确认完成'
+  return '等待接单方确认完成'
+})
+
 // ========== 仲裁功能 ==========
 const arbitrationDialogOpen = ref(false)
 const arbitrationReason = ref('')
+const proofImages = ref<string[]>([])
 
 /** 从时间线中查找仲裁发起人 ID */
 const arbitrationInitiatorId = computed(() => {
@@ -285,7 +307,7 @@ const enhancedTimeline = computed(() => {
 })
 
 async function acceptCurrentDemand(): Promise<void> {
-  if (!demand.value) {
+  if (!demand.value || submitting.value) {
     return
   }
 
@@ -299,11 +321,14 @@ async function acceptCurrentDemand(): Promise<void> {
 
   if (!await useConfirm('确认接单', '确认接单？接单后将生成订单。')) return
 
+  submitting.value = true
   try {
     const order = await store.acceptDemand(demand.value.id, note.value)
     message.value = `已接单，生成订单 ${order.id}`
   } catch (acceptError) {
     error.value = handleError(acceptError, '接单失败')
+  } finally {
+    submitting.value = false
   }
 }
 
@@ -327,50 +352,67 @@ async function withdrawDemand(): Promise<void> {
 }
 
 async function startOrder(): Promise<void> {
-  if (!relatedOrder.value) {
+  if (!relatedOrder.value || submitting.value) {
     return
   }
 
+  submitting.value = true
   try {
     await store.startOrder(relatedOrder.value.id)
     message.value = '订单已进入进行中状态。'
   } catch (startError) {
     error.value = handleError(startError, '操作失败')
+  } finally {
+    submitting.value = false
   }
 }
 
 async function completeOrder(): Promise<void> {
-  if (!relatedOrder.value) {
+  if (!relatedOrder.value || submitting.value) {
     return
   }
 
-  if (!await useConfirm('确认完成', '确认完成此订单？此操作不可撤销。', { danger: true })) return
-
+  submitting.value = true
   try {
-    const updatedOrder = await store.completeOrder(relatedOrder.value.id)
+    // 接单方提交完成必须上传 1-3 张凭证
+    if (isProvider.value && (proofImages.value.length < 1 || proofImages.value.length > 3)) {
+      await useAlert('凭证不足', '请上传 1-3 张完成凭证图片后再提交完成。')
+      return
+    }
+
+    if (!await useConfirm('确认完成', '确认完成此订单？此操作不可撤销。', { danger: true })) return
+
+    const proofImageUrls = isProvider.value ? proofImages.value : []
+    const updatedOrder = await store.completeOrder(relatedOrder.value.id, proofImageUrls)
     completionSubmitted.value = updatedOrder.status !== 'COMPLETED'
     message.value = updatedOrder.status === 'COMPLETED'
       ? '双方都已确认完成，订单已完成。'
       : '已提交完成确认，等待对方确认。'
+    if (isProvider.value) proofImages.value = []
   } catch (completeError) {
     error.value = handleError(completeError, '操作失败')
+  } finally {
+    submitting.value = false
   }
 }
 
 async function submitReview(): Promise<void> {
-  if (!relatedOrder.value) {
+  if (!relatedOrder.value || submitting.value) {
     return
   }
 
   error.value = ''
   message.value = ''
 
+  submitting.value = true
   try {
     await store.submitReview(relatedOrder.value.id, Number(reviewRating.value), reviewComment.value)
     message.value = '评价已提交。'
     reviewComment.value = ''
   } catch (reviewError) {
     error.value = handleError(reviewError, '评价失败')
+  } finally {
+    submitting.value = false
   }
 }
 
@@ -385,7 +427,7 @@ function closeArbitrationDialog(): void {
 }
 
 async function submitArbitration(): Promise<void> {
-  if (!relatedOrder.value) return
+  if (!relatedOrder.value || submitting.value) return
   if (!arbitrationReason.value.trim()) {
     error.value = '请填写仲裁原因'
     return
@@ -393,12 +435,15 @@ async function submitArbitration(): Promise<void> {
 
   message.value = ''
   error.value = ''
+  submitting.value = true
   try {
     await store.requestOrderArbitration(relatedOrder.value.id, arbitrationReason.value)
     message.value = '已提交仲裁申请，等待管理员处理。'
     closeArbitrationDialog()
   } catch (arbitrationError) {
     error.value = handleError(arbitrationError, '发起仲裁失败')
+  } finally {
+    submitting.value = false
   }
 }
 
@@ -409,6 +454,15 @@ const isPublisher = computed(() => !!store.currentUser && store.currentUser.id =
 const canRespond = computed(() => interactionMode.value !== 'DIRECT_ACCEPT' && demand.value?.status === 'PENDING' && !!store.currentUser && !isPublisher.value)
 const selectedCount = computed(() => responses.value.filter((r) => r.status === 'SELECTED').length)
 const targetCount = computed(() => demand.value?.targetParticipantCount ?? 0)
+
+// T024: SELECT_MANY 超员前置校验 —— 勾选时实时判断，超员自动回退并提示
+watch(selectedResponseIds, (next) => {
+  const target = targetCount.value
+  if (target > 0 && next.length > target) {
+    void useAlert('超出目标人数', `该组队需求最多选择 ${target} 人，已超额，已自动保留前 ${target} 个。`)
+    selectedResponseIds.value = next.slice(0, target)
+  }
+})
 const responseListTitle = computed(() => {
   switch (interactionMode.value) {
     case 'HELP': return '回答'
@@ -489,6 +543,11 @@ async function selectResponses(): Promise<void> {
   if (!demand.value) return
   if (selectedResponseIds.value.length === 0) {
     error.value = '请至少选择一个'
+    return
+  }
+  // T024: 提交前再校验一次超员（watch 已实时拦截，此处兜底）
+  if (targetCount.value > 0 && selectedResponseIds.value.length > targetCount.value) {
+    await useAlert('超出目标人数', `该组队需求最多选择 ${targetCount.value} 人，请取消多余选择后再提交。`)
     return
   }
   message.value = ''
@@ -712,34 +771,45 @@ onMounted(() => {
           <label for="accept-note">留言内容</label>
           <textarea id="accept-note" v-model="note" placeholder="给发布者留一句话"></textarea>
         </div>
+
+        <!-- 完成凭证上传（接单方提交完成前） -->
+        <div v-if="relatedOrder?.status === 'IN_PROGRESS' && isProvider && !currentUserConfirmedCompletion" class="field">
+          <label>完成凭证</label>
+          <p class="meta">请上传 1-3 张完成凭证图片，发布者确认完成时可查看。</p>
+          <ImageUploader v-model="proofImages" :max-count="3" />
+        </div>
+
         <div class="card-actions">
           <button
             v-if="canAccept"
             type="button"
             class="button primary"
+            :disabled="submitting"
             @click="acceptCurrentDemand"
           >
-            立即接单
+            {{ submitting ? '处理中...' : '立即接单' }}
           </button>
 
-          <button v-if="canStartExecution" type="button" class="button primary" @click="startOrder">开始执行</button>
+          <button v-if="canStartExecution" type="button" class="button primary" :disabled="submitting" @click="startOrder">{{ submitting ? '处理中...' : '开始执行' }}</button>
           <button
             v-if="relatedOrder?.status === 'IN_PROGRESS' && store.currentUser?.id === relatedOrder.serviceProviderId && !currentUserConfirmedCompletion"
             type="button"
             class="button primary"
+            :disabled="submitting"
             @click="completeOrder"
           >
-            提交完成确认
+            {{ submitting ? '处理中...' : '提交完成确认' }}
           </button>
           <button
             v-else-if="relatedOrder?.status === 'IN_PROGRESS' && store.currentUser?.id === relatedOrder.requesterId && providerConfirmed && !currentUserConfirmedCompletion"
             type="button"
             class="button primary"
+            :disabled="submitting"
             @click="completeOrder"
           >
-            确认完成
+            {{ submitting ? '处理中...' : '确认完成' }}
           </button>
-          <span v-else-if="relatedOrder?.status === 'IN_PROGRESS' && !completionSubmitted" class="chip is-warning">{{ currentUserConfirmedCompletion || providerConfirmed ? '等待对方确认完成' : '等待接单方确认完成' }}</span>
+          <span v-else-if="relatedOrder?.status === 'IN_PROGRESS' && !completionSubmitted" class="chip is-warning">{{ waitingCompletionHint }}</span>
           <button v-if="canRequestArbitration" type="button" class="button secondary" @click="openArbitrationDialog">发起仲裁</button>
         </div>
       </div>
@@ -860,7 +930,7 @@ onMounted(() => {
           <button
             type="button"
             class="button primary"
-            :disabled="selectedResponseIds.length === 0"
+            :disabled="selectedResponseIds.length === 0 || (targetCount > 0 && selectedResponseIds.length > targetCount)"
             @click="selectResponses"
           >确认选择</button>
         </div>
@@ -894,6 +964,23 @@ onMounted(() => {
             </div>
           </div>
           <p>接单留言：{{ relatedOrder.note || '暂无留言' }}</p>
+
+          <!-- 完成凭证展示（已提交凭证后供发布者/管理员查看） -->
+          <div v-if="relatedOrder.proofImageUrls && relatedOrder.proofImageUrls.length > 0" style="margin-top: 8px;">
+            <p class="meta"><strong>完成凭证 ({{ relatedOrder.proofImageUrls.length }})</strong></p>
+            <div class="image-grid" style="margin-top: 6px;">
+              <a
+                v-for="(url, pIdx) in relatedOrder.proofImageUrls"
+                :key="url"
+                :href="url"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="image-item"
+              >
+                <img :src="url" :alt="`凭证图片 ${pIdx + 1}`" loading="lazy" class="demand-img" />
+              </a>
+            </div>
+          </div>
         </div>
 
         <div class="list-card">

@@ -141,6 +141,7 @@ class ApiViewMapperPrivacyTest {
                 "ARBITRATION_RESOLVED:争议原因", LocalDateTime.now())
         );
         return new Order(100L, 10L, 1L, 2L, OrderStatus.COMPLETED, "接单备注", true, 2,
+            List.of("proof1.png", "proof2.png"),
             LocalDateTime.now(), LocalDateTime.now(), LocalDateTime.now(), history);
     }
 

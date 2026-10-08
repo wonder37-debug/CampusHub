@@ -6,6 +6,7 @@ import { useCampusHubStore } from '@/stores/campusHub'
 import type { ReviewRecord } from '@/types/campushub'
 import { formatMoney, formatRelativeTime, formatScore, formatUserRole, formatUserStatus } from '@/utils/format'
 import { handleError } from '@/utils/errorHandler'
+import { useAlert } from '@/composables/useDialog'
 import AvatarCropper from '@/components/AvatarCropper.vue'
 
 const store = useCampusHubStore()
@@ -26,7 +27,7 @@ async function handleAvatarUpdate(url: string): Promise<void> {
       avatarUrl: url
     })
   } catch (e) {
-    alert(handleError(e, '头像更新失败'))
+    await useAlert('头像更新失败', handleError(e, '头像更新失败'))
   }
 }
 

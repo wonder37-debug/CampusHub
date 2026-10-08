@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
 import com.campushub.backend.order.domain.Order;
 import com.campushub.backend.order.domain.OrderStatus;
 import com.campushub.backend.order.domain.OrderStatusHistoryEntry;
@@ -23,7 +24,7 @@ import java.util.List;
  * 由 ord_order_status_log 表独立持久化，因此本实体保留同名字段但标记
  * {@code @TableField(exist = false)}，仅作为内存中拼装的中转容器。</p>
  */
-@TableName("ord_order")
+@TableName(value = "ord_order", autoResultMap = true)
 public class OrderEntity {
 
     @TableId(value = "id", type = IdType.AUTO)
@@ -50,6 +51,10 @@ public class OrderEntity {
 
     @TableField("proof_image_count")
     private Integer proofImageCount;
+
+    /** 完成凭证图片 URL 列表（1-3），与 proofImageCount 强一致；typeHandler 需 autoResultMap=true 才对查询生效。 */
+    @TableField(value = "proof_image_urls", typeHandler = JacksonTypeHandler.class)
+    private List<String> proofImageUrls;
 
     @TableField("created_at")
     private LocalDateTime createdAt;
@@ -81,6 +86,7 @@ public class OrderEntity {
         entity.acceptNote = order.getAcceptNote();
         entity.proofSubmitted = order.isProofSubmitted();
         entity.proofImageCount = order.getProofImageCount();
+        entity.proofImageUrls = order.getProofImageUrls();
         entity.createdAt = order.getCreatedAt();
         entity.updatedAt = order.getUpdatedAt();
         entity.completedAt = order.getCompletedAt();
@@ -103,6 +109,7 @@ public class OrderEntity {
         order.setAcceptNote(this.acceptNote);
         order.setProofSubmitted(this.proofSubmitted != null && this.proofSubmitted);
         order.setProofImageCount(this.proofImageCount == null ? 0 : this.proofImageCount);
+        order.setProofImageUrls(this.proofImageUrls);
         order.setCreatedAt(this.createdAt);
         order.setUpdatedAt(this.updatedAt);
         order.setCompletedAt(this.completedAt);
@@ -172,6 +179,14 @@ public class OrderEntity {
 
     public void setProofImageCount(Integer proofImageCount) {
         this.proofImageCount = proofImageCount;
+    }
+
+    public List<String> getProofImageUrls() {
+        return proofImageUrls;
+    }
+
+    public void setProofImageUrls(List<String> proofImageUrls) {
+        this.proofImageUrls = proofImageUrls;
     }
 
     public LocalDateTime getCreatedAt() {

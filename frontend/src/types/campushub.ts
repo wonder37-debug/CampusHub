@@ -118,6 +118,7 @@ export interface OrderRecord {
   note: string | null
   proofSubmitted: boolean
   proofImageCount: number
+  proofImageUrls?: string[]
   createdAt: string
   updatedAt: string
   completedAt: string
@@ -129,6 +130,8 @@ export interface OrderRecord {
   demandImages?: string[]
   demandContactInfo?: string | null
   arbitrationResult?: string | null
+  // 需求是否匿名发布（映射自后端 demand.anonymous），用于订单详情脱敏判断
+  anonymous?: boolean
 }
 
 export interface RecommendationRecord {

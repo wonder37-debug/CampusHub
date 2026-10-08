@@ -753,7 +753,7 @@ class DemandResponseApplicationServiceImplTest {
             new com.campushub.backend.order.dto.UpdateOrderStatusCommand("IN_PROGRESS", "开始", null));
         orderApplicationService.updateStatus(
             responder1Id, order.orderId(),
-            new com.campushub.backend.order.dto.UpdateOrderStatusCommand("COMPLETED", "完成", 2));
+            new com.campushub.backend.order.dto.UpdateOrderStatusCommand("COMPLETED", "完成", 2, java.util.List.of("proof1.jpg", "proof2.jpg")));
         orderApplicationService.updateStatus(
             publisherId, order.orderId(),
             new com.campushub.backend.order.dto.UpdateOrderStatusCommand("COMPLETED", "确认", null));

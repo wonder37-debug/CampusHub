@@ -60,25 +60,28 @@ CREATE TABLE IF NOT EXISTS`sys_user` (
 
 -- 插入默认的超级管理员账号 (防重复插入机制)
 
--- 账号: admin@edu.cn / ADMIN001 | 密码: Admin123!
+-- 账号: admin@edu.cn / ADMIN001 | 密码: Admin123! | 余额: 100.00
 
-INSERT INTO `sys_user` (`email`, `student_id`, `password_hash`, `nickname`, `role`) 
+INSERT INTO `sys_user` (`email`, `student_id`, `password_hash`, `nickname`, `role`, `balance`) 
 
-VALUES ('admin@edu.cn', 'ADMIN001', '$2a$10$ZZ9LIwTu25X6iXkfc1SASe4YEghRHDiD1jTMuvWiqCuDEvAunM68O', '超级管理员', 'ADMIN')
-
-ON DUPLICATE KEY UPDATE id=id;
-
-INSERT INTO `sys_user` (`email`, `student_id`, `password_hash`, `nickname`, `role`) 
-
-VALUES ('test1@edu.cn', 'TEST001', '$2a$10$ZZ9LIwTu25X6iXkfc1SASe4YEghRHDiD1jTMuvWiqCuDEvAunM68O', '测试用户1', 'USER')
+VALUES ('admin@edu.cn', 'ADMIN001', '$2a$10$ZZ9LIwTu25X6iXkfc1SASe4YEghRHDiD1jTMuvWiqCuDEvAunM68O', '超级管理员', 'ADMIN', 100.00)
 
 ON DUPLICATE KEY UPDATE id=id;
 
-INSERT INTO `sys_user` (`email`, `student_id`, `password_hash`, `nickname`, `role`) 
+INSERT INTO `sys_user` (`email`, `student_id`, `password_hash`, `nickname`, `role`, `balance`) 
 
-VALUES ('test2@edu.cn', 'TEST002', '$2a$10$ZZ9LIwTu25X6iXkfc1SASe4YEghRHDiD1jTMuvWiqCuDEvAunM68O', '测试用户2', 'USER')
+VALUES ('test1@edu.cn', 'TEST001', '$2a$10$ZZ9LIwTu25X6iXkfc1SASe4YEghRHDiD1jTMuvWiqCuDEvAunM68O', '测试用户1', 'USER', 100.00)
 
 ON DUPLICATE KEY UPDATE id=id;
+
+INSERT INTO `sys_user` (`email`, `student_id`, `password_hash`, `nickname`, `role`, `balance`) 
+
+VALUES ('test2@edu.cn', 'TEST002', '$2a$10$ZZ9LIwTu25X6iXkfc1SASe4YEghRHDiD1jTMuvWiqCuDEvAunM68O', '测试用户2', 'USER', 100.00)
+
+ON DUPLICATE KEY UPDATE id=id;
+
+-- 幂等补充预置账号余额（老版本 balance=0 时更新为 100.00，不覆盖已变动余额）
+UPDATE `sys_user` SET `balance` = 100.00 WHERE `student_id` IN ('ADMIN001', 'TEST001', 'TEST002') AND `balance` = 0;
 
 
 
@@ -227,6 +230,8 @@ CREATE TABLE IF NOT EXISTS`ord_order` (
 
   `proof_image_count` int NOT NULL DEFAULT 0 COMMENT '凭证图片数量',
 
+  `proof_image_urls` json DEFAULT NULL COMMENT '完成凭证图片URL列表(1-3)',
+
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '接单/订单生成时间',
 
   `updated_at` datetime DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
@@ -244,6 +249,13 @@ CREATE TABLE IF NOT EXISTS`ord_order` (
   CONSTRAINT `chk_order_status` CHECK (`status` IN ('ACCEPTED','IN_PROGRESS','IN_ARBITRATION','COMPLETED','CANCELLED'))
 
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单主表';
+
+-- 幂等补充 proof_image_urls 列（老版本 ord_order 表已存在但缺少该列时添加；Spring sql.init always mode 重复执行安全）
+SET @col_exists = (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'ord_order' AND column_name = 'proof_image_urls');
+SET @sql = IF(@col_exists = 0, 'ALTER TABLE `ord_order` ADD COLUMN `proof_image_urls` json DEFAULT NULL COMMENT ''完成凭证图片URL列表(1-3)'' AFTER `proof_image_count`', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 -- 幂等补充 idx_order_created_at（老版本 ord_order 表已存在但缺少该索引时添加；Spring sql.init always mode 重复执行安全）
 SET @idx_exists = (SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'ord_order' AND index_name = 'idx_order_created_at');

@@ -173,11 +173,13 @@ class FrontendIntegrationFlowTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.status").value("IN_PROGRESS"));
 
-        updateOrder(accepter.token(), orderId, "COMPLETED", "delivered", 2)
+        updateOrder(accepter.token(), orderId, "COMPLETED", "delivered", 2, List.of("proof1.png", "proof2.png"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.status").value("IN_PROGRESS"))
             .andExpect(jsonPath("$.data.proofSubmitted").value(true))
-            .andExpect(jsonPath("$.data.proofImageCount").value(2));
+            .andExpect(jsonPath("$.data.proofImageCount").value(2))
+            .andExpect(jsonPath("$.data.proofImageUrls[0]").value("proof1.png"))
+            .andExpect(jsonPath("$.data.proofImageUrls[1]").value("proof2.png"));
 
         updateOrder(publisher.token(), orderId, "COMPLETED", "confirm", null)
             .andExpect(status().isOk())
@@ -418,11 +420,25 @@ class FrontendIntegrationFlowTest {
         String note,
         Integer proofImageCount
     ) throws Exception {
+        return updateOrder(token, orderId, targetStatus, note, proofImageCount, null);
+    }
+
+    private ResultActions updateOrder(
+        String token,
+        Long orderId,
+        String targetStatus,
+        String note,
+        Integer proofImageCount,
+        List<String> proofImageUrls
+    ) throws Exception {
         Map<String, Object> body = new java.util.HashMap<>();
         body.put("targetStatus", targetStatus);
         body.put("note", note);
         if (proofImageCount != null) {
             body.put("proofImageCount", proofImageCount);
+        }
+        if (proofImageUrls != null) {
+            body.put("proofImageUrls", proofImageUrls);
         }
         return mockMvc.perform(put("/api/v1/orders/{orderId}", orderId)
             .header("Authorization", bearer(token))

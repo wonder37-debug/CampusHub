@@ -186,6 +186,7 @@ public class ApiViewMapper {
             canSeeOrderPrivate ? order.getAcceptNote() : null,
             canSeeOrderPrivate && order.isProofSubmitted(),
             canSeeOrderPrivate ? order.getProofImageCount() : 0,
+            canSeeOrderPrivate ? order.getProofImageUrls() : null,
             order.getCreatedAt(),
             order.getUpdatedAt(),
             order.getCompletedAt(),

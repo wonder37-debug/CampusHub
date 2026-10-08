@@ -13,6 +13,7 @@ public record OrderView(
     String acceptNote,
     boolean proofSubmitted,
     int proofImageCount,
+    List<String> proofImageUrls,
     LocalDateTime createdAt,
     LocalDateTime updatedAt,
     LocalDateTime completedAt,

@@ -156,7 +156,8 @@ function mapDemandRecord(raw: any): DemandRecord {
     publisherIdentityVisible: raw.publisherIdentityVisible == null ? undefined : Boolean(raw.publisherIdentityVisible),
     reviewReason: raw.reviewReason == null ? undefined : String(raw.reviewReason),
     images: Array.isArray(raw.images) ? raw.images.map((url: any) => String(url)) : undefined,
-    contactInfo: raw.contactInfo == null ? undefined : String(raw.contactInfo)
+    contactInfo: raw.contactInfo == null ? undefined : String(raw.contactInfo),
+    acceptStatusHint: raw.acceptStatusHint == null ? null : String(raw.acceptStatusHint)
   }
 }
 
@@ -218,6 +219,7 @@ function mapOrderRecord(raw: any): OrderRecord {
     note: String(raw.acceptNote ?? raw.note ?? ''),
     proofSubmitted: Boolean(raw.proofSubmitted ?? false),
     proofImageCount: Number(raw.proofImageCount ?? 0),
+    proofImageUrls: Array.isArray(raw.proofImageUrls) ? raw.proofImageUrls.map((u: any) => String(u)) : undefined,
     createdAt: String(raw.createdAt ?? now()),
     updatedAt: String(raw.updatedAt ?? raw.createdAt ?? now()),
     completedAt: String(raw.completedAt ?? ''),
@@ -227,6 +229,7 @@ function mapOrderRecord(raw: any): OrderRecord {
     completionHint: raw.completionHint == null ? undefined : String(raw.completionHint),
     demandImages: Array.isArray(raw.demandImages) ? raw.demandImages.map((url: any) => String(url)) : undefined,
     demandContactInfo: raw.demandContactInfo == null ? undefined : String(raw.demandContactInfo),
+    anonymous: Boolean(demand.anonymous ?? raw.anonymous ?? false),
     arbitrationResult: raw.arbitrationResult == null ? undefined : String(raw.arbitrationResult),
     timeline: Array.isArray(raw.statusHistory)
       ? raw.statusHistory.map((entry: any) => ({
@@ -333,7 +336,9 @@ export const useCampusHubStore = defineStore('campusHub', {
     adminPendingDemands: [] as DemandRecord[],
     adminArbitrationOrders: [] as OrderRecord[],
     verificationCodes: {} as Record<string, EmailVerificationRecord>,
-    appMessage: '校园互助平台已加载基础业务数据。'
+    appMessage: '校园互助平台已加载基础业务数据。',
+    // 401 并发登出防抖：多个请求同时返回 401 时避免重复触发 logout
+    isLoggingOut: false
   }),
 
   getters: {
@@ -418,10 +423,17 @@ export const useCampusHubStore = defineStore('campusHub', {
       }
 
       await this.fetchProfile()
-      await this.fetchCurrentUserReviews()
-      await this.fetchDemands()
-      await this.fetchOrders()
-      await this.fetchNotifications()
+      // fetchProfile 失败（如 401 触发 logout）后 currentUserId 为空，短路不发后续请求
+      if (!this.currentUserId) {
+        return
+      }
+      // 并行加载其余数据，单个失败用 allSettled 隔离，避免一个失败拖垮全部
+      await Promise.allSettled([
+        this.fetchCurrentUserReviews(),
+        this.fetchDemands(),
+        this.fetchOrders(),
+        this.fetchNotifications()
+      ])
     },
 
     async initializeFromStorage(): Promise<void> {
@@ -559,7 +571,11 @@ export const useCampusHubStore = defineStore('campusHub', {
 
       const mapped = mapUserSummary(profile)
       this.currentProfile = mapped
-      await this.fetchProfile()
+      // PUT /users/me 响应已写入 currentProfile，删除紧随其后的冗余 GET /users/me
+      // 边界：PUT 响应体缺关键字段（id/studentId 等）时降级发一次 GET 补全
+      if (!mapped.id || !mapped.studentId) {
+        await this.fetchProfile()
+      }
       await this.fetchCurrentUserReviews()
       return mapped
     },
@@ -766,25 +782,19 @@ export const useCampusHubStore = defineStore('campusHub', {
     },
 
     async acceptDemand(demandId: string, note = ''): Promise<OrderRecord> {
-      try {
-        const order = await requestJson<any>(`/demands/${encodeURIComponent(demandId)}/accept`, {
-          method: 'POST',
-          body: JSON.stringify({ note: note.trim() })
-        }, this.token)
+      // 409 等错误由 requestJson 经 translateApiError 动态翻译（matchDynamicBusinessConflict
+      // 已覆盖“已被接单/已过期/状态冲突”等场景），这里直接透传，避免覆盖为单一文案
+      const order = await requestJson<any>(`/demands/${encodeURIComponent(demandId)}/accept`, {
+        method: 'POST',
+        body: JSON.stringify({ note: note.trim() })
+      }, this.token)
 
-        const mapped = mapOrderRecord(order)
-        // 单独刷新当前需求状态，避免 fetchDemands() 覆盖列表导致详情页显示“未找到需求”
-        await this.fetchDemandDetail(demandId)
-        await this.fetchOrders()
-        await this.fetchNotifications()
-        return mapped
-      } catch (err) {
-        const e = err as Error & { status?: number }
-        if (e.status === 409) {
-          throw new Error('该需求已过期，无法接单')
-        }
-        throw err
-      }
+      const mapped = mapOrderRecord(order)
+      // 单独刷新当前需求状态，避免 fetchDemands() 覆盖列表导致详情页显示“未找到需求”
+      await this.fetchDemandDetail(demandId)
+      await this.fetchOrders()
+      await this.fetchNotifications()
+      return mapped
     },
 
     async createResponse(demandId: string, content: string): Promise<DemandResponseRecord> {
@@ -876,10 +886,10 @@ export const useCampusHubStore = defineStore('campusHub', {
       return mapped
     },
 
-    async completeOrder(orderId: string): Promise<OrderRecord> {
+    async completeOrder(orderId: string, proofImageUrls?: string[] | null): Promise<OrderRecord> {
       const order = await requestJson<any>(`/orders/${encodeURIComponent(orderId)}`, {
         method: 'PUT',
-        body: JSON.stringify({ targetStatus: 'COMPLETED', proofImageCount: 1 })
+        body: JSON.stringify({ targetStatus: 'COMPLETED', proofImageCount: proofImageUrls?.length ?? 0, proofImageUrls: proofImageUrls ?? null })
       }, this.token)
 
       const mapped = mapOrderRecord(order)
@@ -964,7 +974,10 @@ export const useCampusHubStore = defineStore('campusHub', {
 
       const mapped: ReviewRecord = mapReviewRecord(review)
 
-      this.reviews.unshift(mapped)
+      // 与 submitReviewForResponse 一致：用 review.id 去重，避免重复调用导致 store.reviews 出现相同 ID 的重复项
+      if (!this.reviews.some((r) => r.id === mapped.id)) {
+        this.reviews.unshift(mapped)
+      }
       await this.fetchOrders()
       await this.fetchNotifications()
       // 后端可能已经返回更新后的信用分，优先使用；否则主动刷新用户信息
@@ -1156,12 +1169,21 @@ export const useCampusHubStore = defineStore('campusHub', {
         const profile = mapUserSummary(payload)
         this.currentProfile = profile
         this.currentUserId = profile.id || this.currentUserId
-    } catch (err: any) {
-      if (err?.status === 401) {
-        this.currentProfile = null
+      } catch (err: any) {
+        if (err?.status === 401) {
+          // token 过期/无效：彻底登出（清 token + localStorage + 用户态），
+          // 避免后续请求继续携带过期 token；isLoggingOut 防止多个并发 401 重复登出
+          if (!this.isLoggingOut) {
+            this.isLoggingOut = true
+            try {
+              this.logout()
+            } finally {
+              this.isLoggingOut = false
+            }
+          }
+        }
       }
-    }
-  },
+    },
 
     async fetchAdminUsers(query = '', searchField = '', sortBy = '', sortDirection = ''): Promise<void> {
       try {
@@ -1259,16 +1281,7 @@ export const useCampusHubStore = defineStore('campusHub', {
     }
 
     ,
-    async fetchBalance(): Promise<number> {
-      try {
-        const payload = await requestJson<any>('/user/balance', {}, this.token)
-        return Number(payload?.balance ?? payload?.available ?? payload ?? 0)
-      } catch {
-        return 0
-      }
-    }
 
-    ,
     async generateDemandDraft(prompt: string): Promise<AiDemandDraft> {
       if (!this.currentUserId) {
         throw new Error('请先登录后再使用 AI 帮我发布')

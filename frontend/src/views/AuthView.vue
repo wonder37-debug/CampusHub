@@ -312,8 +312,8 @@ async function submitForgotPassword(): Promise<void> {
 
       <form v-if="activeTab === 'login'" class="field-grid" @submit.prevent="submitLogin">
         <div class="field">
-          <label for="login-student-id">学号</label>
-          <input id="login-student-id" v-model="loginForm.studentId" placeholder="请输入您的学号" />
+          <label for="login-student-id">学号/邮箱</label>
+          <input id="login-student-id" v-model="loginForm.studentId" placeholder="请输入学号或邮箱" />
         </div>
         <div class="field">
           <label for="login-password">密码</label>

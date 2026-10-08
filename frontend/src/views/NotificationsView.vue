@@ -16,6 +16,7 @@ const visibleNotifications = computed(() => allNotifications.value.slice(0, page
 const hasMore = computed(() => visibleNotifications.value.length < allNotifications.value.length)
 const allLoaded = computed(() => !hasMore.value && allNotifications.value.length > 0)
 const refreshing = ref(false)
+const markingAllRead = ref(false)
 
 function loadMore(): void {
   page.value++
@@ -28,6 +29,15 @@ async function refreshNotifications(): Promise<void> {
     await store.fetchNotifications()
   } finally {
     refreshing.value = false
+  }
+}
+
+async function markAllRead(): Promise<void> {
+  markingAllRead.value = true
+  try {
+    await store.markAllNotificationsRead()
+  } finally {
+    markingAllRead.value = false
   }
 }
 
@@ -99,6 +109,22 @@ async function openNotification(notification: any): Promise<void> {
     return
   }
 
+  // Response 评价收到：跳转到关联需求详情页（含 SELECT_MANY 组队评价入口）
+  if (type === 'RESPONSE_REVIEW_RECEIVED') {
+    router.push(`/demands/${encodeURIComponent(targetId || relatedId)}`)
+    return
+  }
+
+  // 待评价提醒：按 targetType 跳转订单/需求详情页（含评价入口）
+  if (type === 'PENDING_REVIEW') {
+    if (targetType === 'ORDER') {
+      router.push(`/orders/${encodeURIComponent(targetId || relatedId)}?tab=reviews`)
+    } else {
+      router.push(`/demands/${encodeURIComponent(targetId || relatedId)}`)
+    }
+    return
+  }
+
   // fallback: stay on notifications
   router.push('/notifications')
 }
@@ -119,7 +145,7 @@ onMounted(() => {
         <button type="button" class="button primary" :disabled="refreshing" @click="refreshNotifications">
           {{ refreshing ? '刷新中...' : '↻ 刷新' }}
         </button>
-        <button type="button" class="button secondary" @click="store.markAllNotificationsRead">全部标记已读</button>
+        <button type="button" class="button secondary" :disabled="markingAllRead" @click="markAllRead">{{ markingAllRead ? '处理中...' : '全部标记已读' }}</button>
       </div>
     </section>
 

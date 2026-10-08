@@ -7,12 +7,16 @@ import { useCampusHubStore } from '@/stores/campusHub'
 import type { DemandRecord, DemandStatus, OrderRecord, OrderStatus } from '@/types/campushub'
 import { formatOrderStatus, formatRelativeTime, statusToneClass, formatDemandStatus, formatMoney, formatDateTime } from '@/utils/format'
 import { useConfirm } from '@/composables/useDialog'
+import { handleError } from '@/utils/errorHandler'
 
 const store = useCampusHubStore()
 const router = useRouter()
 const activeTab = ref<'published' | 'accepted'>('published')
 const loadingOrders = ref(false)
 const refreshing = ref(false)
+const message = ref('')
+const error = ref('')
+const submittingOrderId = ref('')
 
 const PAGE_SIZE = 10
 const page = ref(1)
@@ -184,16 +188,60 @@ function openOrder(order: OrderListItem): void {
 }
 
 async function startOrder(orderId: string): Promise<void> {
-  await store.startOrder(orderId)
+  if (submittingOrderId.value) return
+  message.value = ''
+  error.value = ''
+  submittingOrderId.value = orderId
+  try {
+    await store.startOrder(orderId)
+    message.value = '订单已进入进行中状态。'
+    await refreshOrders()
+  } catch (e) {
+    error.value = handleError(e, '操作失败')
+  } finally {
+    submittingOrderId.value = ''
+  }
 }
 
-async function completeOrder(orderId: string): Promise<void> {
+async function completeOrder(order: OrderListItem): Promise<void> {
+  if (isDemandPlaceholder(order)) return
+  // 接单方提交完成需上传凭证，跳转详情页完成
+  if (order.serviceProviderId === store.currentUser?.id) {
+    openOrder(order)
+    return
+  }
+  // 发布者确认完成（无需凭证）
   if (!await useConfirm('确认完成', '确认完成此订单？此操作不可撤销。', { danger: true })) return
-  await store.completeOrder(orderId)
+  if (submittingOrderId.value) return
+  message.value = ''
+  error.value = ''
+  submittingOrderId.value = order.id
+  try {
+    await store.completeOrder(order.id, null)
+    message.value = '已确认完成。'
+    await refreshOrders()
+  } catch (e) {
+    error.value = handleError(e, '操作失败')
+  } finally {
+    submittingOrderId.value = ''
+  }
 }
 
 async function cancelOrder(orderId: string): Promise<void> {
-  await store.cancelOrder(orderId)
+  if (!await useConfirm('确认取消', '确认取消此订单？此操作不可撤销。', { danger: true })) return
+  if (submittingOrderId.value) return
+  message.value = ''
+  error.value = ''
+  submittingOrderId.value = orderId
+  try {
+    await store.cancelOrder(orderId)
+    message.value = '订单已取消。'
+    await refreshOrders()
+  } catch (e) {
+    error.value = handleError(e, '取消失败')
+  } finally {
+    submittingOrderId.value = ''
+  }
 }
 
 onMounted(() => {
@@ -230,6 +278,9 @@ onMounted(() => {
         <button type="button" class="button" :class="activeTab === 'accepted' ? 'primary' : 'secondary'" @click="switchTab('accepted')">我接的订单</button>
       </div>
     </section>
+
+    <p v-if="message" class="hero-badge">{{ message }}</p>
+    <p v-if="error" class="hero-badge" style="background: rgba(181, 71, 71, 0.14); color: var(--danger)">{{ error }}</p>
 
     <div v-if="!store.currentUser" class="empty-state">
       <strong>请先登录查看订单</strong>
@@ -275,33 +326,36 @@ onMounted(() => {
             v-if="order.status === 'ACCEPTED' && activeTab === 'published'"
             type="button"
             class="button secondary"
+            :disabled="submittingOrderId === order.id"
             @click.stop="cancelOrder(order.id)"
           >
-            取消订单
+            {{ submittingOrderId === order.id ? '处理中...' : '取消订单' }}
           </button>
           <button
             v-if="order.status === 'ACCEPTED' && activeTab === 'accepted'"
             type="button"
             class="button secondary"
+            :disabled="submittingOrderId === order.id"
             @click.stop="startOrder(order.id)"
           >
-            开始执行
+            {{ submittingOrderId === order.id ? '处理中...' : '开始执行' }}
           </button>
           <button
             v-if="order.status === 'IN_PROGRESS' && activeTab === 'accepted' && !providerConfirmed(order)"
             type="button"
             class="button primary"
-            @click.stop="completeOrder(order.id)"
+            @click.stop="openOrder(order)"
           >
-            提交完成确认
+            上传凭证并完成
           </button>
           <button
             v-if="order.status === 'IN_PROGRESS' && activeTab === 'published' && providerConfirmed(order) && !requesterConfirmed(order)"
             type="button"
             class="button primary"
-            @click.stop="completeOrder(order.id)"
+            :disabled="submittingOrderId === order.id"
+            @click.stop="completeOrder(order)"
           >
-            确认完成
+            {{ submittingOrderId === order.id ? '处理中...' : '确认完成' }}
           </button>
         </div>
       </article>
