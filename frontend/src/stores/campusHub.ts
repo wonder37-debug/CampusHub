@@ -85,6 +85,7 @@ import { translateApiError } from '@/utils/errorHandler'
 function clearExpiredSession(triggeringToken?: string): void {
   // token 失效：只有当触发 401 的 token 仍是本地当前 token 时，才清理登录态并跳转登录页。
   // 避免旧请求返回的 401 把用户刚刚重新登录得到的新 token 一并清掉（竞态）。
+  let shouldResetSession = false
   try {
     const currentToken = localStorage.getItem('campushub.token') || ''
     if (triggeringToken && currentToken !== triggeringToken) {
@@ -94,9 +95,24 @@ function clearExpiredSession(triggeringToken?: string): void {
     localStorage.removeItem('campushub.token')
     localStorage.removeItem('campushub.userId')
     localStorage.removeItem('campushub.profile')
+    shouldResetSession = true
   } catch {
     // ignore storage errors
   }
+
+  // 同步清理 Pinia 内存登录态，避免 localStorage 已清但 store 仍保留旧 session
+  // （尤其当前已在 /auth 页面、不会触发 location.assign 重载时，否则会出现脏状态）
+  if (shouldResetSession) {
+    try {
+      const store = useCampusHubStore()
+      store.token = ''
+      store.currentUserId = ''
+      store.currentProfile = null
+    } catch {
+      // pinia 未激活（如早期初始化），localStorage 已清，后续跳转重载会重置 store
+    }
+  }
+
   if (typeof window !== 'undefined' && window.location.pathname !== '/auth') {
     const redirect = window.location.pathname + window.location.search
     window.location.assign(`/auth?redirect=${encodeURIComponent(redirect)}`)
