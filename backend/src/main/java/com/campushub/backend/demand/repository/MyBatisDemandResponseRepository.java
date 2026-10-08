@@ -1,6 +1,7 @@
 package com.campushub.backend.demand.repository;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.campushub.backend.demand.domain.DemandResponse;
 import com.campushub.backend.demand.domain.ResponseStatus;
 import com.campushub.backend.demand.repository.entity.DemandResponseEntity;
@@ -11,7 +12,9 @@ import org.springframework.stereotype.Repository;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Repository
@@ -121,6 +124,36 @@ public class MyBatisDemandResponseRepository implements DemandResponseRepository
         return demandResponseMapper.selectCount(new LambdaQueryWrapper<DemandResponseEntity>()
                 .eq(DemandResponseEntity::getDemandId, demandId)
                 .eq(DemandResponseEntity::getStatus, ResponseStatus.SELECTED.name()));
+    }
+
+    @Override
+    public Map<Long, Long> countSelectedByDemandIds(Collection<Long> demandIds) {
+        if (demandIds == null || demandIds.isEmpty()) {
+            return Map.of();
+        }
+        // 数据库层 GROUP BY demand_id 聚合，一次查询返回计数，避免取出全部 SELECTED Response 行后再由 Java 聚合
+        QueryWrapper<DemandResponseEntity> wrapper = new QueryWrapper<>();
+        wrapper.select("demand_id AS demandId", "COUNT(*) AS cnt")
+            .eq("status", ResponseStatus.SELECTED.name())
+            .in("demand_id", demandIds)
+            .groupBy("demand_id");
+        List<Map<String, Object>> maps = demandResponseMapper.selectMaps(wrapper);
+        Map<Long, Long> result = new HashMap<>();
+        for (Map<String, Object> m : maps) {
+            Long demandId = null;
+            Long count = null;
+            for (var entry : m.entrySet()) {
+                if (entry.getKey().equalsIgnoreCase("demandId") && entry.getValue() instanceof Number n) {
+                    demandId = n.longValue();
+                } else if (entry.getKey().equalsIgnoreCase("cnt") && entry.getValue() instanceof Number n) {
+                    count = n.longValue();
+                }
+            }
+            if (demandId != null && count != null) {
+                result.put(demandId, count);
+            }
+        }
+        return result;
     }
 
     @Override

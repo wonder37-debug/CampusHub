@@ -10,7 +10,9 @@ import com.campushub.backend.auth.repository.UserRepository;
 import com.campushub.backend.common.security.CurrentUser;
 import com.campushub.backend.demand.domain.Demand;
 import com.campushub.backend.demand.domain.DemandStatus;
+import com.campushub.backend.demand.domain.InteractionMode;
 import com.campushub.backend.demand.repository.DemandRepository;
+import com.campushub.backend.demand.repository.DemandResponseRepository;
 import com.campushub.backend.order.domain.Order;
 import com.campushub.backend.order.domain.OrderStatus;
 import com.campushub.backend.order.domain.OrderStatusHistoryEntry;
@@ -31,17 +33,20 @@ public class ApiViewMapper {
     private final UserRepository userRepository;
     private final OrderRepository orderRepository;
     private final ReviewRepository reviewRepository;
+    private final DemandResponseRepository demandResponseRepository;
 
     public ApiViewMapper(
         DemandRepository demandRepository,
         UserRepository userRepository,
         OrderRepository orderRepository,
-        ReviewRepository reviewRepository
+        ReviewRepository reviewRepository,
+        DemandResponseRepository demandResponseRepository
     ) {
         this.demandRepository = demandRepository;
         this.userRepository = userRepository;
         this.orderRepository = orderRepository;
         this.reviewRepository = reviewRepository;
+        this.demandResponseRepository = demandResponseRepository;
     }
 
     public DemandView toDemandView(Demand demand, CurrentUser currentUser) {
@@ -49,6 +54,10 @@ public class ApiViewMapper {
     }
 
     public DemandView toDemandView(Demand demand, CurrentUser currentUser, Map<Long, User> userMap, Map<Long, Order> orderMap) {
+        return toDemandView(demand, currentUser, userMap, orderMap, null);
+    }
+
+    public DemandView toDemandView(Demand demand, CurrentUser currentUser, Map<Long, User> userMap, Map<Long, Order> orderMap, Map<Long, Long> selectedCountMap) {
         boolean canSeePublisher = canSeeDemandPublisher(demand, currentUser);
         User publisherUser = demand.getPublisherId() == null ? null : resolveUser(demand.getPublisherId(), userMap);
         Long publisherId = canSeePublisher ? demand.getPublisherId() : null;
@@ -93,6 +102,7 @@ public class ApiViewMapper {
             demand.getReward(),
             demand.getInteractionMode() == null ? "DIRECT_ACCEPT" : demand.getInteractionMode().name(),
             demand.getTargetParticipantCount(),
+            resolveSelectedParticipantCount(demand, selectedCountMap),
             demand.getTags(),
             demand.getStatus().name(),
             demand.isAnonymous(),
@@ -122,6 +132,25 @@ public class ApiViewMapper {
         return orderRepository.findByDemandId(demandId).orElse(null);
     }
 
+    /**
+     * SELECT_MANY 组队进度：已选中人数。仅 SELECT_MANY 模式输出，其余模式返回 null。
+     * 列表场景传入 selectedCountMap（batch 预加载）避免 N+1；单条场景 fallback 到 countSelectedByDemandId。
+     */
+    private Integer resolveSelectedParticipantCount(Demand demand, Map<Long, Long> selectedCountMap) {
+        if (demand == null || demand.getId() == null
+            || demand.getInteractionMode() != InteractionMode.SELECT_MANY) {
+            return null;
+        }
+        if (selectedCountMap != null) {
+            Long count = selectedCountMap.get(demand.getId());
+            return count == null ? 0 : count.intValue();
+        }
+        if (demandResponseRepository == null) {
+            return null;
+        }
+        return (int) demandResponseRepository.countSelectedByDemandId(demand.getId());
+    }
+
     public OrderView toOrderView(Order order, CurrentUser currentUser) {
         return toOrderView(order, currentUser, null, null, null, null, null);
     }
@@ -135,6 +164,9 @@ public class ApiViewMapper {
         User provider = resolveUser(order.getAccepterId(), userMap);
         boolean canSeePublisher = demand == null || canSeeDemandPublisher(demand, currentUser);
         String anonymousCode = demand != null ? demand.getAnonymousCode() : null;
+        // acceptNote / 履约凭证 / 完整状态历史 / 仲裁内部信息属于交易私密信息，仅订单双方与管理员可见
+        boolean canSeeOrderPrivate = currentUser != null
+            && (currentUser.isAdmin() || order.isParticipant(currentUser.userId()));
 
         List<ReviewView> reviews = resolveReviews(order.getId(), reviewByOrderIdMap).stream()
             .map(review -> toReviewView(review, canSeePublisher, order.getPublisherId(), anonymousCode))
@@ -151,23 +183,23 @@ public class ApiViewMapper {
             order.getDemandId(),
             order.getPublisherId(),
             order.getAccepterId(),
-            order.getAcceptNote(),
-            order.isProofSubmitted(),
-            order.getProofImageCount(),
+            canSeeOrderPrivate ? order.getAcceptNote() : null,
+            canSeeOrderPrivate && order.isProofSubmitted(),
+            canSeeOrderPrivate ? order.getProofImageCount() : 0,
             order.getCreatedAt(),
             order.getUpdatedAt(),
             order.getCompletedAt(),
             demand == null ? null : toDemandView(demand, currentUser, userMap, orderByDemandMap),
             requester == null ? null : anonymizePublicUserSummary(PublicUserSummaryView.from(requester), canSeePublisher, anonymousCode),
             provider == null ? null : PublicUserSummaryView.from(provider),
-            order.getStatusHistory().stream().map(this::toTimelineView).toList(),
+            canSeeOrderPrivate ? order.getStatusHistory().stream().map(this::toTimelineView).toList() : List.of(),
             reviews,
             currentUserReviewed,
             resolvePendingReviewTarget(order, currentUser, currentUserReviewed),
             resolveCompletionHint(order, currentUser),
             demand == null ? List.of() : demand.getImages(),
             resolveContactInfo(demand, order, currentUser),
-            resolveArbitrationResult(order)
+            canSeeOrderPrivate ? resolveArbitrationResult(order) : null
         );
     }
 
@@ -188,11 +220,14 @@ public class ApiViewMapper {
     }
 
     public ReviewView toAnonymizedReviewView(ReviewResponse review, CurrentUser currentUser) {
-        Order order = orderRepository.findById(review.orderId()).orElse(null);
-        Demand demand = order != null ? demandRepository.findById(order.getDemandId()).orElse(null) : null;
+        // 优先用 demandId 反查 Demand 判断匿名性（覆盖 Response Review，其 orderId 为 null）；
+        // 仅在 demandId 缺失时 fallback 到 Order 反查
+        Demand demand = review.demandId() != null
+            ? demandRepository.findById(review.demandId()).orElse(null)
+            : resolveDemandViaOrder(review.orderId());
         boolean canSeePublisher = demand == null || canSeeDemandPublisher(demand, currentUser);
         String anonymousCode = demand != null ? demand.getAnonymousCode() : null;
-        Long publisherId = order != null ? order.getPublisherId() : null;
+        Long publisherId = demand != null ? demand.getPublisherId() : resolvePublisherIdViaOrder(review.orderId());
 
         User author = userRepository.findById(review.authorId()).orElse(null);
         User target = userRepository.findById(review.targetId()).orElse(null);
@@ -213,11 +248,28 @@ public class ApiViewMapper {
             review.orderId(),
             review.rating(),
             review.comment(),
-            review.targetId(),
+            (!canSeePublisher && publisherId != null && publisherId.equals(review.targetId()))
+                ? null : review.targetId(),
             targetName,
             authorView,
             review.createdAt()
         );
+    }
+
+    private Demand resolveDemandViaOrder(Long orderId) {
+        if (orderId == null) {
+            return null;
+        }
+        Order order = orderRepository.findById(orderId).orElse(null);
+        return order != null ? demandRepository.findById(order.getDemandId()).orElse(null) : null;
+    }
+
+    private Long resolvePublisherIdViaOrder(Long orderId) {
+        if (orderId == null) {
+            return null;
+        }
+        Order order = orderRepository.findById(orderId).orElse(null);
+        return order != null ? order.getPublisherId() : null;
     }
 
     private ReviewView toReviewView(Review review, boolean canSeePublisher, Long publisherId, String anonymousCode) {
@@ -239,7 +291,8 @@ public class ApiViewMapper {
             review.getOrderId(),
             review.getRating(),
             review.getComment(),
-            review.getTargetId(),
+            (!canSeePublisher && publisherId != null && publisherId.equals(review.getTargetId()))
+                ? null : review.getTargetId(),
             targetName,
             authorView,
             review.getCreatedAt()

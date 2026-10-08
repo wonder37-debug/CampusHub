@@ -418,7 +418,7 @@ const responseListTitle = computed(() => {
 })
 
 // 当前用户在该 Demand 上是否已有 active Response（PENDING 或 SELECTED）
-// 后端约束同一用户对同一 Demand 只能存在一个 active Response，前端据此隐藏重复提交入口
+// SELECT_ONE/SELECT_MANY 仍保持一人一个 active Response；HELP 允许同一用户多条回答
 const myActiveResponse = computed(() => {
   const userId = store.currentUser?.id
   if (!userId) return null
@@ -752,7 +752,7 @@ onMounted(() => {
         </div>
 
         <!-- 创建留言/报名/回答 -->
-        <div v-if="canRespond && !myActiveResponse" class="field" style="margin-top: 4px;">
+        <div v-if="canRespond && (interactionMode === 'HELP' || !myActiveResponse)" class="field" style="margin-top: 4px;">
           <textarea v-model="responseContent" :placeholder="`请填写${responseListTitle}内容`" rows="3"></textarea>
           <div class="card-actions">
             <button type="button" class="button primary" data-testid="submit-response" :disabled="!responseContent.trim() || responseSubmitting" @click="createResponse">
@@ -762,7 +762,7 @@ onMounted(() => {
         </div>
 
         <!-- 当前用户已存在 active Response：直接显示状态，避免重复提交触发后端 BUSINESS_CONFLICT -->
-        <div v-else-if="myActiveResponse" class="list-card" style="margin-top: 4px; background: var(--accent-soft); border-color: rgba(31, 95, 83, 0.2);">
+        <div v-if="myActiveResponse" class="list-card" style="margin-top: 4px; background: var(--accent-soft); border-color: rgba(31, 95, 83, 0.2);">
           <strong>{{ responseListTitle === '回答' ? '已提交回答' : (responseListTitle === '报名' ? '已报名' : '已留言') }}</strong>
           <p class="meta" style="margin-top: 4px;">{{ myResponseStatusHint }}</p>
           <div class="meta" style="margin-top: 4px;">当前状态：{{ formatResponseStatus(myActiveResponse.status) }} · {{ formatDateTime(myActiveResponse.createdAt) }}</div>

@@ -9,7 +9,6 @@ import com.campushub.backend.demand.domain.DemandSort;
 import com.campushub.backend.demand.dto.DemandQuery;
 import com.campushub.backend.demand.dto.DemandSummaryResponse;
 import com.campushub.backend.demand.repository.DemandRepository;
-import com.campushub.backend.order.repository.OrderRepository;
 import com.campushub.backend.recommendation.domain.ActionType;
 import com.campushub.backend.recommendation.domain.RecommendationItem;
 import com.campushub.backend.recommendation.domain.UserActionLog;
@@ -35,20 +34,17 @@ public class RecommendationApplicationServiceImpl implements RecommendationAppli
     private static final int MAX_SAME_CATEGORY_IN_TOP = 2;
 
     private final DemandRepository demandRepository;
-    private final OrderRepository orderRepository;
     private final UserRepository userRepository;
     private final UserActionLogRepository userActionLogRepository;
     private final RecommendationSwitch recommendationSwitch;
 
     public RecommendationApplicationServiceImpl(
         DemandRepository demandRepository,
-        OrderRepository orderRepository,
         UserRepository userRepository,
         UserActionLogRepository userActionLogRepository,
         RecommendationSwitch recommendationSwitch
     ) {
         this.demandRepository = demandRepository;
-        this.orderRepository = orderRepository;
         this.userRepository = userRepository;
         this.userActionLogRepository = userActionLogRepository;
         this.recommendationSwitch = recommendationSwitch;
@@ -153,26 +149,20 @@ public class RecommendationApplicationServiceImpl implements RecommendationAppli
     }
 
     private List<Demand> filterCandidateDemands(Long userId, DemandQuery query) {
-        List<Demand> candidates = demandRepository.findCandidatePage(userId, query);
-        if (candidates.isEmpty()) {
-            return List.of();
-        }
-        Set<Long> demandIdsWithOrder = orderRepository.findDemandIdsWithOrder(
-            candidates.stream().map(Demand::getId).toList());
-        return candidates.stream()
-            .filter(demand -> !demandIdsWithOrder.contains(demand.getId()))
-            .toList();
+        // findCandidatePage 已在 SQL 层排除已有 Order 的 Demand，无需重复调用 findDemandIdsWithOrder
+        return demandRepository.findCandidatePage(userId, query);
     }
 
     // ponytail: 用户偏好直接基于 rec_user_action_log 聚合，不引入额外存储。
     // preference(category) = Σ(actionWeight × timeDecay)，归一化到 0~1。
     // VIEW=1.0, ACCEPT=3.0；>14 天的行为 decay=0 不再影响偏好。
     private Map<String, Double> buildUserPreference(Long userId) {
-        List<UserActionLog> logs = userActionLogRepository.findByUserId(userId);
+        LocalDateTime now = LocalDateTime.now();
+        // 偏好仅需 14 天内行为（computeTimeDecay 对 ≥14 天返回 0），时间窗口下推 SQL 避免全量加载
+        List<UserActionLog> logs = userActionLogRepository.findByUserIdSince(userId, now.minusDays(14));
         if (logs.isEmpty()) {
             return Map.of();
         }
-        LocalDateTime now = LocalDateTime.now();
         Map<String, Double> raw = new HashMap<>();
         for (UserActionLog log : logs) {
             if (log.getCategory() == null || log.getActionType() == null || log.getCreatedAt() == null) {
@@ -223,11 +213,12 @@ public class RecommendationApplicationServiceImpl implements RecommendationAppli
     }
 
     private RecentViews buildRecentViews(Long userId) {
-        List<UserActionLog> views = userActionLogRepository.findByUserIdAndActionType(userId, ActionType.VIEW);
+        LocalDateTime now = LocalDateTime.now();
+        // view penalty 只需 7 天内 VIEW 日志，时间窗口下推 SQL 避免全量加载
+        List<UserActionLog> views = userActionLogRepository.findByUserIdAndActionTypeSince(userId, ActionType.VIEW, now.minusDays(7));
         if (views.isEmpty()) {
             return new RecentViews(Set.of(), Set.of());
         }
-        LocalDateTime now = LocalDateTime.now();
         Set<Long> within24h = new HashSet<>();
         Set<Long> within7d = new HashSet<>();
         for (UserActionLog view : views) {

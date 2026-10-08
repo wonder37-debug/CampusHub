@@ -37,6 +37,15 @@ public interface UserRepository {
     Optional<User> findByLoginId(String loginId);
 
     /**
+     * 按昵称大小写不敏感地检查是否已被其他用户占用（下推 SQL，避免 findAll 全表加载）。
+     *
+     * @param nickname 待检查昵称（非空、非 blank）
+     * @param excludeUserId 排除的用户 ID（用于 updateProfile 时排除自己），为 null 时不排除
+     * @return true 表示已被其他用户占用
+     */
+    boolean existsByNicknameIgnoreCase(String nickname, Long excludeUserId);
+
+    /**
      * 查询全量用户。当前主要供后台管理统计与列表使用。
      */
     List<User> findAll();

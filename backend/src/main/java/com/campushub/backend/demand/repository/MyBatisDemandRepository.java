@@ -34,6 +34,12 @@ import java.util.stream.Collectors;
 @Repository
 public class MyBatisDemandRepository implements DemandRepository {
 
+    /**
+     * 推荐候选池上限：避免 PENDING 需求量增长后全表扫描与全量内存排序。
+     * 按 createdAt DESC 取最近的候选，500 条足以支撑评分、diversity rerank 与分页。
+     */
+    static final int CANDIDATE_POOL_SIZE = 500;
+
     private final DemandMapper demandMapper;
 
     public MyBatisDemandRepository(DemandMapper demandMapper) {
@@ -87,6 +93,20 @@ public class MyBatisDemandRepository implements DemandRepository {
         List<DemandEntity> entities = demandMapper.selectList(
             new LambdaQueryWrapper<DemandEntity>()
                 .eq(DemandEntity::getStatus, status.name())
+        );
+        return entities.stream().map(DemandEntity::toDomain).toList();
+    }
+
+    @Override
+    public List<Demand> findExpiredPending(java.time.LocalDateTime now) {
+        if (now == null) {
+            return List.of();
+        }
+        // endTime < now 下推 SQL；SQL 中 NULL < now 为 false，自动排除无截止时间的需求
+        List<DemandEntity> entities = demandMapper.selectList(
+            new LambdaQueryWrapper<DemandEntity>()
+                .eq(DemandEntity::getStatus, DemandStatus.PENDING.name())
+                .lt(DemandEntity::getEndTime, now)
         );
         return entities.stream().map(DemandEntity::toDomain).toList();
     }
@@ -256,6 +276,9 @@ public class MyBatisDemandRepository implements DemandRepository {
             return List.of();
         }
         LambdaQueryWrapper<DemandEntity> wrapper = buildCandidateWrapper(userId, query);
+        wrapper.orderByDesc(DemandEntity::getCreatedAt);
+        wrapper.orderByDesc(DemandEntity::getId);
+        wrapper.last("LIMIT " + CANDIDATE_POOL_SIZE);
         return demandMapper.selectList(wrapper).stream().map(DemandEntity::toDomain).toList();
     }
 
@@ -316,6 +339,11 @@ public class MyBatisDemandRepository implements DemandRepository {
                 wrapper.le(DemandEntity::getStartTime, to);
             }
         }
+        // 排除 endTime 已过的需求（过期调度器有 5 分钟间隔，避免推荐已过期但未刷新的需求）
+        LocalDateTime now = LocalDateTime.now();
+        wrapper.and(w -> w.isNull(DemandEntity::getEndTime).or().ge(DemandEntity::getEndTime, now));
+        // SQL 层提前排除已有 Order 的需求，使 LIMIT 作用于"真正有效候选"而非包含大量随后会被过滤的记录
+        wrapper.notInSql(DemandEntity::getId, "SELECT demand_id FROM ord_order");
         return wrapper;
     }
 }

@@ -16,7 +16,8 @@ export const NOTIFICATION_TYPE_OPTIONS = [
   'DEMAND_APPROVED',
   'PENDING_REVIEW',
   'ORDER_ARBITRATION_REQUESTED',
-  'ORDER_ARBITRATION_RESOLVED'
+  'ORDER_ARBITRATION_RESOLVED',
+  'RESPONSE_REVIEW_RECEIVED'
 ] as const
 
 export type DemandCategory = (typeof DEMAND_CATEGORY_OPTIONS)[number]
@@ -62,6 +63,7 @@ export interface DemandRecord {
   reward: number
   interactionMode: InteractionMode
   targetParticipantCount?: number | null
+  selectedParticipantCount?: number | null
   status: DemandStatus
   anonymous: boolean
   anonymousCode: string | null
@@ -113,7 +115,7 @@ export interface OrderRecord {
   serviceProviderCreditScore: number
   serviceProviderStudentId?: string
   status: OrderStatus
-  note: string
+  note: string | null
   proofSubmitted: boolean
   proofImageCount: number
   createdAt: string

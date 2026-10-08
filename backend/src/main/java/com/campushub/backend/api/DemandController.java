@@ -21,6 +21,7 @@ import com.campushub.backend.demand.dto.PublishDemandCommand;
 import com.campushub.backend.demand.dto.SelectResponsesCommand;
 import com.campushub.backend.demand.dto.UpdateDemandCommand;
 import com.campushub.backend.demand.repository.DemandRepository;
+import com.campushub.backend.demand.repository.DemandResponseRepository;
 import com.campushub.backend.demand.service.DemandApplicationService;
 import com.campushub.backend.demand.service.DemandResponseApplicationService;
 import com.campushub.backend.order.domain.Order;
@@ -61,6 +62,7 @@ public class DemandController {
     private final DemandResponseApplicationService demandResponseApplicationService;
     private final RecommendationApplicationService recommendationApplicationService;
     private final DemandRepository demandRepository;
+    private final DemandResponseRepository demandResponseRepository;
     private final UserRepository userRepository;
     private final OrderRepository orderRepository;
     private final UserActionLogRepository userActionLogRepository;
@@ -73,6 +75,7 @@ public class DemandController {
         DemandResponseApplicationService demandResponseApplicationService,
         RecommendationApplicationService recommendationApplicationService,
         DemandRepository demandRepository,
+        DemandResponseRepository demandResponseRepository,
         UserRepository userRepository,
         OrderRepository orderRepository,
         UserActionLogRepository userActionLogRepository,
@@ -84,6 +87,7 @@ public class DemandController {
         this.demandResponseApplicationService = demandResponseApplicationService;
         this.recommendationApplicationService = recommendationApplicationService;
         this.demandRepository = demandRepository;
+        this.demandResponseRepository = demandResponseRepository;
         this.userRepository = userRepository;
         this.orderRepository = orderRepository;
         this.userActionLogRepository = userActionLogRepository;
@@ -137,10 +141,11 @@ public class DemandController {
                 : userRepository.findAllById(recPublisherIds).stream().collect(Collectors.toMap(User::getId, u -> u));
             Map<Long, Order> recOrderMap = orderRepository.findAllByDemandIdIn(recDemandIds).stream()
                 .collect(Collectors.toMap(Order::getDemandId, o -> o));
+            Map<Long, Long> recSelectedCountMap = demandResponseRepository.countSelectedByDemandIds(recDemandIds);
             List<DemandView> recItems = recDemandIds.stream()
                 .map(recDemandMap::get)
                 .filter(Objects::nonNull)
-                .map(demand -> apiViewMapper.toDemandView(demand, currentUser, recUserMap, recOrderMap))
+                .map(demand -> apiViewMapper.toDemandView(demand, currentUser, recUserMap, recOrderMap, recSelectedCountMap))
                 .toList();
             return ApiResponse.success(new PageResponse<>(recItems, recPage.page(), recPage.size(), recPage.total()));
         }
@@ -170,10 +175,11 @@ public class DemandController {
             : userRepository.findAllById(publisherIds).stream().collect(Collectors.toMap(User::getId, u -> u));
         Map<Long, Order> orderMap = orderRepository.findAllByDemandIdIn(demandIds).stream()
             .collect(Collectors.toMap(Order::getDemandId, o -> o));
+        Map<Long, Long> selectedCountMap = demandResponseRepository.countSelectedByDemandIds(demandIds);
         List<DemandView> items = demandIds.stream()
             .map(demandMap::get)
             .filter(Objects::nonNull)
-            .map(demand -> apiViewMapper.toDemandView(demand, currentUser, userMap, orderMap))
+            .map(demand -> apiViewMapper.toDemandView(demand, currentUser, userMap, orderMap, selectedCountMap))
             .toList();
         return ApiResponse.success(new PageResponse<>(items, rawPage.page(), rawPage.size(), rawPage.total()));
     }

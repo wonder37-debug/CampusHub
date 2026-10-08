@@ -40,6 +40,12 @@ public interface DemandRepository {
     List<Demand> findByStatus(DemandStatus status);
 
     /**
+     * 查询已过期且仍为 PENDING 的需求（endTime < now AND status=PENDING），
+     * 将 endTime 过期条件下推到 SQL，避免查出全部 PENDING 后再在 Java 中筛选。
+     */
+    List<Demand> findExpiredPending(java.time.LocalDateTime now);
+
+    /**
      * 按查询条件分页查询需求（过滤 + 排序 + LIMIT/OFFSET 下推 SQL）。
      *
      * @param query 查询条件，为 null 时返回空列表
@@ -85,7 +91,8 @@ public interface DemandRepository {
     /**
      * 按推荐候选条件查询需求（status=PENDING + 排除自己 + keyword/category/campusZone/location/startTime 过滤下推 SQL）。
      *
-     * <p>不分页（返回全部候选），不排序（Service 层做 score 排序）；不加载跨仓储的 order 存在性（留 Service N+1，2C 修）。</p>
+     * <p>SQL 层已排除已有 Order 的需求（notInSql）并过滤 endTime 已过期但未刷新的需求；
+     * 按 createdAt DESC, id DESC 排序后 LIMIT 候选池上限，确保 LIMIT 作用于"真正有效候选"。</p>
      *
      * @param userId 推荐目标用户 ID（排除自己发的 demand），为 null 时不加 publisher_id 条件
      * @param query 查询条件，为 null 时返回空列表

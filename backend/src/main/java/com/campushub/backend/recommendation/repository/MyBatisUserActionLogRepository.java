@@ -72,6 +72,33 @@ public class MyBatisUserActionLogRepository implements UserActionLogRepository {
     }
 
     @Override
+    public List<UserActionLog> findByUserIdSince(Long userId, LocalDateTime since) {
+        if (userId == null || since == null) {
+            return new ArrayList<>();
+        }
+        List<UserActionLogEntity> entities = userActionLogMapper.selectList(
+            new LambdaQueryWrapper<UserActionLogEntity>()
+                .eq(UserActionLogEntity::getUserId, userId)
+                .ge(UserActionLogEntity::getCreatedAt, since)
+        );
+        return entities.stream().map(UserActionLogEntity::toDomain).toList();
+    }
+
+    @Override
+    public List<UserActionLog> findByUserIdAndActionTypeSince(Long userId, ActionType actionType, LocalDateTime since) {
+        if (userId == null || actionType == null || since == null) {
+            return new ArrayList<>();
+        }
+        List<UserActionLogEntity> entities = userActionLogMapper.selectList(
+            new LambdaQueryWrapper<UserActionLogEntity>()
+                .eq(UserActionLogEntity::getUserId, userId)
+                .eq(UserActionLogEntity::getActionType, actionType)
+                .ge(UserActionLogEntity::getCreatedAt, since)
+        );
+        return entities.stream().map(UserActionLogEntity::toDomain).toList();
+    }
+
+    @Override
     public boolean existsRecentView(Long userId, Long demandId, LocalDateTime since) {
         if (userId == null || demandId == null || since == null) {
             return false;

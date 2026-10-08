@@ -194,6 +194,13 @@ PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
+-- 推荐候选查询 status=PENDING + orderByDesc(created_at) 的复合索引，避免单列索引选择率低
+SET @idx_exists = (SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'ord_demand' AND index_name = 'idx_demand_status_created');
+SET @sql = IF(@idx_exists = 0, 'CREATE INDEX idx_demand_status_created ON ord_demand(status, created_at)', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
 
 
 -- ==========================================================
@@ -299,7 +306,7 @@ CREATE TABLE IF NOT EXISTS`ord_demand_response` (
 
   `updated_at` datetime DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
 
-  UNIQUE KEY `uk_response_demand_author_active` (`demand_id`, `author_id`, `active_flag`),
+  KEY `idx_response_demand_author_active` (`demand_id`, `author_id`, `active_flag`),
 
   KEY `idx_response_demand` (`demand_id`),
 
@@ -318,11 +325,10 @@ PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
--- 幂等替换唯一索引：从 (demand_id, author_id, status) 改为 (demand_id, author_id, active_flag)
--- 旧索引以 status 为列、新索引以 active_flag 为列，通过 information_schema 区分
-SET @old_idx = (SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'ord_demand_response' AND index_name = 'uk_response_demand_author_active' AND column_name = 'status');
-SET @new_idx = (SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'ord_demand_response' AND index_name = 'uk_response_demand_author_active' AND column_name = 'active_flag');
-SET @sql = IF(@old_idx > 0 AND @new_idx = 0, 'ALTER TABLE `ord_demand_response` DROP INDEX `uk_response_demand_author_active`, ADD UNIQUE KEY `uk_response_demand_author_active` (`demand_id`, `author_id`, `active_flag`)', 'SELECT 1');
+-- 幂等移除唯一约束：HELP 模式允许同一用户提交多条 active Response，唯一约束降级为普通索引
+-- Service 层对 SELECT_ONE/SELECT_MANY 在 Demand 行锁保护下校验"一人一个 active Response"
+SET @has_unique = (SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'ord_demand_response' AND index_name = 'uk_response_demand_author_active');
+SET @sql = IF(@has_unique > 0, 'ALTER TABLE `ord_demand_response` DROP INDEX `uk_response_demand_author_active`', 'SELECT 1');
 PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
@@ -473,6 +479,15 @@ CREATE  TABLE IF NOT EXISTS `rec_user_action_log` (
 
   KEY `idx_action_user_cat` (`user_id`, `category`) COMMENT '用于按分类统计用户偏好',
 
-  KEY `idx_user_action_demand_time` (`user_id`, `action_type`, `demand_id`, `created_at`) COMMENT '用于 VIEW 去重 existsRecentView'
+  KEY `idx_user_action_demand_time` (`user_id`, `action_type`, `demand_id`, `created_at`) COMMENT '用于 VIEW 去重 existsRecentView',
+
+  KEY `idx_action_user_time` (`user_id`, `created_at`) COMMENT '用于按用户的时间范围查询行为日志（推荐偏好/view penalty）'
 
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='推荐系统用户行为日志表';
+
+-- 幂等补充 idx_action_user_time 索引（老版本 rec_user_action_log 已存在但缺少该索引时添加）
+SET @idx_exists = (SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'rec_user_action_log' AND index_name = 'idx_action_user_time');
+SET @sql = IF(@idx_exists = 0, 'CREATE INDEX idx_action_user_time ON rec_user_action_log(user_id, created_at)', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;

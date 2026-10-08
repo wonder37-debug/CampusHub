@@ -89,6 +89,20 @@ public class MyBatisUserRepository implements UserRepository {
     }
 
     @Override
+    public boolean existsByNicknameIgnoreCase(String nickname, Long excludeUserId) {
+        if (nickname == null || nickname.isBlank()) {
+            return false;
+        }
+        LambdaQueryWrapper<UserEntity> wrapper = new LambdaQueryWrapper<UserEntity>()
+            .apply("LOWER(nickname) = LOWER({0})", nickname.trim());
+        if (excludeUserId != null) {
+            wrapper.ne(UserEntity::getId, excludeUserId);
+        }
+        wrapper.last("LIMIT 1");
+        return userMapper.selectCount(wrapper) > 0;
+    }
+
+    @Override
     public List<User> findAll() {
         List<UserEntity> entities = userMapper.selectList(null);
         return entities.stream().map(UserEntity::toDomain).toList();

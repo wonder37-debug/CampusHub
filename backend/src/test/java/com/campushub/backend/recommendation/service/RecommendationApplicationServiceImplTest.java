@@ -22,7 +22,6 @@ import com.campushub.backend.demand.repository.DemandRepository;
 import com.campushub.backend.demand.service.DemandApplicationService;
 import com.campushub.backend.notification.repository.NotificationRepository;
 import com.campushub.backend.order.dto.AcceptOrderCommand;
-import com.campushub.backend.order.repository.OrderRepository;
 import com.campushub.backend.order.service.OrderApplicationService;
 import com.campushub.backend.recommendation.domain.ActionType;
 import com.campushub.backend.recommendation.domain.UserActionLog;
@@ -49,9 +48,6 @@ class RecommendationApplicationServiceImplTest {
 
     @Autowired
     private DemandRepository demandRepository;
-
-    @Autowired
-    private OrderRepository orderRepository;
 
     @Autowired
     private NotificationRepository notificationRepository;
@@ -153,7 +149,6 @@ class RecommendationApplicationServiceImplTest {
     void shouldRespectRecommendationSwitchOff() {
         recommendationApplicationService = new RecommendationApplicationServiceImpl(
             demandRepository,
-            orderRepository,
             userRepository,
             userActionLogRepository,
             () -> false
@@ -186,7 +181,6 @@ class RecommendationApplicationServiceImplTest {
         // 结果严格保持 createdAt DESC，diversity 不改变顺序。
         recommendationApplicationService = new RecommendationApplicationServiceImpl(
             demandRepository,
-            orderRepository,
             userRepository,
             userActionLogRepository,
             () -> false

@@ -262,11 +262,7 @@ public class AuthApplicationServiceImpl implements AuthApplicationService {
         if (isBlank(nickname)) {
             return;
         }
-        String normalizedNickname = nickname.trim();
-        boolean exists = userRepository.findAll().stream()
-            .anyMatch(user -> !Objects.equals(user.getId(), currentUserId)
-                && normalizedNickname.equalsIgnoreCase(user.getNickname()));
-        if (exists) {
+        if (userRepository.existsByNicknameIgnoreCase(nickname.trim(), currentUserId)) {
             throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "nickname already in use");
         }
     }

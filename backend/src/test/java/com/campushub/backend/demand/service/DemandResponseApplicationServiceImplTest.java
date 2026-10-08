@@ -1,17 +1,23 @@
 package com.campushub.backend.demand.service;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.campushub.backend.BackendApplication;
+import com.campushub.backend.api.view.DemandView;
 import com.campushub.backend.auth.domain.User;
 import com.campushub.backend.auth.domain.UserRole;
 import com.campushub.backend.auth.domain.UserStatus;
 import com.campushub.backend.auth.repository.UserRepository;
 import com.campushub.backend.common.exception.BusinessException;
 import com.campushub.backend.common.exception.ErrorCode;
+import com.campushub.backend.common.security.CurrentUser;
+import com.campushub.backend.demand.domain.Demand;
+import com.campushub.backend.demand.domain.DemandResponse;
 import com.campushub.backend.demand.domain.DemandStatus;
 import com.campushub.backend.demand.domain.ResponseStatus;
 import com.campushub.backend.demand.dto.CreateDemandResponseCommand;
@@ -30,6 +36,7 @@ import com.campushub.backend.review.service.ReviewApplicationService;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -59,6 +66,8 @@ class DemandResponseApplicationServiceImplTest {
     private OrderApplicationService orderApplicationService;
     @Autowired
     private ReviewApplicationService reviewApplicationService;
+    @Autowired
+    private com.campushub.backend.api.ApiViewMapper apiViewMapper;
 
     private Long publisherId;
     private Long responder1Id;
@@ -1095,6 +1104,108 @@ class DemandResponseApplicationServiceImplTest {
                 responder2Id, demandId, new CreateDemandResponseCommand("迟到报名"))
         );
         assertEquals(ErrorCode.BUSINESS_CONFLICT, ex.getErrorCode());
+    }
+
+    // ==================== HELP 多回复 & SELECT_MANY 进度回归 ====================
+
+    @Test
+    void shouldAllowMultipleActiveResponsesForHelpMode() {
+        Long demandId = createHelpDemand(new BigDecimal("10.00"));
+
+        DemandResponseDetail first = demandResponseApplicationService.createResponse(
+            responder1Id, demandId, new CreateDemandResponseCommand("第一个回答"));
+        DemandResponseDetail second = demandResponseApplicationService.createResponse(
+            responder1Id, demandId, new CreateDemandResponseCommand("补充回答"));
+
+        assertEquals("PENDING", first.status());
+        assertEquals("PENDING", second.status());
+        assertNotEquals(first.id(), second.id(), "HELP 模式应允许同一用户提交多条 active Response");
+    }
+
+    @Test
+    void shouldStillRejectDuplicateActiveResponseForSelectMany() {
+        Long demandId = createTeamUpDemand(2);
+
+        demandResponseApplicationService.createResponse(
+            responder1Id, demandId, new CreateDemandResponseCommand("报名"));
+        BusinessException exception = assertThrows(
+            BusinessException.class,
+            () -> demandResponseApplicationService.createResponse(
+                responder1Id, demandId, new CreateDemandResponseCommand("再次报名"))
+        );
+        assertEquals(ErrorCode.BUSINESS_CONFLICT, exception.getErrorCode());
+    }
+
+    @Test
+    void shouldExposeSelectedParticipantCountForSelectMany() {
+        Long demandId = createTeamUpDemand(3);
+        Long r1 = demandResponseApplicationService.createResponse(
+            responder1Id, demandId, new CreateDemandResponseCommand("报名1")).id();
+        Long r2 = demandResponseApplicationService.createResponse(
+            responder2Id, demandId, new CreateDemandResponseCommand("报名2")).id();
+
+        demandResponseApplicationService.selectResponses(
+            publisherId, demandId, new SelectResponsesCommand(List.of(r1)));
+
+        assertEquals(1L, demandResponseRepository.countSelectedByDemandId(demandId),
+            "SELECT_MANY 进度应反映已选中人数");
+    }
+
+    // ==================== schema 验证：HELP 多 active Response（无唯一约束） ====================
+
+    @Test
+    void schemaAllowsMultipleActiveResponsesForSameDemandAuthor() {
+        // 直接在 DB 层验证：ord_demand_response 无唯一约束，HELP 场景同一 demand+author 可多条 PENDING
+        Long demandId = createHelpDemand(new BigDecimal("10.00"));
+        DemandResponse r1 = demandResponseRepository.save(new DemandResponse(
+            null, demandId, responder1Id, "第一条", ResponseStatus.PENDING,
+            LocalDateTime.now(), LocalDateTime.now()));
+        DemandResponse r2 = demandResponseRepository.save(new DemandResponse(
+            null, demandId, responder1Id, "第二条", ResponseStatus.PENDING,
+            LocalDateTime.now(), LocalDateTime.now()));
+
+        assertThat(r1.getId()).isNotNull();
+        assertThat(r2.getId()).isNotNull();
+        assertThat(r1.getId()).isNotEqualTo(r2.getId());
+    }
+
+    // ==================== DemandView.selectedParticipantCount 返回值验证 ====================
+
+    @Test
+    void shouldReturnCorrectSelectedParticipantCountInDemandView() {
+        Long demandId = createTeamUpDemand(3);
+        Long r1 = demandResponseApplicationService.createResponse(
+            responder1Id, demandId, new CreateDemandResponseCommand("报名1")).id();
+        Long r2 = demandResponseApplicationService.createResponse(
+            responder2Id, demandId, new CreateDemandResponseCommand("报名2")).id();
+        demandResponseApplicationService.selectResponses(
+            publisherId, demandId, new SelectResponsesCommand(List.of(r1)));
+
+        Demand demand = demandRepository.findById(demandId).orElseThrow();
+        DemandView view = apiViewMapper.toDemandView(demand, new CurrentUser(outsiderId, UserRole.USER));
+
+        assertEquals(1, view.selectedParticipantCount(), "DemandView.selectedParticipantCount 应反映已选中人数");
+    }
+
+    // ==================== batch selectedParticipantCount（避免列表 N+1） ====================
+
+    @Test
+    void shouldBatchCountSelectedByDemandIds() {
+        Long demand1 = createTeamUpDemand(3);
+        Long demand2 = createTeamUpDemand(2);
+        Long r1 = demandResponseApplicationService.createResponse(
+            responder1Id, demand1, new CreateDemandResponseCommand("报名1")).id();
+        Long r2 = demandResponseApplicationService.createResponse(
+            responder2Id, demand1, new CreateDemandResponseCommand("报名2")).id();
+        Long r3 = demandResponseApplicationService.createResponse(
+            responder1Id, demand2, new CreateDemandResponseCommand("报名3")).id();
+
+        demandResponseApplicationService.selectResponses(
+            publisherId, demand1, new SelectResponsesCommand(List.of(r1)));
+
+        Map<Long, Long> counts = demandResponseRepository.countSelectedByDemandIds(List.of(demand1, demand2));
+        assertEquals(1L, counts.get(demand1), "demand1 已选 1 人");
+        assertEquals(0L, counts.getOrDefault(demand2, 0L), "demand2 未选人，batch 查询应返回 0");
     }
 
     // ==================== helpers ====================

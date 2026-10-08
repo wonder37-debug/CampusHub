@@ -1,7 +1,9 @@
 package com.campushub.backend.api;
 
+import com.campushub.backend.api.view.PublicUserSummaryView;
 import com.campushub.backend.api.view.ReviewView;
 import com.campushub.backend.api.view.UserSummaryView;
+import com.campushub.backend.auth.domain.User;
 import com.campushub.backend.auth.dto.UpdateProfileCommand;
 import com.campushub.backend.auth.service.AuthApplicationService;
 import com.campushub.backend.auth.repository.UserRepository;
@@ -54,6 +56,17 @@ public class UserController {
         return ApiResponse.success(UserSummaryView.from(authApplicationService.getProfile(currentUser.userId())));
     }
 
+    @GetMapping("/{userId}")
+    public ApiResponse<PublicUserSummaryView> getPublicProfile(
+        HttpServletRequest request,
+        @PathVariable Long userId
+    ) {
+        requestUserExtractor.requireCurrentUser(request);
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "user not found"));
+        return ApiResponse.success(PublicUserSummaryView.from(user));
+    }
+
     @GetMapping("/{userId}/reviews")
     public ApiResponse<PageResponse<ReviewView>> listReviews(
         HttpServletRequest request,
@@ -62,10 +75,6 @@ public class UserController {
         @RequestParam(defaultValue = "20") int size
     ) {
         CurrentUser currentUser = requestUserExtractor.requireCurrentUser(request);
-        if (!currentUser.isAdmin() && !currentUser.userId().equals(userId)) {
-            throw new BusinessException(ErrorCode.PERMISSION_DENIED, "cannot view another user's reviews");
-        }
-
         PageResponse<ReviewResponse> reviewPage = reviewApplicationService.listUserReviews(userId, new ReviewQuery(new PageQuery(page, size)));
         return ApiResponse.success(
             new PageResponse<>(
