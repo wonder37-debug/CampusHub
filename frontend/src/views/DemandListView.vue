@@ -114,6 +114,10 @@ async function loadMore(): Promise<void> {
 }
 
 async function refreshList(): Promise<void> {
+  if (searchDebounceTimer !== undefined) {
+    window.clearTimeout(searchDebounceTimer)
+    searchDebounceTimer = undefined
+  }
   refreshing.value = true
   filters.page = 1
   try {

@@ -409,7 +409,7 @@ class ReviewApplicationServiceImplTest {
         orderApplicationService.updateStatus(
             accepterId,
             accepted.orderId(),
-            new UpdateOrderStatusCommand("COMPLETED", "完成", 2, List.of("proof1.png", "proof2.png"))
+            new UpdateOrderStatusCommand("COMPLETED", "完成", 2, List.of("/api/v1/uploads/2026/10/proof1.png", "/api/v1/uploads/2026/10/proof2.png"))
         );
         return orderApplicationService.updateStatus(
             publisherId,

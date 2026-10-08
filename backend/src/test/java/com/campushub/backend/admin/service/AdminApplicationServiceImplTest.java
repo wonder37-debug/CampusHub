@@ -270,7 +270,7 @@ class AdminApplicationServiceImplTest {
         orderApplicationService.updateStatus(
             accepterId,
             order.orderId(),
-            new UpdateOrderStatusCommand("COMPLETED", "已完成", 1, List.of("proof1.png"))
+            new UpdateOrderStatusCommand("COMPLETED", "已完成", 1, List.of("/api/v1/uploads/2026/10/proof1.png"))
         );
         orderApplicationService.updateStatus(
             publisherId,

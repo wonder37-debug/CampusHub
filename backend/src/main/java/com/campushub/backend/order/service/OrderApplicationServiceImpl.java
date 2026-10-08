@@ -42,6 +42,9 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
     private static final String REQUESTER_CONFIRMED_NOTE = "REQUESTER_CONFIRMED_COMPLETION";
     private static final String COMPLETION_FINAL_NOTE = "ORDER_COMPLETED";
     private static final int MAX_ARBITRATION_REASON_LENGTH = 500;
+    private static final int MAX_PROOF_URL_LENGTH = 512;
+    private static final java.util.regex.Pattern PROOF_URL_PATTERN =
+        java.util.regex.Pattern.compile("^/api/v1/uploads/\\d{4}/\\d{2}/[^/\\s]+");
 
     private final OrderRepository orderRepository;
     private final DemandRepository demandRepository;
@@ -198,7 +201,7 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
             return confirmCompletion(operatorId, order, demand, command);
         }
 
-        validateTransition(order, operatorId, targetStatus, command.proofImageCount());
+        validateTransition(order, operatorId, targetStatus);
         OrderStatus fromStatus = order.getStatus();
         LocalDateTime now = LocalDateTime.now();
         order.setStatus(targetStatus);
@@ -374,9 +377,29 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         if (proofImageUrls == null || proofImageUrls.isEmpty() || proofImageUrls.size() > 3) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "proofImageUrls must contain 1 to 3 images");
         }
+        for (int i = 0; i < proofImageUrls.size(); i++) {
+            String url = proofImageUrls.get(i);
+            if (url == null) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "proofImageUrls[" + i + "] must not be null");
+            }
+            String trimmed = url.trim();
+            if (trimmed.isEmpty()) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "proofImageUrls[" + i + "] must not be blank");
+            }
+            if (trimmed.length() > MAX_PROOF_URL_LENGTH) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "proofImageUrls[" + i + "] length must not exceed " + MAX_PROOF_URL_LENGTH);
+            }
+            String lower = trimmed.toLowerCase(Locale.ROOT);
+            if (lower.startsWith("http://") || lower.startsWith("https://")) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "proofImageUrls[" + i + "] must be an internal upload URL, external URLs are not allowed");
+            }
+            if (!PROOF_URL_PATTERN.matcher(trimmed).find()) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "proofImageUrls[" + i + "] must match /api/v1/uploads/YYYY/MM/filename format");
+            }
+        }
     }
 
-    private void validateTransition(Order order, Long operatorId, OrderStatus targetStatus, Integer proofImageCount) {
+    private void validateTransition(Order order, Long operatorId, OrderStatus targetStatus) {
         OrderStatus currentStatus = order.getStatus();
         if (currentStatus == OrderStatus.IN_ARBITRATION) {
             throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "order is waiting for admin arbitration");
@@ -395,14 +418,10 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
                 }
             }
             case COMPLETED -> {
+                // COMPLETED 实际由 confirmCompletion 处理（updateStatus 中提前分支），此处不会执行；
+                // 保留状态校验以防未来重构遗漏，但不再校验 proofImageCount（proofImageUrls 是唯一 source of truth）
                 if (currentStatus != OrderStatus.IN_PROGRESS) {
                     throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "only in progress orders can be completed");
-                }
-                if (!operatorId.equals(order.getAccepterId())) {
-                    throw new BusinessException(ErrorCode.PERMISSION_DENIED, "only accepter can complete the order");
-                }
-                if (proofImageCount == null || proofImageCount < 1 || proofImageCount > 3) {
-                    throw new BusinessException(ErrorCode.VALIDATION_FAILED, "proofImageCount must be between 1 and 3");
                 }
             }
             case CANCELLED -> {

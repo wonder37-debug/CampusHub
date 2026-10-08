@@ -715,8 +715,11 @@ export const useCampusHubStore = defineStore('campusHub', {
       }, this.token)
 
       const mapped = mapDemandRecord(demand)
-      await this.fetchDemands()
-      await this.fetchNotifications()
+      await Promise.all([
+        this.fetchDemands(),
+        this.fetchNotifications(),
+        this.fetchProfile()
+      ])
       return mapped
     },
 

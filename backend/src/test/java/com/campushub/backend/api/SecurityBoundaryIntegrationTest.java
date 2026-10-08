@@ -137,7 +137,7 @@ class SecurityBoundaryIntegrationTest {
         // provider starts + provider confirms completion
         updateOrder(accepter.token(), orderId, "IN_PROGRESS", "started", null)
             .andExpect(status().isOk());
-        updateOrder(accepter.token(), orderId, "COMPLETED", "done", 1)
+        updateOrder(accepter.token(), orderId, "COMPLETED", "done", java.util.List.of("/api/v1/uploads/2026/10/test.jpg"))
             .andExpect(status().isOk());
         // requester confirms completion → COMPLETED
         updateOrder(publisher.token(), orderId, "COMPLETED", "confirmed", null)
@@ -150,7 +150,7 @@ class SecurityBoundaryIntegrationTest {
             .andExpect(jsonPath("$.code").value(1005));
 
         // COMPLETED -> COMPLETED rejected (duplicate completion)
-        updateOrder(accepter.token(), orderId, "COMPLETED", "again", 1)
+        updateOrder(accepter.token(), orderId, "COMPLETED", "again", java.util.List.of("/api/v1/uploads/2026/10/test.jpg"))
             .andExpect(status().isConflict())
             .andExpect(jsonPath("$.code").value(1005));
     }
@@ -288,13 +288,13 @@ class SecurityBoundaryIntegrationTest {
     }
 
     private org.springframework.test.web.servlet.ResultActions updateOrder(
-        String token, Long orderId, String targetStatus, String note, Integer proofImageCount
+        String token, Long orderId, String targetStatus, String note, java.util.List<String> proofImageUrls
     ) throws Exception {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("targetStatus", targetStatus);
         body.put("note", note);
-        if (proofImageCount != null) {
-            body.put("proofImageCount", proofImageCount);
+        if (proofImageUrls != null) {
+            body.put("proofImageUrls", proofImageUrls);
         }
         return mockMvc.perform(put("/api/v1/orders/{orderId}", orderId)
             .header("Authorization", bearer(token))

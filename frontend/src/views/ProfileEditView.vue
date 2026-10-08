@@ -20,6 +20,7 @@ const profileForm = reactive({
   nickname: store.currentUser?.nickname ?? '',
   avatarUrl: store.currentUser?.avatarUrl ?? ''
 })
+const formDirty = ref(false)
 
 async function save(): Promise<void> {
   // run local validations
@@ -51,10 +52,13 @@ async function save(): Promise<void> {
 }
 
 watch(() => store.currentUser, (user) => {
-  if (user) {
+  if (user && !formDirty.value) {
     profileForm.nickname = user.nickname ?? ''
     profileForm.avatarUrl = user.avatarUrl ?? ''
   }
+})
+watch(profileForm, () => {
+  formDirty.value = true
 })
 
 onMounted(() => {
