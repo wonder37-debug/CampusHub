@@ -57,9 +57,6 @@ watch(() => store.currentUser, (user) => {
     profileForm.avatarUrl = user.avatarUrl ?? ''
   }
 })
-watch(profileForm, () => {
-  formDirty.value = true
-})
 
 onMounted(() => {
   void store.fetchProfile()
@@ -81,12 +78,12 @@ onMounted(() => {
       <div class="form-grid two-column">
         <div class="field" style="grid-column: 1 / -1;">
           <label for="nickname">昵称</label>
-          <input id="nickname" v-model="profileForm.nickname" @input="fieldErrors.nickname = ''" />
+          <input id="nickname" v-model="profileForm.nickname" @input="fieldErrors.nickname = ''; formDirty = true" />
           <p v-if="fieldErrors.nickname" class="input-help" style="color: var(--danger)">{{ fieldErrors.nickname }}</p>
         </div>
         <div class="field" style="grid-column: 1 / -1;">
           <label>头像</label>
-          <AvatarCropper v-model="profileForm.avatarUrl" :size="80" />
+          <AvatarCropper v-model="profileForm.avatarUrl" :size="80" @update:model-value="formDirty = true" />
         </div>
       </div>
 
