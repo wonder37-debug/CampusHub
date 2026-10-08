@@ -44,11 +44,9 @@ public class DemandExpirationScheduler {
     @Scheduled(fixedRate = 300_000)
     public void expireOverdueDemands() {
         LocalDateTime now = LocalDateTime.now();
-        List<Demand> pendingDemands = demandRepository.findByStatus(DemandStatus.PENDING);
-        for (Demand snapshot : pendingDemands) {
-            if (snapshot.getEndTime() == null || !snapshot.getEndTime().isBefore(now)) {
-                continue;
-            }
+        // 直接查询已过期且仍为 PENDING 的需求（endTime < now 下推 SQL），避免加载全部 PENDING 后再 Java 筛选
+        List<Demand> expiredDemands = demandRepository.findExpiredPending(now);
+        for (Demand snapshot : expiredDemands) {
             try {
                 transactionTemplate.execute(status -> {
                     expireOne(snapshot.getId(), now);

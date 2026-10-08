@@ -10,14 +10,19 @@ import com.campushub.backend.common.security.RequestUserExtractor;
 import com.campushub.backend.demand.domain.DemandSort;
 import com.campushub.backend.demand.dto.DemandQuery;
 import com.campushub.backend.demand.domain.Demand;
+import com.campushub.backend.auth.domain.User;
+import com.campushub.backend.auth.repository.UserRepository;
 import com.campushub.backend.demand.repository.DemandRepository;
 import com.campushub.backend.demand.repository.DemandResponseRepository;
+import com.campushub.backend.order.domain.Order;
+import com.campushub.backend.order.repository.OrderRepository;
 import com.campushub.backend.recommendation.dto.RecommendationItemResponse;
 import com.campushub.backend.recommendation.service.RecommendationApplicationService;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -31,6 +36,8 @@ public class RecommendationController {
     private final RecommendationApplicationService recommendationApplicationService;
     private final DemandRepository demandRepository;
     private final DemandResponseRepository demandResponseRepository;
+    private final UserRepository userRepository;
+    private final OrderRepository orderRepository;
     private final RequestUserExtractor requestUserExtractor;
     private final ApiViewMapper apiViewMapper;
 
@@ -38,12 +45,16 @@ public class RecommendationController {
         RecommendationApplicationService recommendationApplicationService,
         DemandRepository demandRepository,
         DemandResponseRepository demandResponseRepository,
+        UserRepository userRepository,
+        OrderRepository orderRepository,
         RequestUserExtractor requestUserExtractor,
         ApiViewMapper apiViewMapper
     ) {
         this.recommendationApplicationService = recommendationApplicationService;
         this.demandRepository = demandRepository;
         this.demandResponseRepository = demandResponseRepository;
+        this.userRepository = userRepository;
+        this.orderRepository = orderRepository;
         this.requestUserExtractor = requestUserExtractor;
         this.apiViewMapper = apiViewMapper;
     }
@@ -66,10 +77,15 @@ public class RecommendationController {
         if (rawPage.items().isEmpty()) {
             return ApiResponse.success(new PageResponse<>(List.of(), rawPage.page(), rawPage.size(), rawPage.total()));
         }
-        // batch 加载 Demand + selectedCount，避免逐项 findById 和 selectedParticipantCount N+1
+        // batch 加载 Demand + publisher + order + selectedCount，避免逐项 N+1
         List<Long> demandIds = rawPage.items().stream().map(RecommendationItemResponse::demandId).toList();
         Map<Long, Demand> demandMap = demandRepository.findAllById(demandIds).stream()
             .collect(Collectors.toMap(Demand::getId, d -> d));
+        Set<Long> publisherIds = demandMap.values().stream().map(Demand::getPublisherId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<Long, User> userMap = publisherIds.isEmpty() ? Map.of()
+            : userRepository.findAllById(publisherIds).stream().collect(Collectors.toMap(User::getId, u -> u));
+        Map<Long, Order> orderMap = orderRepository.findAllByDemandIdIn(demandIds).stream()
+            .collect(Collectors.toMap(Order::getDemandId, o -> o));
         Map<Long, Long> selectedCountMap = demandResponseRepository.countSelectedByDemandIds(demandIds);
         List<RecommendedDemandView> items = rawPage.items().stream()
             .map(item -> {
@@ -77,7 +93,7 @@ public class RecommendationController {
                 if (demand == null) {
                     return null;
                 }
-                DemandView view = apiViewMapper.toDemandView(demand, currentUser, null, null, selectedCountMap);
+                DemandView view = apiViewMapper.toDemandView(demand, currentUser, userMap, orderMap, selectedCountMap);
                 return new RecommendedDemandView(item.rank(), item.score(), item.reasonTags(), view);
             })
             .filter(Objects::nonNull)

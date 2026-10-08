@@ -40,6 +40,12 @@ public interface DemandRepository {
     List<Demand> findByStatus(DemandStatus status);
 
     /**
+     * 查询已过期且仍为 PENDING 的需求（endTime < now AND status=PENDING），
+     * 将 endTime 过期条件下推到 SQL，避免查出全部 PENDING 后再在 Java 中筛选。
+     */
+    List<Demand> findExpiredPending(java.time.LocalDateTime now);
+
+    /**
      * 按查询条件分页查询需求（过滤 + 排序 + LIMIT/OFFSET 下推 SQL）。
      *
      * @param query 查询条件，为 null 时返回空列表

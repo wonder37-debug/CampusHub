@@ -98,6 +98,20 @@ public class MyBatisDemandRepository implements DemandRepository {
     }
 
     @Override
+    public List<Demand> findExpiredPending(java.time.LocalDateTime now) {
+        if (now == null) {
+            return List.of();
+        }
+        // endTime < now 下推 SQL；SQL 中 NULL < now 为 false，自动排除无截止时间的需求
+        List<DemandEntity> entities = demandMapper.selectList(
+            new LambdaQueryWrapper<DemandEntity>()
+                .eq(DemandEntity::getStatus, DemandStatus.PENDING.name())
+                .lt(DemandEntity::getEndTime, now)
+        );
+        return entities.stream().map(DemandEntity::toDomain).toList();
+    }
+
+    @Override
     public List<Demand> findPage(DemandQuery query) {
         if (query == null) {
             return List.of();
