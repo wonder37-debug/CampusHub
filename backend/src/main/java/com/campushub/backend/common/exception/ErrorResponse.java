@@ -6,8 +6,7 @@ public record ErrorResponse(
     int code,
     String errorCode,
     String message,
-    Map<String, Object> details,
-    Map<String, Object> errors
+    Map<String, Object> details
 ) {
 
     public static ErrorResponse from(ErrorCode errorCode, String message, Map<String, Object> details) {
@@ -16,7 +15,6 @@ public record ErrorResponse(
             errorCode.getCode(),
             errorCode.name(),
             message,
-            normalizedDetails,
             normalizedDetails
         );
     }

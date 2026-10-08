@@ -82,6 +82,22 @@ function extractPageTotal(payload: any, fallback: number): number {
 
 import { translateApiError } from '@/utils/errorHandler'
 
+function clearExpiredSession(): void {
+  // token 失效：清理 localStorage 登录态并跳转登录页（携带 redirect），
+  // 避免出现“UI 显示已登录但所有 API 都 401”的脏状态。跳转后页面重载，Pinia 随之重置。
+  try {
+    localStorage.removeItem('campushub.token')
+    localStorage.removeItem('campushub.userId')
+    localStorage.removeItem('campushub.profile')
+  } catch {
+    // ignore storage errors
+  }
+  if (typeof window !== 'undefined' && window.location.pathname !== '/auth') {
+    const redirect = window.location.pathname + window.location.search
+    window.location.assign(`/auth?redirect=${encodeURIComponent(redirect)}`)
+  }
+}
+
 async function requestJson<T>(path: string, init: RequestInit = {}, token?: string): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
@@ -94,6 +110,9 @@ async function requestJson<T>(path: string, init: RequestInit = {}, token?: stri
 
   const payload = await response.json().catch(() => null)
   if (!response.ok) {
+    if (response.status === 401 && token) {
+      clearExpiredSession()
+    }
     const message = translateApiError(payload)
     const err = new Error(message) as Error & { status?: number }
     err.status = response.status
@@ -121,9 +140,7 @@ function mapUserSummary(raw: any): PublicUser {
 function mapDemandRecord(raw: any): DemandRecord {
   const publisherDisplayName = raw.publisherDisplayName ?? raw.publisherName ?? raw.creator?.nickname ?? '匿名'
   const publisher = raw.publisher ? mapUserSummary(raw.publisher) : null
-  // 兼容旧数据中的 DELEGATE 分类，统一映射为后端枚举 ERRAND
-  const rawCategory = String(raw.category ?? 'OTHER')
-  const normalizedCategory = (rawCategory === 'DELEGATE' ? 'ERRAND' : rawCategory) as DemandCategoryCode
+  const normalizedCategory = String(raw.category ?? 'OTHER') as DemandCategoryCode
   return {
     id: String(raw.id ?? raw.demandId ?? ''),
     title: String(raw.title ?? ''),
@@ -619,6 +636,9 @@ export const useCampusHubStore = defineStore('campusHub', {
       })
       const payload = await response.json().catch(() => null)
       if (!response.ok) {
+        if (response.status === 401 && this.token) {
+          clearExpiredSession()
+        }
         const message = translateApiError(payload)
         throw new Error(message)
       }
@@ -1219,18 +1239,17 @@ export const useCampusHubStore = defineStore('campusHub', {
     async fetchAdminDashboard(): Promise<void> {
       try {
         const payload = await requestJson<any>('/admin/dashboard', {}, this.token)
-        // 兼容不同后端字段命名，优先使用常见字段
         this.adminDashboard = {
-          dailyActiveUsers: Number(payload?.dailyActiveUsers ?? payload?.dau ?? payload?.daily_active_users ?? 0),
-          totalUsers: Number(payload?.totalUsers ?? payload?.usersCount ?? 0),
-          totalDemands: Number(payload?.totalDemands ?? payload?.demandsCount ?? payload?.total_demands ?? 0),
-          pendingReviewDemands: Number(payload?.pendingReviewDemands ?? payload?.pendingReview ?? 0),
-          totalOrders: Number(payload?.totalOrders ?? payload?.ordersCount ?? 0),
-          completedOrders: Number(payload?.completedOrders ?? payload?.completed_orders ?? 0),
-          categoryDistribution: Array.isArray(payload?.categoryDistribution) || Array.isArray(payload?.category_distribution)
-            ? (payload?.categoryDistribution ?? payload?.category_distribution).map((item: any) => ({
+          dailyActiveUsers: Number(payload?.dailyActiveUsers ?? 0),
+          totalUsers: Number(payload?.totalUsers ?? 0),
+          totalDemands: Number(payload?.totalDemands ?? 0),
+          pendingReviewDemands: Number(payload?.pendingReviewDemands ?? 0),
+          totalOrders: Number(payload?.totalOrders ?? 0),
+          completedOrders: Number(payload?.completedOrders ?? 0),
+          categoryDistribution: Array.isArray(payload?.categoryDistribution)
+            ? payload.categoryDistribution.map((item: any) => ({
                 category: String(item.category ?? ''),
-                total: Number(item.total ?? item.count ?? 0)
+                total: Number(item.total ?? 0)
               }))
             : []
         }
