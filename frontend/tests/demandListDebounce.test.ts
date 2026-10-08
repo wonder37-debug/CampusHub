@@ -39,7 +39,8 @@ function createMockStore() {
     currentUser: { id: '1', role: 'USER' },
     demands: [],
     fetchDemands: vi.fn().mockResolvedValue(undefined),
-    fetchProfile: vi.fn().mockResolvedValue(undefined)
+    fetchProfile: vi.fn().mockResolvedValue(undefined),
+    fetchRecommendations: vi.fn().mockResolvedValue([])
   }
 }
 

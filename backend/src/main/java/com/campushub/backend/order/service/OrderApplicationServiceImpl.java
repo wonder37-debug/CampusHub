@@ -44,7 +44,7 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
     private static final int MAX_ARBITRATION_REASON_LENGTH = 500;
     private static final int MAX_PROOF_URL_LENGTH = 512;
     private static final java.util.regex.Pattern PROOF_URL_PATTERN =
-        java.util.regex.Pattern.compile("^/api/v1/uploads/\\d{4}/\\d{2}/[^/\\s]+");
+        java.util.regex.Pattern.compile("/api/v1/uploads/\\d{4}/\\d{2}/[a-zA-Z0-9][a-zA-Z0-9._-]*");
 
     private final OrderRepository orderRepository;
     private final DemandRepository demandRepository;
@@ -393,7 +393,7 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
             if (lower.startsWith("http://") || lower.startsWith("https://")) {
                 throw new BusinessException(ErrorCode.VALIDATION_FAILED, "proofImageUrls[" + i + "] must be an internal upload URL, external URLs are not allowed");
             }
-            if (!PROOF_URL_PATTERN.matcher(trimmed).find()) {
+            if (!PROOF_URL_PATTERN.matcher(trimmed).matches()) {
                 throw new BusinessException(ErrorCode.VALIDATION_FAILED, "proofImageUrls[" + i + "] must match /api/v1/uploads/YYYY/MM/filename format");
             }
         }
