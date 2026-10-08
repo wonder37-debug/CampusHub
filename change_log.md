@@ -279,6 +279,26 @@
   - **发布需求**：表单新增"联系方式（可选）"输入框，提示填写电话/微信/QQ/邮箱，并注明接单后对方可见；草稿同步保存。
   - **需求详情**：在"地点"下方展示联系方式卡片（仅可见时渲染），接单后方可查看。
 
+## 2026-10-08 — Batch 3 基线收口（UI Freeze Preparation）
+
+本批次为进入前端 UI/UX 全面升级前的最后一次后端与工程基线收口，不新增业务功能，业务模型与 API 契约进入冻结状态。
+
+- `fix(security)` 文件上传安全加固（`FileUploadController`）：
+  - `POST /api/v1/upload/images` 强制登录鉴权（复用 `RequestUserExtractor`），游客返回 401
+  - 文件校验升级为三层：扩展名 + content-type + 实际字节魔数（jpg/png/webp），拒绝伪造扩展名与伪装内容
+  - 空文件由静默跳过改为明确报错，保证部分成功语义清晰
+  - 存储路径补 `normalize() + startsWith(uploadRoot)` 兜底，文件名始终由服务端生成 UUID，禁止信任用户文件名
+  - `GET /api/v1/uploads/{year}/{month}/{filename}` 保持匿名公开（需求图片为公开资源），注释明确语义
+- `fix(security)` 401/session 一致性：前端 `requestJson`/`uploadImages` 收到 401 且本地存在 token 时，清理 `localStorage` 登录态并跳转 `/auth?redirect=`，避免“UI 显示已登录但 API 全 401”脏状态
+- `refactor(contract)` 删除 `ErrorResponse` 的 `errors` 兼容字段（前端零调用，与 `details` 重复）
+- `refactor(frontend)` 前端请求层收口：
+  - 删除 `mapDemandRecord` 的 `DELEGATE→ERRAND` 旧分类兼容（后端枚举已无 DELEGATE）
+  - 简化 `fetchAdminDashboard` 蛇形/旧字段名 fallback，统一使用后端 camelCase 契约
+- `test(backend)` 补充攻击型测试 18 个：
+  - `FileUploadControllerTest`（13）：游客 401、空文件、超限、7 文件、错扩展名、伪扩展名、错 MIME、坏字节、路径穿越、部分成功
+  - `SecurityBoundaryIntegrationTest`（5）：guest 401、non-admin→admin 403、non-participant complete 403、completed cancel/recomplete 409、expired accept 409
+- `docs` 同步 README 文件上传安全语义与认证说明
+
 ## 补充说明
 
 - 本日志偏向阶段性变更归纳，不等同于逐条 git commit 原文。

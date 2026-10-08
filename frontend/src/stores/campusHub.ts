@@ -82,6 +82,43 @@ function extractPageTotal(payload: any, fallback: number): number {
 
 import { translateApiError } from '@/utils/errorHandler'
 
+function clearExpiredSession(triggeringToken?: string): void {
+  // token 失效：只有当触发 401 的 token 仍是本地当前 token 时，才清理登录态并跳转登录页。
+  // 避免旧请求返回的 401 把用户刚刚重新登录得到的新 token 一并清掉（竞态）。
+  let shouldResetSession = false
+  try {
+    const currentToken = localStorage.getItem('campushub.token') || ''
+    if (triggeringToken && currentToken !== triggeringToken) {
+      // 本地 token 已更新（用户已重新登录），保留新登录态，不清理不跳转
+      return
+    }
+    localStorage.removeItem('campushub.token')
+    localStorage.removeItem('campushub.userId')
+    localStorage.removeItem('campushub.profile')
+    shouldResetSession = true
+  } catch {
+    // ignore storage errors
+  }
+
+  // 同步清理 Pinia 内存登录态，避免 localStorage 已清但 store 仍保留旧 session
+  // （尤其当前已在 /auth 页面、不会触发 location.assign 重载时，否则会出现脏状态）
+  if (shouldResetSession) {
+    try {
+      const store = useCampusHubStore()
+      store.token = ''
+      store.currentUserId = ''
+      store.currentProfile = null
+    } catch {
+      // pinia 未激活（如早期初始化），localStorage 已清，后续跳转重载会重置 store
+    }
+  }
+
+  if (typeof window !== 'undefined' && window.location.pathname !== '/auth') {
+    const redirect = window.location.pathname + window.location.search
+    window.location.assign(`/auth?redirect=${encodeURIComponent(redirect)}`)
+  }
+}
+
 async function requestJson<T>(path: string, init: RequestInit = {}, token?: string): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
@@ -94,6 +131,9 @@ async function requestJson<T>(path: string, init: RequestInit = {}, token?: stri
 
   const payload = await response.json().catch(() => null)
   if (!response.ok) {
+    if (response.status === 401 && token) {
+      clearExpiredSession(token)
+    }
     const message = translateApiError(payload)
     const err = new Error(message) as Error & { status?: number }
     err.status = response.status
@@ -121,9 +161,7 @@ function mapUserSummary(raw: any): PublicUser {
 function mapDemandRecord(raw: any): DemandRecord {
   const publisherDisplayName = raw.publisherDisplayName ?? raw.publisherName ?? raw.creator?.nickname ?? '匿名'
   const publisher = raw.publisher ? mapUserSummary(raw.publisher) : null
-  // 兼容旧数据中的 DELEGATE 分类，统一映射为后端枚举 ERRAND
-  const rawCategory = String(raw.category ?? 'OTHER')
-  const normalizedCategory = (rawCategory === 'DELEGATE' ? 'ERRAND' : rawCategory) as DemandCategoryCode
+  const normalizedCategory = String(raw.category ?? 'OTHER') as DemandCategoryCode
   return {
     id: String(raw.id ?? raw.demandId ?? ''),
     title: String(raw.title ?? ''),
@@ -608,17 +646,23 @@ export const useCampusHubStore = defineStore('campusHub', {
     },
 
     async uploadImages(files: File[]): Promise<string[]> {
+      // 捕获发起请求时的 token，避免 await 期间用户重新登录后 this.token 变为新 token，
+      // 导致旧请求的 401 误清新登录态
+      const triggeringToken = this.token
       const formData = new FormData()
       for (const file of files) {
         formData.append('files', file)
       }
       const response = await fetch(`${API_BASE}/upload/images`, {
         method: 'POST',
-        headers: this.token ? { Authorization: `Bearer ${this.token}` } : {},
+        headers: triggeringToken ? { Authorization: `Bearer ${triggeringToken}` } : {},
         body: formData
       })
       const payload = await response.json().catch(() => null)
       if (!response.ok) {
+        if (response.status === 401 && triggeringToken) {
+          clearExpiredSession(triggeringToken)
+        }
         const message = translateApiError(payload)
         throw new Error(message)
       }
@@ -1219,18 +1263,17 @@ export const useCampusHubStore = defineStore('campusHub', {
     async fetchAdminDashboard(): Promise<void> {
       try {
         const payload = await requestJson<any>('/admin/dashboard', {}, this.token)
-        // 兼容不同后端字段命名，优先使用常见字段
         this.adminDashboard = {
-          dailyActiveUsers: Number(payload?.dailyActiveUsers ?? payload?.dau ?? payload?.daily_active_users ?? 0),
-          totalUsers: Number(payload?.totalUsers ?? payload?.usersCount ?? 0),
-          totalDemands: Number(payload?.totalDemands ?? payload?.demandsCount ?? payload?.total_demands ?? 0),
-          pendingReviewDemands: Number(payload?.pendingReviewDemands ?? payload?.pendingReview ?? 0),
-          totalOrders: Number(payload?.totalOrders ?? payload?.ordersCount ?? 0),
-          completedOrders: Number(payload?.completedOrders ?? payload?.completed_orders ?? 0),
-          categoryDistribution: Array.isArray(payload?.categoryDistribution) || Array.isArray(payload?.category_distribution)
-            ? (payload?.categoryDistribution ?? payload?.category_distribution).map((item: any) => ({
+          dailyActiveUsers: Number(payload?.dailyActiveUsers ?? 0),
+          totalUsers: Number(payload?.totalUsers ?? 0),
+          totalDemands: Number(payload?.totalDemands ?? 0),
+          pendingReviewDemands: Number(payload?.pendingReviewDemands ?? 0),
+          totalOrders: Number(payload?.totalOrders ?? 0),
+          completedOrders: Number(payload?.completedOrders ?? 0),
+          categoryDistribution: Array.isArray(payload?.categoryDistribution)
+            ? payload.categoryDistribution.map((item: any) => ({
                 category: String(item.category ?? ''),
-                total: Number(item.total ?? item.count ?? 0)
+                total: Number(item.total ?? 0)
               }))
             : []
         }
