@@ -174,6 +174,24 @@ class SecurityBoundaryIntegrationTest {
             .andExpect(jsonPath("$.code").value(1005));
     }
 
+    @Test
+    void nonOwnerCannotUpdateOthersDemand() throws Exception {
+        // IDOR 回归：用户 B 尝试修改用户 A 的 demand → 403（PERMISSION_DENIED）
+        TestUser owner = registerAndLogin("idor-owner");
+        TestUser intruder = registerAndLogin("idor-intruder");
+        String adminToken = login("secadmin", "Admin1234");
+
+        Long demandId = publishDemand(owner.token(), "IDOR target");
+        approveDemand(adminToken, demandId);
+
+        mockMvc.perform(put("/api/v1/demands/{demandId}", demandId)
+                .header("Authorization", bearer(intruder.token()))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json(Map.of("title", "hijacked"))))
+            .andExpect(status().isForbidden())
+            .andExpect(jsonPath("$.code").value(1004));
+    }
+
     // ---- helpers ----
 
     private record TestUser(String studentId, String token) {

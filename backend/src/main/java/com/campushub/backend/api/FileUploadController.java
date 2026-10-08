@@ -31,7 +31,7 @@ import java.util.*;
  * <ul>
  *   <li>{@code POST /api/v1/upload/images} —— 仅已登录（USER/ADMIN）用户可调用，游客返回 401。
  *       鉴权复用 {@link RequestUserExtractor}，不引入新认证体系。</li>
- *   <li>文件校验三层：扩展名 + content-type + 实际字节魔数，避免仅凭扩展名信任用户输入。</li>
+ *   <li>文件校验三层：扩展名 + content-type + 文件头魔数签名（非完整图片解码），避免仅凭扩展名信任用户输入。</li>
  *   <li>存储文件名由服务端生成（UUID），禁止使用用户原始文件名作为存储路径。</li>
  *   <li>{@code GET /api/v1/uploads/{year}/{month}/{filename}} —— 公开匿名访问。
  *       需求图片本身设计为公开资源（列表/详情展示），无需鉴权；路径穿越由
@@ -146,8 +146,10 @@ public class FileUploadController {
                     errors.add((originalFilename == null ? "文件" : originalFilename) + " 存储路径非法");
                     continue;
                 }
-                // 流式写入，避免全量驻留内存
-                Files.copy(file.getInputStream(), targetPath, StandardCopyOption.REPLACE_EXISTING);
+                // 流式写入，try-with-resources 确保 InputStream 关闭，避免异常/高并发下资源泄漏
+                try (var in = file.getInputStream()) {
+                    Files.copy(in, targetPath, StandardCopyOption.REPLACE_EXISTING);
+                }
 
                 // Build accessible URL: /api/v1/uploads/YYYY/MM/filename
                 String datePath = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy/MM"));
@@ -235,8 +237,10 @@ public class FileUploadController {
     }
 
     /**
-     * 基于魔数校验图片真实内容，避免仅凭扩展名信任用户文件名。
-     * 支持 jpg/jpeg、png、webp（webp 需校验 RIFF + WEBP 标识）。
+     * 文件头魔数签名校验（content-aware），避免仅凭扩展名信任用户文件名。
+     * 注意：这是文件头签名校验，不是完整图片解码；能拦截伪造扩展名与伪装内容，
+     * 但不保证图片完整可正常渲染。jpg/jpeg 校验 SOI(FF D8 FF)，png 校验 8 字节签名，
+     * webp 校验 RIFF + WEBP 标识。
      */
     private boolean isValidImageContent(byte[] content, String extension) {
         if (content == null || content.length < 12) {

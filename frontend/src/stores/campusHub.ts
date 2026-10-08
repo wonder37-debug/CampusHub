@@ -82,10 +82,15 @@ function extractPageTotal(payload: any, fallback: number): number {
 
 import { translateApiError } from '@/utils/errorHandler'
 
-function clearExpiredSession(): void {
-  // token 失效：清理 localStorage 登录态并跳转登录页（携带 redirect），
-  // 避免出现“UI 显示已登录但所有 API 都 401”的脏状态。跳转后页面重载，Pinia 随之重置。
+function clearExpiredSession(triggeringToken?: string): void {
+  // token 失效：只有当触发 401 的 token 仍是本地当前 token 时，才清理登录态并跳转登录页。
+  // 避免旧请求返回的 401 把用户刚刚重新登录得到的新 token 一并清掉（竞态）。
   try {
+    const currentToken = localStorage.getItem('campushub.token') || ''
+    if (triggeringToken && currentToken !== triggeringToken) {
+      // 本地 token 已更新（用户已重新登录），保留新登录态，不清理不跳转
+      return
+    }
     localStorage.removeItem('campushub.token')
     localStorage.removeItem('campushub.userId')
     localStorage.removeItem('campushub.profile')
@@ -111,7 +116,7 @@ async function requestJson<T>(path: string, init: RequestInit = {}, token?: stri
   const payload = await response.json().catch(() => null)
   if (!response.ok) {
     if (response.status === 401 && token) {
-      clearExpiredSession()
+      clearExpiredSession(token)
     }
     const message = translateApiError(payload)
     const err = new Error(message) as Error & { status?: number }
@@ -625,19 +630,22 @@ export const useCampusHubStore = defineStore('campusHub', {
     },
 
     async uploadImages(files: File[]): Promise<string[]> {
+      // 捕获发起请求时的 token，避免 await 期间用户重新登录后 this.token 变为新 token，
+      // 导致旧请求的 401 误清新登录态
+      const triggeringToken = this.token
       const formData = new FormData()
       for (const file of files) {
         formData.append('files', file)
       }
       const response = await fetch(`${API_BASE}/upload/images`, {
         method: 'POST',
-        headers: this.token ? { Authorization: `Bearer ${this.token}` } : {},
+        headers: triggeringToken ? { Authorization: `Bearer ${triggeringToken}` } : {},
         body: formData
       })
       const payload = await response.json().catch(() => null)
       if (!response.ok) {
-        if (response.status === 401 && this.token) {
-          clearExpiredSession()
+        if (response.status === 401 && triggeringToken) {
+          clearExpiredSession(triggeringToken)
         }
         const message = translateApiError(payload)
         throw new Error(message)
