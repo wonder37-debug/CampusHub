@@ -210,4 +210,119 @@ describe('401 session expiry handling', () => {
     expect(store.currentProfile?.id).toBe('user-a')
     expect(localStorage.getItem('campushub.token')).toBe('token-a')
   })
+
+  it('Pinia已切换新会话但localStorage未更新时旧请求401不清除新会话（可控延迟）', async () => {
+    seedSession('token-a', 'user-a')
+    const store = useCampusHubStore()
+    store.token = 'token-a'
+    store.currentUserId = 'user-a'
+    store.currentProfile = { id: 'user-a', nickname: '用户A' } as any
+
+    let resolveOldRequest!: (value: any) => void
+    const oldRequestPromise = new Promise<any>((resolve) => { resolveOldRequest = resolve })
+    global.fetch = vi.fn().mockReturnValue(oldRequestPromise) as unknown as typeof global.fetch
+
+    // A 发出请求（requestToken = 'token-a'）
+    const fetchProfilePromise = store.fetchProfile()
+
+    // Pinia 切换到 B，但 localStorage 保持旧值（模拟内存已切换但持久化未同步）
+    store.token = 'token-b'
+    store.currentUserId = 'user-b'
+    store.currentProfile = { id: 'user-b', nickname: '用户B' } as any
+    // localStorage 不更新 — 仍然是 'token-a'
+
+    // A 的请求返回 401
+    resolveOldRequest({
+      ok: false,
+      status: 401,
+      json: async () => ({ code: 1001, errorCode: 'AUTH_FAILED', message: 'token has expired' })
+    })
+
+    await fetchProfilePromise
+
+    // Pinia token/userId/profile 保留为新会话（B），未被旧请求的 401 清除
+    expect(store.token).toBe('token-b')
+    expect(store.currentUserId).toBe('user-b')
+    expect(store.currentProfile?.id).toBe('user-b')
+    expect(store.currentProfile?.nickname).toBe('用户B')
+    // localStorage 也保留（未被清除）
+    expect(localStorage.getItem('campushub.token')).toBe('token-a')
+    expect(localStorage.getItem('campushub.userId')).toBe('user-a')
+    // 不跳转
+    expect(assignMock).not.toHaveBeenCalled()
+  })
+
+  it('A发出请求后会话切换到B(localStorage+Pinia同步)再让A返回401不清除B（可控延迟）', async () => {
+    seedSession('token-a', 'user-a')
+    const store = useCampusHubStore()
+    store.token = 'token-a'
+    store.currentUserId = 'user-a'
+    store.currentProfile = { id: 'user-a', nickname: '用户A' } as any
+
+    let resolveOldRequest!: (value: any) => void
+    const oldRequestPromise = new Promise<any>((resolve) => { resolveOldRequest = resolve })
+    global.fetch = vi.fn().mockReturnValue(oldRequestPromise) as unknown as typeof global.fetch
+
+    // A 发出请求（requestToken = 'token-a'）
+    const fetchProfilePromise = store.fetchProfile()
+
+    // 会话完整切换到 B：Pinia + localStorage 同步更新
+    store.token = 'token-b'
+    store.currentUserId = 'user-b'
+    store.currentProfile = { id: 'user-b', nickname: '用户B' } as any
+    seedSession('token-b', 'user-b')
+
+    // A 的请求返回 401
+    resolveOldRequest({
+      ok: false,
+      status: 401,
+      json: async () => ({ code: 1001, errorCode: 'AUTH_FAILED', message: 'token has expired' })
+    })
+
+    await fetchProfilePromise
+
+    // B 的 token/userId/profile 保留，未被 A 的 401 清除
+    expect(store.token).toBe('token-b')
+    expect(store.currentUserId).toBe('user-b')
+    expect(store.currentProfile?.id).toBe('user-b')
+    expect(localStorage.getItem('campushub.token')).toBe('token-b')
+    expect(localStorage.getItem('campushub.userId')).toBe('user-b')
+    expect(assignMock).not.toHaveBeenCalled()
+  })
+
+  it('fetchNotifications旧请求401在Pinia已切换新会话时不清除B（可控延迟）', async () => {
+    seedSession('token-a', 'user-a')
+    const store = useCampusHubStore()
+    store.token = 'token-a'
+    store.currentUserId = 'user-a'
+    store.currentProfile = { id: 'user-a', nickname: '用户A' } as any
+
+    let resolveOldRequest!: (value: any) => void
+    const oldRequestPromise = new Promise<any>((resolve) => { resolveOldRequest = resolve })
+    global.fetch = vi.fn().mockReturnValue(oldRequestPromise) as unknown as typeof global.fetch
+
+    // A 发出 fetchNotifications 请求
+    const notificationsPromise = store.fetchNotifications()
+
+    // Pinia 切换到 B，localStorage 保持旧值
+    store.token = 'token-b'
+    store.currentUserId = 'user-b'
+    store.currentProfile = { id: 'user-b', nickname: '用户B' } as any
+
+    // A 的请求返回 401
+    resolveOldRequest({
+      ok: false,
+      status: 401,
+      json: async () => ({ code: 1001, errorCode: 'AUTH_FAILED', message: 'token has expired' })
+    })
+
+    await notificationsPromise
+
+    // B 的 session 保留
+    expect(store.token).toBe('token-b')
+    expect(store.currentUserId).toBe('user-b')
+    expect(store.currentProfile?.id).toBe('user-b')
+    expect(localStorage.getItem('campushub.token')).toBe('token-a')
+    expect(assignMock).not.toHaveBeenCalled()
+  })
 })

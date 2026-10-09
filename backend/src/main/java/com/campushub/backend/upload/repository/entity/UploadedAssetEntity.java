@@ -1,6 +1,7 @@
 package com.campushub.backend.upload.repository.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import java.time.LocalDateTime;
@@ -14,15 +15,28 @@ public class UploadedAssetEntity {
     private String filename;
     private String urlPath;
     private Long uploaderId;
+
+    @TableField("is_private")
+    private Boolean isPrivate;
+
+    @TableField("bound_order_id")
+    private Long boundOrderId;
+
     private LocalDateTime uploadedAt;
 
     public UploadedAssetEntity() {
     }
 
     public UploadedAssetEntity(String filename, String urlPath, Long uploaderId) {
+        this(filename, urlPath, uploaderId, false, null);
+    }
+
+    public UploadedAssetEntity(String filename, String urlPath, Long uploaderId, boolean isPrivate, Long boundOrderId) {
         this.filename = filename;
         this.urlPath = urlPath;
         this.uploaderId = uploaderId;
+        this.isPrivate = isPrivate;
+        this.boundOrderId = boundOrderId;
         this.uploadedAt = LocalDateTime.now();
     }
 
@@ -56,6 +70,22 @@ public class UploadedAssetEntity {
 
     public void setUploaderId(Long uploaderId) {
         this.uploaderId = uploaderId;
+    }
+
+    public Boolean getIsPrivate() {
+        return isPrivate;
+    }
+
+    public void setIsPrivate(Boolean isPrivate) {
+        this.isPrivate = isPrivate;
+    }
+
+    public Long getBoundOrderId() {
+        return boundOrderId;
+    }
+
+    public void setBoundOrderId(Long boundOrderId) {
+        this.boundOrderId = boundOrderId;
     }
 
     public LocalDateTime getUploadedAt() {

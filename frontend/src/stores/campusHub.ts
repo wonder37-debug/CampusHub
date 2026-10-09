@@ -83,13 +83,26 @@ function extractPageTotal(payload: any, fallback: number): number {
 import { translateApiError } from '@/utils/errorHandler'
 
 function clearExpiredSession(triggeringToken?: string): void {
-  // token 失效：只有当触发 401 的 token 仍是本地当前 token 时，才清理登录态并跳转登录页。
+  // token 失效：只有当触发 401 的 token 仍是当前会话 token 时，才清理登录态并跳转登录页。
   // 避免旧请求返回的 401 把用户刚刚重新登录得到的新 token 一并清掉（竞态）。
+  // 同时检查 localStorage 和 Pinia 内存中的 token，防止内存已切换但持久化未同步时误清新会话。
   let shouldResetSession = false
   try {
     const currentToken = localStorage.getItem('campushub.token') || ''
     if (triggeringToken && currentToken !== triggeringToken) {
-      // 本地 token 已更新（用户已重新登录），保留新登录态，不清理不跳转
+      // localStorage token 已更新（用户已重新登录），保留新登录态，不清理不跳转
+      return
+    }
+    // 检查 Pinia 内存 token 是否已切换到新会话
+    let piniaToken = ''
+    try {
+      const store = useCampusHubStore()
+      piniaToken = store.token
+    } catch {
+      // pinia 未激活（如早期初始化），跳过 Pinia token 检查
+    }
+    if (triggeringToken && piniaToken && piniaToken !== triggeringToken) {
+      // Pinia 内存已切换到新会话，保留新登录态，不清理不跳转
       return
     }
     localStorage.removeItem('campushub.token')
@@ -661,7 +674,7 @@ export const useCampusHubStore = defineStore('campusHub', {
       await this.fetchDemands()
     },
 
-    async uploadImages(files: File[]): Promise<string[]> {
+    async uploadImages(files: File[], purpose: 'demand' | 'proof' = 'demand'): Promise<string[]> {
       // 捕获发起请求时的 token，避免 await 期间用户重新登录后 this.token 变为新 token，
       // 导致旧请求的 401 误清新登录态
       const triggeringToken = this.token
@@ -669,6 +682,7 @@ export const useCampusHubStore = defineStore('campusHub', {
       for (const file of files) {
         formData.append('files', file)
       }
+      formData.append('purpose', purpose)
       const response = await fetch(`${API_BASE}/upload/images`, {
         method: 'POST',
         headers: triggeringToken ? { Authorization: `Bearer ${triggeringToken}` } : {},
@@ -1348,6 +1362,12 @@ export const useCampusHubStore = defineStore('campusHub', {
         }
         throw err
       }
+    },
+
+    getProofImageUrl(url: string): string {
+      if (!url || !this.token) return url
+      const separator = url.includes('?') ? '&' : '?'
+      return `${url}${separator}token=${encodeURIComponent(this.token)}`
     }
   }
 })

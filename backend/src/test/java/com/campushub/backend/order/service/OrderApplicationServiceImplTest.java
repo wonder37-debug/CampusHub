@@ -103,7 +103,7 @@ class OrderApplicationServiceImplTest {
         for (String fn : java.util.List.of("proof1.png", "proof2.png", "proof-a.png", "proof-b.png",
                 "p1.png", "p2.png", "p3.png", "single.png", "a.png")) {
             uploadedAssetRepository.insert(
-                new com.campushub.backend.upload.repository.entity.UploadedAssetEntity(fn, "/api/v1/uploads/2026/10/" + fn, accepterId));
+                new com.campushub.backend.upload.repository.entity.UploadedAssetEntity(fn, "/api/v1/uploads/2026/10/" + fn, accepterId, true, null));
         }
     }
 
@@ -692,7 +692,7 @@ class OrderApplicationServiceImplTest {
             new UpdateOrderStatusCommand("IN_PROGRESS", "开始处理", null));
 
         uploadedAssetRepository.insert(
-            new com.campushub.backend.upload.repository.entity.UploadedAssetEntity("other-user-asset.png", "/api/v1/uploads/2026/10/other-user-asset.png", publisherId));
+            new com.campushub.backend.upload.repository.entity.UploadedAssetEntity("other-user-asset.png", "/api/v1/uploads/2026/10/other-user-asset.png", publisherId, true, null));
 
         BusinessException exception = assertThrows(
             BusinessException.class,

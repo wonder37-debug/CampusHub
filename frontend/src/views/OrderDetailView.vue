@@ -30,6 +30,11 @@ const proofImages = ref<string[]>([])
 // 关键操作（开始执行/提交完成/取消/评价/仲裁）防重复点击 loading
 const submitting = ref(false)
 
+const proofImageUrlsWithToken = computed(() => {
+  if (!order.value?.proofImageUrls) return []
+  return order.value.proofImageUrls.map(url => store.getProofImageUrl(url))
+})
+
 // Image viewer
 const showImageViewer = ref(false)
 const viewerInitialIndex = ref(0)
@@ -452,7 +457,7 @@ onMounted(() => {
       <div v-if="order.status === 'IN_PROGRESS' && isProvider && !currentUserConfirmedCompletion" class="list-card" style="margin-top: 12px;">
         <p class="eyebrow">完成凭证</p>
         <p class="meta">请上传 1-3 张完成凭证图片，发布者确认完成时可查看。</p>
-        <ImageUploader v-model="proofImages" :max-count="3" />
+        <ImageUploader v-model="proofImages" :max-count="3" purpose="proof" />
       </div>
 
       <!-- 完成凭证展示（已提交凭证后供发布者/管理员查看） -->
@@ -460,7 +465,7 @@ onMounted(() => {
         <p class="eyebrow">完成凭证 ({{ order.proofImageUrls.length }})</p>
         <div class="image-grid">
           <a
-            v-for="(url, pIdx) in order.proofImageUrls"
+            v-for="(url, pIdx) in proofImageUrlsWithToken"
             :key="url"
             :href="url"
             target="_blank"

@@ -270,7 +270,7 @@ class AdminApplicationServiceImplTest {
             order.orderId(),
             new UpdateOrderStatusCommand("IN_PROGRESS", "开始处理", null)
         );
-        uploadedAssetRepository.insert(new com.campushub.backend.upload.repository.entity.UploadedAssetEntity("proof1.png", "/api/v1/uploads/2026/10/proof1.png", accepterId));
+        uploadedAssetRepository.insert(new com.campushub.backend.upload.repository.entity.UploadedAssetEntity("proof1.png", "/api/v1/uploads/2026/10/proof1.png", accepterId, true, null));
         orderApplicationService.updateStatus(
             accepterId,
             order.orderId(),

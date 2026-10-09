@@ -353,6 +353,7 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
             order.addHistory(OrderStatus.IN_PROGRESS, OrderStatus.IN_PROGRESS, operatorId, pendingNote, now);
             order.setUpdatedAt(now);
             orderRepository.save(order);
+            bindProofImagesAsPrivate(order.getProofImageUrls(), order.getId());
             notificationApplicationService.notifyOrderCompletionPending(counterpartId, order.getId());
             return OrderDetailResponse.from(order, DemandDetailResponse.from(demand));
         }
@@ -371,6 +372,7 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         demand.setUpdatedAt(now);
         orderRepository.save(order);
         demandRepository.save(demand);
+        bindProofImagesAsPrivate(order.getProofImageUrls(), order.getId());
         transferReward(demand, order);
 
         notificationApplicationService.notifyOrderStatusChanged(order.getPublisherId(), order.getId(), OrderStatus.COMPLETED, true);
@@ -404,6 +406,9 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
             UploadedAssetEntity asset = uploadedAssetRepository.findByUrlPath(trimmed);
             if (asset == null) {
                 throw new BusinessException(ErrorCode.VALIDATION_FAILED, "proofImageUrls[" + i + "] is not from a valid upload");
+            }
+            if (!Boolean.TRUE.equals(asset.getIsPrivate())) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "proofImageUrls[" + i + "] must be a private upload (purpose=proof)");
             }
             if (!asset.getUploaderId().equals(accepterId)) {
                 throw new BusinessException(ErrorCode.VALIDATION_FAILED, "proofImageUrls[" + i + "] does not belong to the current user");
@@ -555,5 +560,21 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
 
     private boolean isDemandExpired(Demand demand, LocalDateTime now) {
         return demand.getEndTime() != null && demand.getEndTime().isBefore(now);
+    }
+
+    private void bindProofImagesAsPrivate(List<String> proofImageUrls, Long orderId) {
+        if (proofImageUrls == null || proofImageUrls.isEmpty() || orderId == null) {
+            return;
+        }
+        for (String url : proofImageUrls) {
+            if (url == null || url.isBlank()) {
+                continue;
+            }
+            try {
+                uploadedAssetRepository.markAsPrivateAndBindOrder(url.trim(), orderId);
+            } catch (RuntimeException ignored) {
+                // 绑定失败不阻断订单主流程，但资产记录可能仍为公开状态
+            }
+        }
     }
 }

@@ -176,8 +176,8 @@ class FrontendIntegrationFlowTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.status").value("IN_PROGRESS"));
 
-        uploadedAssetRepository.insert(new com.campushub.backend.upload.repository.entity.UploadedAssetEntity("proof1.png", "/api/v1/uploads/2026/10/proof1.png", accepter.userId()));
-        uploadedAssetRepository.insert(new com.campushub.backend.upload.repository.entity.UploadedAssetEntity("proof2.png", "/api/v1/uploads/2026/10/proof2.png", accepter.userId()));
+        uploadedAssetRepository.insert(new com.campushub.backend.upload.repository.entity.UploadedAssetEntity("proof1.png", "/api/v1/uploads/2026/10/proof1.png", accepter.userId(), true, null));
+        uploadedAssetRepository.insert(new com.campushub.backend.upload.repository.entity.UploadedAssetEntity("proof2.png", "/api/v1/uploads/2026/10/proof2.png", accepter.userId(), true, null));
         updateOrder(accepter.token(), orderId, "COMPLETED", "delivered", List.of("/api/v1/uploads/2026/10/proof1.png", "/api/v1/uploads/2026/10/proof2.png"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.status").value("IN_PROGRESS"))
