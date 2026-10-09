@@ -1,5 +1,9 @@
 package com.campushub.backend.api;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -27,6 +31,7 @@ import org.junit.jupiter.api.Timeout;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.test.annotation.DirtiesContext;
@@ -87,6 +92,9 @@ class FileUploadControllerTest {
 
     @Autowired
     private UserRepository userRepository;
+
+    @MockBean
+    private com.campushub.backend.upload.repository.UploadedAssetRepository uploadedAssetRepository;
 
     @BeforeEach
     void seedUsers() {
@@ -284,6 +292,40 @@ class FileUploadControllerTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.uploaded").value(1))
             .andExpect(jsonPath("$.data.failed").value(1));
+    }
+
+    @Test
+    void uploadAssetInsertFailureRemovesUrlFromResult() throws Exception {
+        String token = login("upload-user", "Password123");
+        when(uploadedAssetRepository.insert(any(com.campushub.backend.upload.repository.entity.UploadedAssetEntity.class))).thenThrow(new RuntimeException("DB insert failed"));
+
+        mockMvc.perform(multipart("/api/v1/upload/images")
+                .file(pngFile("pic.png"))
+                .header("Authorization", bearer(token)))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value(1002));
+
+        reset(uploadedAssetRepository);
+    }
+
+    @Test
+    void partialSuccessWhenInsertFailsForSecondFile() throws Exception {
+        String token = login("upload-user", "Password123");
+        when(uploadedAssetRepository.insert(any(com.campushub.backend.upload.repository.entity.UploadedAssetEntity.class))).thenReturn(1).thenThrow(new RuntimeException("DB insert failed"));
+
+        MvcResult result = mockMvc.perform(multipart("/api/v1/upload/images")
+                .file(pngFile("pic1.png"))
+                .file(pngFile("pic2.png"))
+                .header("Authorization", bearer(token)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.uploaded").value(1))
+            .andExpect(jsonPath("$.data.failed").value(1))
+            .andReturn();
+
+        JsonNode data = objectMapper.readTree(result.getResponse().getContentAsString()).get("data");
+        org.junit.jupiter.api.Assertions.assertEquals(1, data.get("urls").size());
+
+        reset(uploadedAssetRepository);
     }
 
     private MockMultipartFile pngFile(String name) {

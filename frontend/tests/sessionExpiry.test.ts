@@ -180,4 +180,34 @@ describe('401 session expiry handling', () => {
     expect(store.currentProfile).not.toBeNull()
     expect(assignMock).not.toHaveBeenCalled()
   })
+
+  it('内存 token 与 localStorage token 暂时不一致时旧请求不写入', async () => {
+    seedSession('token-a', 'user-a')
+    const store = useCampusHubStore()
+    store.token = 'token-a'
+    store.currentUserId = 'user-a'
+    store.currentProfile = { id: 'user-a', nickname: '用户A' } as any
+
+    let resolveOldRequest!: (value: any) => void
+    const oldRequestPromise = new Promise<any>((resolve) => { resolveOldRequest = resolve })
+    global.fetch = vi.fn().mockReturnValue(oldRequestPromise) as unknown as typeof global.fetch
+
+    const fetchProfilePromise = store.fetchProfile()
+
+    // 模拟内存 token 已更新但 localStorage 未更新（另一个标签页登录的竞态边界）
+    store.token = 'token-b'
+
+    resolveOldRequest({
+      ok: true,
+      status: 200,
+      json: async () => ({ code: 0, data: { id: 'user-a', studentId: 'A', nickname: '用户A', balance: 100, frozenBalance: 0, role: 'USER', status: 'ACTIVE', creditScore: 100 } })
+    })
+
+    await fetchProfilePromise
+
+    // requestToken='token-a', this.token='token-b' → 不匹配 → 不写入
+    expect(store.currentUserId).toBe('user-a')
+    expect(store.currentProfile?.id).toBe('user-a')
+    expect(localStorage.getItem('campushub.token')).toBe('token-a')
+  })
 })

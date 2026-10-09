@@ -163,12 +163,17 @@ public class FileUploadController {
                 // Build accessible URL: /api/v1/uploads/YYYY/MM/filename（与存储路径用同一个 today，避免日期切换不一致）
                 String datePath = today.format(DateTimeFormatter.ofPattern("yyyy/MM"));
                 String urlPath = "/api/v1/uploads/" + datePath + "/" + storedFilename;
-                urls.add(urlPath);
                 try {
                     uploadedAssetRepository.insert(new UploadedAssetEntity(storedFilename, urlPath, currentUser.userId()));
+                    // 只有 insert 成功后才将 URL 加入返回列表，确保失败时 URL 不残留
+                    urls.add(urlPath);
                 } catch (RuntimeException e) {
                     // 上传记录保存失败时清理已写入的文件，避免产生无记录的孤立资源
-                    Files.deleteIfExists(targetPath);
+                    try {
+                        Files.deleteIfExists(targetPath);
+                    } catch (IOException deleteEx) {
+                        // 文件清理失败不影响错误 URL 的返回（URL 未加入 urls）
+                    }
                     errors.add((originalFilename == null ? "文件" : originalFilename) + " 上传记录保存失败");
                     continue;
                 }
