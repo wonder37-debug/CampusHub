@@ -94,4 +94,17 @@ describe('401 session expiry handling', () => {
     expect(store.currentProfile).not.toBeNull()
     expect(assignMock).not.toHaveBeenCalled()
   })
+
+  it('fetchProfile keeps new session when stale token returns 401', async () => {
+    seedSession('new-token')
+    const store = useCampusHubStore()
+    store.token = 'old-token'
+
+    await store.fetchProfile()
+
+    expect(localStorage.getItem('campushub.token')).toBe('new-token')
+    expect(localStorage.getItem('campushub.userId')).toBe('1')
+    expect(localStorage.getItem('campushub.profile')).not.toBeNull()
+    expect(assignMock).not.toHaveBeenCalled()
+  })
 })

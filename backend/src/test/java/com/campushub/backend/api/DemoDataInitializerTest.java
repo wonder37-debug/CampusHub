@@ -29,7 +29,7 @@ import org.springframework.test.annotation.DirtiesContext;
     "spring.datasource.username=sa",
     "spring.datasource.password=",
     "spring.sql.init.mode=always",
-    "spring.sql.init.schema-locations=classpath:schema.sql,classpath:schema-demand.sql,classpath:schema-response.sql,classpath:schema-order.sql,classpath:schema-review.sql,classpath:schema-notification.sql,classpath:schema-recommendation.sql",
+    "spring.sql.init.schema-locations=classpath:schema.sql,classpath:schema-demand.sql,classpath:schema-response.sql,classpath:schema-order.sql,classpath:schema-review.sql,classpath:schema-notification.sql,classpath:schema-recommendation.sql,classpath:schema-asset.sql",
     "spring.datasource.hikari.connection-timeout=3000"
 })
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)

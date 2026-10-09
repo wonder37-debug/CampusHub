@@ -18,6 +18,8 @@ import com.campushub.backend.order.domain.OrderStatus;
 import com.campushub.backend.order.domain.OrderStatusHistoryEntry;
 import com.campushub.backend.order.dto.AcceptOrderCommand;
 import com.campushub.backend.order.dto.OrderDetailResponse;
+import com.campushub.backend.upload.repository.UploadedAssetRepository;
+import com.campushub.backend.upload.repository.entity.UploadedAssetEntity;
 import com.campushub.backend.order.dto.OrderHistoryQuery;
 import com.campushub.backend.order.dto.OrderSummaryResponse;
 import com.campushub.backend.order.dto.RequestOrderArbitrationCommand;
@@ -52,6 +54,7 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
     private final NotificationApplicationService notificationApplicationService;
     private final RewardSettlementService rewardSettlementService;
     private final UserActionLogRepository userActionLogRepository;
+    private final UploadedAssetRepository uploadedAssetRepository;
 
     public OrderApplicationServiceImpl(
         OrderRepository orderRepository,
@@ -59,7 +62,8 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         UserRepository userRepository,
         NotificationApplicationService notificationApplicationService,
         RewardSettlementService rewardSettlementService,
-        UserActionLogRepository userActionLogRepository
+        UserActionLogRepository userActionLogRepository,
+        UploadedAssetRepository uploadedAssetRepository
     ) {
         this.orderRepository = orderRepository;
         this.demandRepository = demandRepository;
@@ -67,6 +71,7 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         this.notificationApplicationService = notificationApplicationService;
         this.rewardSettlementService = rewardSettlementService;
         this.userActionLogRepository = userActionLogRepository;
+        this.uploadedAssetRepository = uploadedAssetRepository;
     }
 
     @Override
@@ -333,7 +338,7 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
             throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "completion already confirmed by this user");
         }
         if (operatorIsAccepter) {
-            validateProviderProof(command.proofImageUrls());
+            validateProviderProof(command.proofImageUrls(), order.getAccepterId());
         }
 
         LocalDateTime now = LocalDateTime.now();
@@ -373,7 +378,7 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         return OrderDetailResponse.from(order, DemandDetailResponse.from(demand));
     }
 
-    private void validateProviderProof(List<String> proofImageUrls) {
+    private void validateProviderProof(List<String> proofImageUrls, Long accepterId) {
         if (proofImageUrls == null || proofImageUrls.isEmpty() || proofImageUrls.size() > 3) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "proofImageUrls must contain 1 to 3 images");
         }
@@ -395,6 +400,14 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
             }
             if (!PROOF_URL_PATTERN.matcher(trimmed).matches()) {
                 throw new BusinessException(ErrorCode.VALIDATION_FAILED, "proofImageUrls[" + i + "] must match /api/v1/uploads/YYYY/MM/filename format");
+            }
+            String filename = trimmed.substring(trimmed.lastIndexOf('/') + 1);
+            UploadedAssetEntity asset = uploadedAssetRepository.findByFilename(filename);
+            if (asset == null) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "proofImageUrls[" + i + "] is not from a valid upload");
+            }
+            if (!asset.getUploaderId().equals(accepterId)) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "proofImageUrls[" + i + "] does not belong to the current user");
             }
         }
     }

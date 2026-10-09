@@ -44,7 +44,7 @@ import org.springframework.test.web.servlet.MvcResult;
     "spring.datasource.username=sa",
     "spring.datasource.password=",
     "spring.sql.init.mode=always",
-    "spring.sql.init.schema-locations=classpath:schema.sql,classpath:schema-demand.sql,classpath:schema-response.sql,classpath:schema-order.sql,classpath:schema-review.sql,classpath:schema-notification.sql,classpath:schema-recommendation.sql",
+    "spring.sql.init.schema-locations=classpath:schema.sql,classpath:schema-demand.sql,classpath:schema-response.sql,classpath:schema-order.sql,classpath:schema-review.sql,classpath:schema-notification.sql,classpath:schema-recommendation.sql,classpath:schema-asset.sql",
     "spring.datasource.hikari.connection-timeout=3000"
 })
 @AutoConfigureMockMvc
@@ -65,6 +65,9 @@ class SecurityBoundaryIntegrationTest {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private com.campushub.backend.upload.repository.UploadedAssetRepository uploadedAssetRepository;
 
     @BeforeEach
     void seedAdmin() {
@@ -137,6 +140,8 @@ class SecurityBoundaryIntegrationTest {
         // provider starts + provider confirms completion
         updateOrder(accepter.token(), orderId, "IN_PROGRESS", "started", null)
             .andExpect(status().isOk());
+        Long accepterUserId = userRepository.findByStudentId(accepter.studentId()).orElseThrow().getId();
+        uploadedAssetRepository.insert(new com.campushub.backend.upload.repository.entity.UploadedAssetEntity("test.jpg", accepterUserId));
         updateOrder(accepter.token(), orderId, "COMPLETED", "done", java.util.List.of("/api/v1/uploads/2026/10/test.jpg"))
             .andExpect(status().isOk());
         // requester confirms completion → COMPLETED

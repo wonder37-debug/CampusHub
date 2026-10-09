@@ -70,6 +70,9 @@ class AdminApplicationServiceImplTest {
     @Autowired
     private AdminApplicationService adminApplicationService;
 
+    @Autowired
+    private com.campushub.backend.upload.repository.UploadedAssetRepository uploadedAssetRepository;
+
     private Long adminId;
     private Long publisherId;
     private Long accepterId;
@@ -267,6 +270,7 @@ class AdminApplicationServiceImplTest {
             order.orderId(),
             new UpdateOrderStatusCommand("IN_PROGRESS", "开始处理", null)
         );
+        uploadedAssetRepository.insert(new com.campushub.backend.upload.repository.entity.UploadedAssetEntity("proof1.png", accepterId));
         orderApplicationService.updateStatus(
             accepterId,
             order.orderId(),

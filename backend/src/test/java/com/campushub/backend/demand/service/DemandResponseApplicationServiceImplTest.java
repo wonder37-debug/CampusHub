@@ -69,6 +69,9 @@ class DemandResponseApplicationServiceImplTest {
     @Autowired
     private com.campushub.backend.api.ApiViewMapper apiViewMapper;
 
+    @Autowired
+    private com.campushub.backend.upload.repository.UploadedAssetRepository uploadedAssetRepository;
+
     private Long publisherId;
     private Long responder1Id;
     private Long responder2Id;
@@ -751,6 +754,8 @@ class DemandResponseApplicationServiceImplTest {
         orderApplicationService.updateStatus(
             responder1Id, order.orderId(),
             new com.campushub.backend.order.dto.UpdateOrderStatusCommand("IN_PROGRESS", "开始", null));
+        uploadedAssetRepository.insert(new com.campushub.backend.upload.repository.entity.UploadedAssetEntity("proof1.jpg", responder1Id));
+        uploadedAssetRepository.insert(new com.campushub.backend.upload.repository.entity.UploadedAssetEntity("proof2.jpg", responder1Id));
         orderApplicationService.updateStatus(
             responder1Id, order.orderId(),
             new com.campushub.backend.order.dto.UpdateOrderStatusCommand("COMPLETED", "完成", 2, java.util.List.of("/api/v1/uploads/2026/10/proof1.jpg", "/api/v1/uploads/2026/10/proof2.jpg")));

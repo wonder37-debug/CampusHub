@@ -85,6 +85,9 @@ class ReviewApplicationServiceImplTest {
     @Autowired
     private NotificationApplicationService notificationApplicationService;
 
+    @Autowired
+    private com.campushub.backend.upload.repository.UploadedAssetRepository uploadedAssetRepository;
+
     private Long publisherId;
     private Long accepterId;
     private Long outsiderId;
@@ -168,6 +171,10 @@ class ReviewApplicationServiceImplTest {
             LocalDateTime.now(),
             LocalDateTime.now()
         )).getId();
+        for (String fn : java.util.List.of("proof1.png", "proof2.png")) {
+            uploadedAssetRepository.insert(
+                new com.campushub.backend.upload.repository.entity.UploadedAssetEntity(fn, accepterId));
+        }
     }
 
     @Test

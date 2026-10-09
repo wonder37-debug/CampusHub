@@ -61,6 +61,9 @@ class OrderApplicationServiceImplTest {
     @Autowired
     private OrderApplicationService orderApplicationService;
 
+    @Autowired
+    private com.campushub.backend.upload.repository.UploadedAssetRepository uploadedAssetRepository;
+
     private Long publisherId;
     private Long accepterId;
 
@@ -96,6 +99,12 @@ class OrderApplicationServiceImplTest {
             LocalDateTime.now(),
             LocalDateTime.now()
         )).getId();
+
+        for (String fn : java.util.List.of("proof1.png", "proof2.png", "proof-a.png", "proof-b.png",
+                "p1.png", "p2.png", "p3.png", "single.png", "a.png")) {
+            uploadedAssetRepository.insert(
+                new com.campushub.backend.upload.repository.entity.UploadedAssetEntity(fn, accepterId));
+        }
     }
 
     @Test
@@ -673,6 +682,25 @@ class OrderApplicationServiceImplTest {
         com.campushub.backend.order.domain.Order saved = orderRepository.findById(accepted.orderId()).orElseThrow();
         assertEquals(1, saved.getProofImageCount());
         assertEquals(List.of("/api/v1/uploads/2026/10/single.png"), saved.getProofImageUrls());
+    }
+
+    @Test
+    void shouldRejectProviderCompletionWithProofUrlFromDifferentUser() {
+        DemandDetailResponse demand = createDemand();
+        OrderDetailResponse accepted = orderApplicationService.accept(accepterId, demand.id(), new AcceptOrderCommand("我来"));
+        orderApplicationService.updateStatus(accepterId, accepted.orderId(),
+            new UpdateOrderStatusCommand("IN_PROGRESS", "开始处理", null));
+
+        uploadedAssetRepository.insert(
+            new com.campushub.backend.upload.repository.entity.UploadedAssetEntity("other-user-asset.png", publisherId));
+
+        BusinessException exception = assertThrows(
+            BusinessException.class,
+            () -> orderApplicationService.updateStatus(accepterId, accepted.orderId(),
+                new UpdateOrderStatusCommand("COMPLETED", "他人凭证", 1,
+                    List.of("/api/v1/uploads/2026/10/other-user-asset.png")))
+        );
+        assertEquals(ErrorCode.VALIDATION_FAILED, exception.getErrorCode());
     }
 
     private DemandDetailResponse createDemand() {

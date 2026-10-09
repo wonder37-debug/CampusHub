@@ -3,7 +3,10 @@ package com.campushub.backend.api;
 import com.campushub.backend.common.api.ApiResponse;
 import com.campushub.backend.common.exception.BusinessException;
 import com.campushub.backend.common.exception.ErrorCode;
+import com.campushub.backend.common.security.CurrentUser;
 import com.campushub.backend.common.security.RequestUserExtractor;
+import com.campushub.backend.upload.repository.UploadedAssetRepository;
+import com.campushub.backend.upload.repository.entity.UploadedAssetEntity;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
@@ -55,15 +58,18 @@ public class FileUploadController {
 
     private final long maxFileSize;
     private final RequestUserExtractor requestUserExtractor;
+    private final UploadedAssetRepository uploadedAssetRepository;
 
     public FileUploadController(
         @Value("${app.upload.dir:uploads}") String uploadDir,
         @Value("${app.upload.max-file-size-bytes:10485760}") long maxFileSize,
-        RequestUserExtractor requestUserExtractor
+        RequestUserExtractor requestUserExtractor,
+        UploadedAssetRepository uploadedAssetRepository
     ) {
         this.uploadRoot = Paths.get(uploadDir).toAbsolutePath().normalize();
         this.maxFileSize = maxFileSize;
         this.requestUserExtractor = requestUserExtractor;
+        this.uploadedAssetRepository = uploadedAssetRepository;
         try {
             Files.createDirectories(this.uploadRoot);
         } catch (IOException e) {
@@ -84,7 +90,7 @@ public class FileUploadController {
         @RequestParam("files") List<MultipartFile> files
     ) {
         // 强制认证：游客 -> 401，USER/ADMIN -> allowed
-        requestUserExtractor.requireCurrentUser(request);
+        var currentUser = requestUserExtractor.requireCurrentUser(request);
 
         if (files == null || files.isEmpty()) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "请选择至少一张图片");
@@ -154,6 +160,7 @@ public class FileUploadController {
                 // Build accessible URL: /api/v1/uploads/YYYY/MM/filename
                 String datePath = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy/MM"));
                 urls.add("/api/v1/uploads/" + datePath + "/" + storedFilename);
+                uploadedAssetRepository.insert(new UploadedAssetEntity(storedFilename, currentUser.userId()));
             } catch (IOException e) {
                 errors.add((originalFilename == null ? "文件" : originalFilename) + " 上传失败: " + e.getMessage());
             }

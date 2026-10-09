@@ -1211,23 +1211,15 @@ export const useCampusHubStore = defineStore('campusHub', {
     },
 
     async fetchProfile(): Promise<void> {
+      const requestToken = this.token
       try {
-        const payload = await requestJson<any>('/users/me', {}, this.token)
+        const payload = await requestJson<any>('/users/me', {}, requestToken)
         const profile = mapUserSummary(payload)
         this.currentProfile = profile
         this.currentUserId = profile.id || this.currentUserId
       } catch (err: any) {
         if (err?.status === 401) {
-          // token 过期/无效：彻底登出（清 token + localStorage + 用户态），
-          // 避免后续请求继续携带过期 token；isLoggingOut 防止多个并发 401 重复登出
-          if (!this.isLoggingOut) {
-            this.isLoggingOut = true
-            try {
-              this.logout()
-            } finally {
-              this.isLoggingOut = false
-            }
-          }
+          clearExpiredSession(requestToken)
         }
       }
     },
