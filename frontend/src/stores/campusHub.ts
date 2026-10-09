@@ -1214,6 +1214,12 @@ export const useCampusHubStore = defineStore('campusHub', {
       const requestToken = this.token
       try {
         const payload = await requestJson<any>('/users/me', {}, requestToken)
+        // 只有当请求 token 仍与当前登录 token 一致时才写入状态
+        // 避免旧请求的成功响应覆盖用户重新登录后的新资料
+        const currentToken = localStorage.getItem('campushub.token') || ''
+        if (!requestToken || requestToken !== currentToken) {
+          return
+        }
         const profile = mapUserSummary(payload)
         this.currentProfile = profile
         this.currentUserId = profile.id || this.currentUserId

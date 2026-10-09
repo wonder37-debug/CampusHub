@@ -119,4 +119,65 @@ describe('401 session expiry handling', () => {
     expect(localStorage.getItem('campushub.userId')).toBe('1')
     expect(assignMock).not.toHaveBeenCalled()
   })
+
+  it('旧请求成功返回时不覆盖新登录用户的资料（可控延迟）', async () => {
+    seedSession('token-a', 'user-a')
+    const store = useCampusHubStore()
+    store.token = 'token-a'
+    store.currentUserId = 'user-a'
+    store.currentProfile = { id: 'user-a', nickname: '用户A' } as any
+
+    let resolveOldRequest!: (value: any) => void
+    const oldRequestPromise = new Promise<any>((resolve) => { resolveOldRequest = resolve })
+    global.fetch = vi.fn().mockReturnValue(oldRequestPromise) as unknown as typeof global.fetch
+
+    const fetchProfilePromise = store.fetchProfile()
+
+    seedSession('token-b', 'user-b')
+    store.token = 'token-b'
+    store.currentUserId = 'user-b'
+    store.currentProfile = { id: 'user-b', nickname: '用户B' } as any
+
+    resolveOldRequest({
+      ok: true,
+      status: 200,
+      json: async () => ({ code: 0, data: { id: 'user-a', studentId: 'A', nickname: '用户A', balance: 100, frozenBalance: 0, role: 'USER', status: 'ACTIVE', creditScore: 100 } })
+    })
+
+    await fetchProfilePromise
+
+    expect(store.token).toBe('token-b')
+    expect(store.currentUserId).toBe('user-b')
+    expect(store.currentProfile?.id).toBe('user-b')
+    expect(store.currentProfile?.nickname).toBe('用户B')
+    expect(localStorage.getItem('campushub.token')).toBe('token-b')
+    expect(localStorage.getItem('campushub.userId')).toBe('user-b')
+  })
+
+  it('旧请求 401 返回时不清除新登录会话（可控延迟）', async () => {
+    seedSession('token-b', 'user-b')
+    const store = useCampusHubStore()
+    store.token = 'token-a'
+    store.currentUserId = 'user-b'
+    store.currentProfile = { id: 'user-b', nickname: '用户B' } as any
+
+    let resolveOldRequest!: (value: any) => void
+    const oldRequestPromise = new Promise<any>((resolve) => { resolveOldRequest = resolve })
+    global.fetch = vi.fn().mockReturnValue(oldRequestPromise) as unknown as typeof global.fetch
+
+    const fetchProfilePromise = store.fetchProfile()
+
+    resolveOldRequest({
+      ok: false,
+      status: 401,
+      json: async () => ({ code: 1001, errorCode: 'AUTH_FAILED', message: 'token has expired' })
+    })
+
+    await fetchProfilePromise
+
+    expect(localStorage.getItem('campushub.token')).toBe('token-b')
+    expect(localStorage.getItem('campushub.userId')).toBe('user-b')
+    expect(store.currentProfile).not.toBeNull()
+    expect(assignMock).not.toHaveBeenCalled()
+  })
 })
