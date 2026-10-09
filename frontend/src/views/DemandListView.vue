@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import SkeletonCard from '@/components/SkeletonCard.vue'
 import { useRouter } from 'vue-router'
 
@@ -114,6 +114,10 @@ async function loadMore(): Promise<void> {
 }
 
 async function refreshList(): Promise<void> {
+  if (searchDebounceTimer !== undefined) {
+    window.clearTimeout(searchDebounceTimer)
+    searchDebounceTimer = undefined
+  }
   refreshing.value = true
   filters.page = 1
   try {
@@ -201,12 +205,33 @@ watch(
   }
 )
 
+// 搜索框输入 debounce 300ms，避免每个 keystroke 触发请求；分类/校区/状态筛选立即触发
+let searchDebounceTimer: number | undefined
 watch(
-  () => [filters.q, filters.category, filters.campusZone, filters.status],
+  () => filters.q,
+  () => {
+    if (searchDebounceTimer !== undefined) {
+      window.clearTimeout(searchDebounceTimer)
+    }
+    searchDebounceTimer = window.setTimeout(() => {
+      searchDebounceTimer = undefined
+      void refreshList()
+    }, 300)
+  }
+)
+
+watch(
+  () => [filters.category, filters.campusZone, filters.status],
   () => {
     void refreshList()
   }
 )
+
+onBeforeUnmount(() => {
+  if (searchDebounceTimer !== undefined) {
+    window.clearTimeout(searchDebounceTimer)
+  }
+})
 
 </script>
 

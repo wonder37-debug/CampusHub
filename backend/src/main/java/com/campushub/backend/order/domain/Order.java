@@ -14,6 +14,7 @@ public class Order {
     private String acceptNote;
     private boolean proofSubmitted;
     private int proofImageCount;
+    private List<String> proofImageUrls;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private LocalDateTime completedAt;
@@ -32,6 +33,7 @@ public class Order {
         String acceptNote,
         boolean proofSubmitted,
         int proofImageCount,
+        List<String> proofImageUrls,
         LocalDateTime createdAt,
         LocalDateTime updatedAt,
         LocalDateTime completedAt,
@@ -45,6 +47,7 @@ public class Order {
         this.acceptNote = acceptNote;
         this.proofSubmitted = proofSubmitted;
         this.proofImageCount = proofImageCount;
+        this.proofImageUrls = proofImageUrls;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
         this.completedAt = completedAt;
@@ -121,6 +124,14 @@ public class Order {
 
     public void setProofImageCount(int proofImageCount) {
         this.proofImageCount = proofImageCount;
+    }
+
+    public List<String> getProofImageUrls() {
+        return proofImageUrls;
+    }
+
+    public void setProofImageUrls(List<String> proofImageUrls) {
+        this.proofImageUrls = proofImageUrls;
     }
 
     public LocalDateTime getCreatedAt() {

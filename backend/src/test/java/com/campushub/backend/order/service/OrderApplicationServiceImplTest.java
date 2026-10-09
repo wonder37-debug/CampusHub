@@ -61,6 +61,9 @@ class OrderApplicationServiceImplTest {
     @Autowired
     private OrderApplicationService orderApplicationService;
 
+    @Autowired
+    private com.campushub.backend.upload.repository.UploadedAssetRepository uploadedAssetRepository;
+
     private Long publisherId;
     private Long accepterId;
 
@@ -96,6 +99,12 @@ class OrderApplicationServiceImplTest {
             LocalDateTime.now(),
             LocalDateTime.now()
         )).getId();
+
+        for (String fn : java.util.List.of("proof1.png", "proof2.png", "proof-a.png", "proof-b.png",
+                "p1.png", "p2.png", "p3.png", "single.png", "a.png")) {
+            uploadedAssetRepository.insert(
+                new com.campushub.backend.upload.repository.entity.UploadedAssetEntity(fn, "/api/v1/uploads/2026/10/" + fn, accepterId, true, null));
+        }
     }
 
     @Test
@@ -148,7 +157,7 @@ class OrderApplicationServiceImplTest {
         OrderDetailResponse waitingConfirm = orderApplicationService.updateStatus(
             accepterId,
             accepted.orderId(),
-            new UpdateOrderStatusCommand("COMPLETED", "已完成并上传凭证", 2)
+            new UpdateOrderStatusCommand("COMPLETED", "已完成并上传凭证", 2, List.of("/api/v1/uploads/2026/10/proof1.png", "/api/v1/uploads/2026/10/proof2.png"))
         );
         OrderDetailResponse finalCompleted = orderApplicationService.updateStatus(
             publisherId,
@@ -200,7 +209,7 @@ class OrderApplicationServiceImplTest {
         OrderDetailResponse finalCompleted = orderApplicationService.updateStatus(
             accepterId,
             accepted.orderId(),
-            new UpdateOrderStatusCommand("COMPLETED", "补交凭证并完成", 2)
+            new UpdateOrderStatusCommand("COMPLETED", "补交凭证并完成", 2, List.of("/api/v1/uploads/2026/10/proof1.png", "/api/v1/uploads/2026/10/proof2.png"))
         );
 
         assertEquals("IN_PROGRESS", requesterPending.status());
@@ -222,7 +231,7 @@ class OrderApplicationServiceImplTest {
         orderApplicationService.updateStatus(
             accepterId,
             accepted.orderId(),
-            new UpdateOrderStatusCommand("COMPLETED", "第一次确认完成", 2)
+            new UpdateOrderStatusCommand("COMPLETED", "第一次确认完成", 2, List.of("/api/v1/uploads/2026/10/proof1.png", "/api/v1/uploads/2026/10/proof2.png"))
         );
 
         BusinessException exception = assertThrows(
@@ -230,7 +239,7 @@ class OrderApplicationServiceImplTest {
             () -> orderApplicationService.updateStatus(
                 accepterId,
                 accepted.orderId(),
-                new UpdateOrderStatusCommand("COMPLETED", "重复确认", 2)
+                new UpdateOrderStatusCommand("COMPLETED", "重复确认", 2, List.of("/api/v1/uploads/2026/10/proof1.png", "/api/v1/uploads/2026/10/proof2.png"))
             )
         );
 
@@ -458,7 +467,7 @@ class OrderApplicationServiceImplTest {
             new UpdateOrderStatusCommand("IN_PROGRESS", "开始处理", null));
         // accepter 先确认完成（提交凭证），等待 publisher 确认
         orderApplicationService.updateStatus(accepterId, accepted.orderId(),
-            new UpdateOrderStatusCommand("COMPLETED", "已完成并上传凭证", 2));
+            new UpdateOrderStatusCommand("COMPLETED", "已完成并上传凭证", 2, List.of("/api/v1/uploads/2026/10/proof1.png", "/api/v1/uploads/2026/10/proof2.png")));
 
         // publisher 并发两次确认完成：Order 行锁应保证只有一个完成并结算，另一个被拒绝
         java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newFixedThreadPool(2);
@@ -495,6 +504,237 @@ class OrderApplicationServiceImplTest {
             "最终订单状态应为 COMPLETED");
     }
 
+    // ==================== F1: proofImageUrls 校验与持久化 ====================
+
+    @Test
+    void shouldRejectProviderCompletionWithoutProofImageUrls() {
+        DemandDetailResponse demand = createDemand();
+        OrderDetailResponse accepted = orderApplicationService.accept(accepterId, demand.id(), new AcceptOrderCommand("我来"));
+        orderApplicationService.updateStatus(accepterId, accepted.orderId(),
+            new UpdateOrderStatusCommand("IN_PROGRESS", "开始处理", null));
+
+        BusinessException exception = assertThrows(
+            BusinessException.class,
+            () -> orderApplicationService.updateStatus(accepterId, accepted.orderId(),
+                new UpdateOrderStatusCommand("COMPLETED", "未上传凭证", 1, null))
+        );
+
+        assertEquals(ErrorCode.VALIDATION_FAILED, exception.getErrorCode());
+    }
+
+    @Test
+    void shouldRejectProviderCompletionWithEmptyProofImageUrls() {
+        DemandDetailResponse demand = createDemand();
+        OrderDetailResponse accepted = orderApplicationService.accept(accepterId, demand.id(), new AcceptOrderCommand("我来"));
+        orderApplicationService.updateStatus(accepterId, accepted.orderId(),
+            new UpdateOrderStatusCommand("IN_PROGRESS", "开始处理", null));
+
+        BusinessException exception = assertThrows(
+            BusinessException.class,
+            () -> orderApplicationService.updateStatus(accepterId, accepted.orderId(),
+                new UpdateOrderStatusCommand("COMPLETED", "空凭证", 0, List.of()))
+        );
+
+        assertEquals(ErrorCode.VALIDATION_FAILED, exception.getErrorCode());
+    }
+
+    @Test
+    void shouldRejectProviderCompletionWithTooManyProofImages() {
+        DemandDetailResponse demand = createDemand();
+        OrderDetailResponse accepted = orderApplicationService.accept(accepterId, demand.id(), new AcceptOrderCommand("我来"));
+        orderApplicationService.updateStatus(accepterId, accepted.orderId(),
+            new UpdateOrderStatusCommand("IN_PROGRESS", "开始处理", null));
+
+        BusinessException exception = assertThrows(
+            BusinessException.class,
+            () -> orderApplicationService.updateStatus(accepterId, accepted.orderId(),
+                new UpdateOrderStatusCommand("COMPLETED", "超限凭证", 4, List.of("p1", "p2", "p3", "p4")))
+        );
+
+        assertEquals(ErrorCode.VALIDATION_FAILED, exception.getErrorCode());
+    }
+
+    @Test
+    void shouldReconcileProofImageCountWithUrlsWhenInconsistent() {
+        DemandDetailResponse demand = createDemand();
+        OrderDetailResponse accepted = orderApplicationService.accept(accepterId, demand.id(), new AcceptOrderCommand("我来"));
+        orderApplicationService.updateStatus(accepterId, accepted.orderId(),
+            new UpdateOrderStatusCommand("IN_PROGRESS", "开始处理", null));
+        // 前端传 count=1 但 urls 含 2 张，以 urls 为准修正 count=2
+        orderApplicationService.updateStatus(accepterId, accepted.orderId(),
+            new UpdateOrderStatusCommand("COMPLETED", "凭证与数量不一致", 1, List.of("/api/v1/uploads/2026/10/proof-a.png", "/api/v1/uploads/2026/10/proof-b.png")));
+        orderApplicationService.updateStatus(publisherId, accepted.orderId(),
+            new UpdateOrderStatusCommand("COMPLETED", "确认完成", null));
+
+        com.campushub.backend.order.domain.Order saved = orderRepository.findById(accepted.orderId()).orElseThrow();
+        assertEquals(2, saved.getProofImageCount(), "count 应以 urls 为准修正为 2");
+        assertEquals(List.of("/api/v1/uploads/2026/10/proof-a.png", "/api/v1/uploads/2026/10/proof-b.png"), saved.getProofImageUrls());
+    }
+
+    @Test
+    void shouldPersistAndReadBackProofImageUrls() {
+        DemandDetailResponse demand = createDemand();
+        OrderDetailResponse accepted = orderApplicationService.accept(accepterId, demand.id(), new AcceptOrderCommand("我来"));
+        orderApplicationService.updateStatus(accepterId, accepted.orderId(),
+            new UpdateOrderStatusCommand("IN_PROGRESS", "开始处理", null));
+        orderApplicationService.updateStatus(accepterId, accepted.orderId(),
+            new UpdateOrderStatusCommand("COMPLETED", "凭证提交", 3, List.of("/api/v1/uploads/2026/10/p1.png", "/api/v1/uploads/2026/10/p2.png", "/api/v1/uploads/2026/10/p3.png")));
+        orderApplicationService.updateStatus(publisherId, accepted.orderId(),
+            new UpdateOrderStatusCommand("COMPLETED", "确认完成", null));
+
+        com.campushub.backend.order.domain.Order saved = orderRepository.findById(accepted.orderId()).orElseThrow();
+        assertEquals(3, saved.getProofImageCount());
+        assertEquals(List.of("/api/v1/uploads/2026/10/p1.png", "/api/v1/uploads/2026/10/p2.png", "/api/v1/uploads/2026/10/p3.png"), saved.getProofImageUrls());
+    }
+
+    @Test
+    void shouldRejectProviderCompletionWithNullElementInProofImageUrls() {
+        DemandDetailResponse demand = createDemand();
+        OrderDetailResponse accepted = orderApplicationService.accept(accepterId, demand.id(), new AcceptOrderCommand("我来"));
+        orderApplicationService.updateStatus(accepterId, accepted.orderId(),
+            new UpdateOrderStatusCommand("IN_PROGRESS", "开始处理", null));
+
+        BusinessException exception = assertThrows(
+            BusinessException.class,
+            () -> orderApplicationService.updateStatus(accepterId, accepted.orderId(),
+                new UpdateOrderStatusCommand("COMPLETED", "含null元素", 2,
+                    java.util.Arrays.asList("/api/v1/uploads/2026/10/a.png", null)))
+        );
+        assertEquals(ErrorCode.VALIDATION_FAILED, exception.getErrorCode());
+    }
+
+    @Test
+    void shouldRejectProviderCompletionWithBlankElementInProofImageUrls() {
+        DemandDetailResponse demand = createDemand();
+        OrderDetailResponse accepted = orderApplicationService.accept(accepterId, demand.id(), new AcceptOrderCommand("我来"));
+        orderApplicationService.updateStatus(accepterId, accepted.orderId(),
+            new UpdateOrderStatusCommand("IN_PROGRESS", "开始处理", null));
+
+        BusinessException exception = assertThrows(
+            BusinessException.class,
+            () -> orderApplicationService.updateStatus(accepterId, accepted.orderId(),
+                new UpdateOrderStatusCommand("COMPLETED", "含空白元素", 2,
+                    java.util.Arrays.asList("/api/v1/uploads/2026/10/a.png", "   ")))
+        );
+        assertEquals(ErrorCode.VALIDATION_FAILED, exception.getErrorCode());
+    }
+
+    @Test
+    void shouldRejectProviderCompletionWithExternalHttpUrl() {
+        DemandDetailResponse demand = createDemand();
+        OrderDetailResponse accepted = orderApplicationService.accept(accepterId, demand.id(), new AcceptOrderCommand("我来"));
+        orderApplicationService.updateStatus(accepterId, accepted.orderId(),
+            new UpdateOrderStatusCommand("IN_PROGRESS", "开始处理", null));
+
+        BusinessException exception = assertThrows(
+            BusinessException.class,
+            () -> orderApplicationService.updateStatus(accepterId, accepted.orderId(),
+                new UpdateOrderStatusCommand("COMPLETED", "外部HTTP", 1,
+                    List.of("http://evil.com/x.png")))
+        );
+        assertEquals(ErrorCode.VALIDATION_FAILED, exception.getErrorCode());
+    }
+
+    @Test
+    void shouldRejectProviderCompletionWithExternalHttpsUrl() {
+        DemandDetailResponse demand = createDemand();
+        OrderDetailResponse accepted = orderApplicationService.accept(accepterId, demand.id(), new AcceptOrderCommand("我来"));
+        orderApplicationService.updateStatus(accepterId, accepted.orderId(),
+            new UpdateOrderStatusCommand("IN_PROGRESS", "开始处理", null));
+
+        BusinessException exception = assertThrows(
+            BusinessException.class,
+            () -> orderApplicationService.updateStatus(accepterId, accepted.orderId(),
+                new UpdateOrderStatusCommand("COMPLETED", "外部HTTPS", 1,
+                    List.of("https://evil.com/x.png")))
+        );
+        assertEquals(ErrorCode.VALIDATION_FAILED, exception.getErrorCode());
+    }
+
+    @Test
+    void shouldRejectProviderCompletionWithIllegalPath() {
+        DemandDetailResponse demand = createDemand();
+        OrderDetailResponse accepted = orderApplicationService.accept(accepterId, demand.id(), new AcceptOrderCommand("我来"));
+        orderApplicationService.updateStatus(accepterId, accepted.orderId(),
+            new UpdateOrderStatusCommand("IN_PROGRESS", "开始处理", null));
+
+        BusinessException exception = assertThrows(
+            BusinessException.class,
+            () -> orderApplicationService.updateStatus(accepterId, accepted.orderId(),
+                new UpdateOrderStatusCommand("COMPLETED", "非法路径", 1,
+                    List.of("/etc/passwd")))
+        );
+        assertEquals(ErrorCode.VALIDATION_FAILED, exception.getErrorCode());
+    }
+
+    @Test
+    void shouldAcceptProviderCompletionWithOneValidProofUrl() {
+        DemandDetailResponse demand = createDemand();
+        OrderDetailResponse accepted = orderApplicationService.accept(accepterId, demand.id(), new AcceptOrderCommand("我来"));
+        orderApplicationService.updateStatus(accepterId, accepted.orderId(),
+            new UpdateOrderStatusCommand("IN_PROGRESS", "开始处理", null));
+        orderApplicationService.updateStatus(accepterId, accepted.orderId(),
+            new UpdateOrderStatusCommand("COMPLETED", "单张凭证", 1,
+                List.of("/api/v1/uploads/2026/10/single.png")));
+        orderApplicationService.updateStatus(publisherId, accepted.orderId(),
+            new UpdateOrderStatusCommand("COMPLETED", "确认完成", null));
+
+        com.campushub.backend.order.domain.Order saved = orderRepository.findById(accepted.orderId()).orElseThrow();
+        assertEquals(1, saved.getProofImageCount());
+        assertEquals(List.of("/api/v1/uploads/2026/10/single.png"), saved.getProofImageUrls());
+    }
+
+    @Test
+    void shouldRejectProviderCompletionWithProofUrlFromDifferentUser() {
+        DemandDetailResponse demand = createDemand();
+        OrderDetailResponse accepted = orderApplicationService.accept(accepterId, demand.id(), new AcceptOrderCommand("我来"));
+        orderApplicationService.updateStatus(accepterId, accepted.orderId(),
+            new UpdateOrderStatusCommand("IN_PROGRESS", "开始处理", null));
+
+        uploadedAssetRepository.insert(
+            new com.campushub.backend.upload.repository.entity.UploadedAssetEntity("other-user-asset.png", "/api/v1/uploads/2026/10/other-user-asset.png", publisherId, true, null));
+
+        BusinessException exception = assertThrows(
+            BusinessException.class,
+            () -> orderApplicationService.updateStatus(accepterId, accepted.orderId(),
+                new UpdateOrderStatusCommand("COMPLETED", "他人凭证", 1,
+                    List.of("/api/v1/uploads/2026/10/other-user-asset.png")))
+        );
+        assertEquals(ErrorCode.VALIDATION_FAILED, exception.getErrorCode());
+    }
+
+    @Test
+    void shouldRejectProviderCompletionWithNonExistentProofUrl() {
+        DemandDetailResponse demand = createDemand();
+        OrderDetailResponse accepted = orderApplicationService.accept(accepterId, demand.id(), new AcceptOrderCommand("我来"));
+        orderApplicationService.updateStatus(accepterId, accepted.orderId(),
+            new UpdateOrderStatusCommand("IN_PROGRESS", "开始处理", null));
+
+        BusinessException exception = assertThrows(
+            BusinessException.class,
+            () -> orderApplicationService.updateStatus(accepterId, accepted.orderId(),
+                new UpdateOrderStatusCommand("COMPLETED", "伪造路径", 1,
+                    List.of("/api/v1/uploads/2026/10/nonexistent.png")))
+        );
+        assertEquals(ErrorCode.VALIDATION_FAILED, exception.getErrorCode());
+    }
+
+    @Test
+    void shouldRejectProviderCompletionWithMismatchedDatePath() {
+        DemandDetailResponse demand = createDemand();
+        OrderDetailResponse accepted = orderApplicationService.accept(accepterId, demand.id(), new AcceptOrderCommand("我来"));
+        orderApplicationService.updateStatus(accepterId, accepted.orderId(),
+            new UpdateOrderStatusCommand("IN_PROGRESS", "开始处理", null));
+
+        BusinessException exception = assertThrows(
+            BusinessException.class,
+            () -> orderApplicationService.updateStatus(accepterId, accepted.orderId(),
+                new UpdateOrderStatusCommand("COMPLETED", "日期不匹配", 1,
+                    List.of("/api/v1/uploads/2025/01/proof1.png")))
+        );
+        assertEquals(ErrorCode.VALIDATION_FAILED, exception.getErrorCode());
+    }
+
     private DemandDetailResponse createDemand() {
         DemandDetailResponse demand = demandApplicationService.publish(
             publisherId,
@@ -521,5 +761,68 @@ class OrderApplicationServiceImplTest {
             demandRepository.save(saved);
         });
         return demandApplicationService.getDetail(demand.id());
+    }
+
+    @Test
+    void shouldRejectCrossOrderBindingOfSameProofImage() {
+        DemandDetailResponse demand1 = createDemand();
+        DemandDetailResponse demand2 = createDemand();
+        OrderDetailResponse order1 = orderApplicationService.accept(accepterId, demand1.id(), new AcceptOrderCommand("处理1"));
+        OrderDetailResponse order2 = orderApplicationService.accept(accepterId, demand2.id(), new AcceptOrderCommand("处理2"));
+
+        orderApplicationService.updateStatus(accepterId, order1.orderId(),
+            new UpdateOrderStatusCommand("IN_PROGRESS", "开始1", null));
+        orderApplicationService.updateStatus(accepterId, order2.orderId(),
+            new UpdateOrderStatusCommand("IN_PROGRESS", "开始2", null));
+
+        // 第一个订单提交完成凭证 → 绑定成功
+        orderApplicationService.updateStatus(accepterId, order1.orderId(),
+            new UpdateOrderStatusCommand("COMPLETED", "完成1", 1, List.of("/api/v1/uploads/2026/10/proof1.png")));
+
+        var asset = uploadedAssetRepository.findByUrlPath("/api/v1/uploads/2026/10/proof1.png");
+        assertEquals(order1.orderId(), asset.getBoundOrderId());
+
+        // 第二个订单尝试使用同一张图片 → 绑定失败，抛异常
+        BusinessException exception = assertThrows(
+            BusinessException.class,
+            () -> orderApplicationService.updateStatus(accepterId, order2.orderId(),
+                new UpdateOrderStatusCommand("COMPLETED", "完成2", 1, List.of("/api/v1/uploads/2026/10/proof1.png")))
+        );
+        assertEquals(ErrorCode.BUSINESS_CONFLICT, exception.getErrorCode());
+
+        // 事务回滚：order2 状态仍为 IN_PROGRESS，proofSubmitted 仍为 false
+        OrderDetailResponse order2After = orderApplicationService.getDetail(accepterId, order2.orderId());
+        assertEquals("IN_PROGRESS", order2After.status());
+
+        // asset 仍只绑定到 order1
+        var assetAfter = uploadedAssetRepository.findByUrlPath("/api/v1/uploads/2026/10/proof1.png");
+        assertEquals(order1.orderId(), assetAfter.getBoundOrderId());
+    }
+
+    @Test
+    void shouldAllowIdempotentRebindToSameOrder() {
+        DemandDetailResponse demand = createDemand();
+        OrderDetailResponse order = orderApplicationService.accept(accepterId, demand.id(), new AcceptOrderCommand("我来"));
+        orderApplicationService.updateStatus(accepterId, order.orderId(),
+            new UpdateOrderStatusCommand("IN_PROGRESS", "开始", null));
+
+        // 接单方提交完成凭证（第一方确认）
+        OrderDetailResponse firstConfirm = orderApplicationService.updateStatus(accepterId, order.orderId(),
+            new UpdateOrderStatusCommand("COMPLETED", "完成", 1, List.of("/api/v1/uploads/2026/10/proof2.png")));
+        assertEquals("IN_PROGRESS", firstConfirm.status());
+        assertTrue(firstConfirm.proofSubmitted());
+
+        // asset 已绑定
+        var asset = uploadedAssetRepository.findByUrlPath("/api/v1/uploads/2026/10/proof2.png");
+        assertEquals(order.orderId(), asset.getBoundOrderId());
+
+        // 发布方确认完成（第二方确认）→ bindProofImagesAsPrivate 再次调用同一 orderId，幂等
+        OrderDetailResponse secondConfirm = orderApplicationService.updateStatus(publisherId, order.orderId(),
+            new UpdateOrderStatusCommand("COMPLETED", "确认", null));
+        assertEquals("COMPLETED", secondConfirm.status());
+
+        // asset 仍绑定到同一订单
+        var assetAfter = uploadedAssetRepository.findByUrlPath("/api/v1/uploads/2026/10/proof2.png");
+        assertEquals(order.orderId(), assetAfter.getBoundOrderId());
     }
 }

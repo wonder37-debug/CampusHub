@@ -11,7 +11,6 @@ const { mockStore, mockGenerate, mockCreateDemand } = vi.hoisted(() => {
   const mockCreateDemand = vi.fn()
   mockStore.generateDemandDraft = mockGenerate
   mockStore.createDemand = mockCreateDemand
-  mockStore.fetchBalance = vi.fn().mockResolvedValue(100)
   mockStore.fetchProfile = vi.fn().mockResolvedValue(undefined)
   return { mockStore, mockGenerate, mockCreateDemand }
 })

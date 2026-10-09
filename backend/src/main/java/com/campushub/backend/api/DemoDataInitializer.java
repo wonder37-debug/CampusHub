@@ -32,7 +32,7 @@ public class DemoDataInitializer {
                     UserRole.ADMIN,
                     UserStatus.ACTIVE,
                     100,
-                    BigDecimal.ZERO,
+                    new BigDecimal("100.00"),
                     BigDecimal.ZERO,
                     now,
                     now

@@ -14,6 +14,7 @@ CREATE TABLE ord_order (
   accept_note VARCHAR(500),
   proof_submitted BOOLEAN NOT NULL DEFAULT FALSE,
   proof_image_count INT NOT NULL DEFAULT 0,
+  proof_image_urls TEXT DEFAULT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME,
   completed_at DATETIME,

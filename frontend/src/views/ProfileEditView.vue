@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref, computed } from 'vue'
+import { onMounted, reactive, ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { useCampusHubStore } from '@/stores/campusHub'
@@ -20,6 +20,7 @@ const profileForm = reactive({
   nickname: store.currentUser?.nickname ?? '',
   avatarUrl: store.currentUser?.avatarUrl ?? ''
 })
+const formDirty = ref(false)
 
 async function save(): Promise<void> {
   // run local validations
@@ -50,6 +51,13 @@ async function save(): Promise<void> {
   }
 }
 
+watch(() => store.currentUser, (user) => {
+  if (user && !formDirty.value) {
+    profileForm.nickname = user.nickname ?? ''
+    profileForm.avatarUrl = user.avatarUrl ?? ''
+  }
+})
+
 onMounted(() => {
   void store.fetchProfile()
 })
@@ -70,12 +78,12 @@ onMounted(() => {
       <div class="form-grid two-column">
         <div class="field" style="grid-column: 1 / -1;">
           <label for="nickname">昵称</label>
-          <input id="nickname" v-model="profileForm.nickname" @input="fieldErrors.nickname = ''" />
+          <input id="nickname" v-model="profileForm.nickname" @input="fieldErrors.nickname = ''; formDirty = true" />
           <p v-if="fieldErrors.nickname" class="input-help" style="color: var(--danger)">{{ fieldErrors.nickname }}</p>
         </div>
         <div class="field" style="grid-column: 1 / -1;">
           <label>头像</label>
-          <AvatarCropper v-model="profileForm.avatarUrl" :size="80" />
+          <AvatarCropper v-model="profileForm.avatarUrl" :size="80" @update:model-value="formDirty = true" />
         </div>
       </div>
 

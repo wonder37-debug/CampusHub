@@ -60,25 +60,62 @@ CREATE TABLE IF NOT EXISTS`sys_user` (
 
 -- 插入默认的超级管理员账号 (防重复插入机制)
 
--- 账号: admin@edu.cn / ADMIN001 | 密码: Admin123!
+-- 账号: admin@edu.cn / ADMIN001 | 密码: Admin123! | 余额: 100.00
 
-INSERT INTO `sys_user` (`email`, `student_id`, `password_hash`, `nickname`, `role`) 
+INSERT INTO `sys_user` (`email`, `student_id`, `password_hash`, `nickname`, `role`, `balance`) 
 
-VALUES ('admin@edu.cn', 'ADMIN001', '$2a$10$ZZ9LIwTu25X6iXkfc1SASe4YEghRHDiD1jTMuvWiqCuDEvAunM68O', '超级管理员', 'ADMIN')
-
-ON DUPLICATE KEY UPDATE id=id;
-
-INSERT INTO `sys_user` (`email`, `student_id`, `password_hash`, `nickname`, `role`) 
-
-VALUES ('test1@edu.cn', 'TEST001', '$2a$10$ZZ9LIwTu25X6iXkfc1SASe4YEghRHDiD1jTMuvWiqCuDEvAunM68O', '测试用户1', 'USER')
+VALUES ('admin@edu.cn', 'ADMIN001', '$2a$10$ZZ9LIwTu25X6iXkfc1SASe4YEghRHDiD1jTMuvWiqCuDEvAunM68O', '超级管理员', 'ADMIN', 100.00)
 
 ON DUPLICATE KEY UPDATE id=id;
 
-INSERT INTO `sys_user` (`email`, `student_id`, `password_hash`, `nickname`, `role`) 
+INSERT INTO `sys_user` (`email`, `student_id`, `password_hash`, `nickname`, `role`, `balance`) 
 
-VALUES ('test2@edu.cn', 'TEST002', '$2a$10$ZZ9LIwTu25X6iXkfc1SASe4YEghRHDiD1jTMuvWiqCuDEvAunM68O', '测试用户2', 'USER')
+VALUES ('test1@edu.cn', 'TEST001', '$2a$10$ZZ9LIwTu25X6iXkfc1SASe4YEghRHDiD1jTMuvWiqCuDEvAunM68O', '测试用户1', 'USER', 100.00)
 
 ON DUPLICATE KEY UPDATE id=id;
+
+INSERT INTO `sys_user` (`email`, `student_id`, `password_hash`, `nickname`, `role`, `balance`) 
+
+VALUES ('test2@edu.cn', 'TEST002', '$2a$10$ZZ9LIwTu25X6iXkfc1SASe4YEghRHDiD1jTMuvWiqCuDEvAunM68O', '测试用户2', 'USER', 100.00)
+
+ON DUPLICATE KEY UPDATE id=id;
+
+-- 上传资源所有权记录表
+CREATE TABLE IF NOT EXISTS `uploaded_asset` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `filename` varchar(255) NOT NULL COMMENT '服务端生成的文件名（UUID+扩展名）',
+  `url_path` varchar(512) NOT NULL COMMENT '完整相对路径 /api/v1/uploads/YYYY/MM/filename',
+  `uploader_id` bigint NOT NULL COMMENT '上传者用户ID',
+  `is_private` tinyint(1) NOT NULL DEFAULT 0 COMMENT '是否为私密图片（凭证等），0公开 1私密',
+  `bound_order_id` bigint DEFAULT NULL COMMENT '绑定的订单ID（凭证图片绑定后填充）',
+  `uploaded_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_asset_filename` (`filename`),
+  UNIQUE KEY `uk_asset_url_path` (`url_path`),
+  KEY `idx_asset_uploader` (`uploader_id`),
+  KEY `idx_asset_bound_order` (`bound_order_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='上传资源所有权记录';
+
+-- 幂等补充 is_private 列（老版本 uploaded_asset 表已存在但缺少该列时添加；Spring sql.init always mode 重复执行安全）
+SET @col_exists = (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'uploaded_asset' AND column_name = 'is_private');
+SET @sql = IF(@col_exists = 0, 'ALTER TABLE `uploaded_asset` ADD COLUMN `is_private` tinyint(1) NOT NULL DEFAULT 0 COMMENT ''是否为私密图片（凭证等），0公开 1私密'' AFTER `uploader_id`', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- 幂等补充 bound_order_id 列
+SET @col_exists = (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'uploaded_asset' AND column_name = 'bound_order_id');
+SET @sql = IF(@col_exists = 0, 'ALTER TABLE `uploaded_asset` ADD COLUMN `bound_order_id` bigint DEFAULT NULL COMMENT ''绑定的订单ID（凭证图片绑定后填充）'' AFTER `is_private`', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- 幂等创建 idx_asset_bound_order 索引
+SET @idx_exists = (SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'uploaded_asset' AND index_name = 'idx_asset_bound_order');
+SET @sql = IF(@idx_exists = 0, 'CREATE INDEX idx_asset_bound_order ON uploaded_asset(bound_order_id)', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 
 
@@ -227,6 +264,8 @@ CREATE TABLE IF NOT EXISTS`ord_order` (
 
   `proof_image_count` int NOT NULL DEFAULT 0 COMMENT '凭证图片数量',
 
+  `proof_image_urls` json DEFAULT NULL COMMENT '完成凭证图片URL列表(1-3)',
+
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '接单/订单生成时间',
 
   `updated_at` datetime DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
@@ -244,6 +283,13 @@ CREATE TABLE IF NOT EXISTS`ord_order` (
   CONSTRAINT `chk_order_status` CHECK (`status` IN ('ACCEPTED','IN_PROGRESS','IN_ARBITRATION','COMPLETED','CANCELLED'))
 
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单主表';
+
+-- 幂等补充 proof_image_urls 列（老版本 ord_order 表已存在但缺少该列时添加；Spring sql.init always mode 重复执行安全）
+SET @col_exists = (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'ord_order' AND column_name = 'proof_image_urls');
+SET @sql = IF(@col_exists = 0, 'ALTER TABLE `ord_order` ADD COLUMN `proof_image_urls` json DEFAULT NULL COMMENT ''完成凭证图片URL列表(1-3)'' AFTER `proof_image_count`', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 -- 幂等补充 idx_order_created_at（老版本 ord_order 表已存在但缺少该索引时添加；Spring sql.init always mode 重复执行安全）
 SET @idx_exists = (SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'ord_order' AND index_name = 'idx_order_created_at');

@@ -40,8 +40,27 @@ public class RequestUserExtractor {
         if (authorization == null || !authorization.startsWith("Bearer ")) {
             return null;
         }
+        return tryExtractFromToken(authorization.substring("Bearer ".length()).trim());
+    }
+
+    /**
+     * 从 query parameter token 提取当前用户（用于 {@code <img>} 标签无法携带 header 的场景）。
+     * 优先使用 header 中的 token，fallback 到 query parameter。
+     */
+    public CurrentUser tryExtractWithToken(HttpServletRequest request, String queryToken) {
+        CurrentUser fromHeader = tryExtract(request);
+        if (fromHeader != null) {
+            return fromHeader;
+        }
+        if (queryToken != null && !queryToken.isBlank()) {
+            return tryExtractFromToken(queryToken.trim());
+        }
+        return null;
+    }
+
+    private CurrentUser tryExtractFromToken(String token) {
         try {
-            TokenPayload payload = tokenService.verifyAndParse(authorization.substring("Bearer ".length()).trim());
+            TokenPayload payload = tokenService.verifyAndParse(token);
             return userRepository.findById(payload.userId())
                 .filter(user -> user.getStatus() != UserStatus.BANNED)
                 .map(user -> new CurrentUser(user.getId(), user.getRole()))

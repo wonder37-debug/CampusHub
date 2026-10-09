@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
+import { useCampusHubStore } from '@/stores/campusHub'
+
+const store = useCampusHubStore()
 
 const props = defineProps<{
   modelValue: string[]
   maxCount?: number
   maxSizeMB?: number
+  purpose?: 'demand' | 'proof'
 }>()
 
 const emit = defineEmits<{
@@ -13,6 +17,32 @@ const emit = defineEmits<{
 
 const maxCount = computed(() => props.maxCount ?? 6)
 const maxSizeBytes = computed(() => (props.maxSizeMB ?? 10) * 1024 * 1024)
+
+const previewUrls = ref<string[]>([])
+
+watch(() => [props.modelValue, props.purpose] as const, async ([urls, purpose]) => {
+  previewUrls.value.forEach(u => {
+    if (u.startsWith('blob:')) URL.revokeObjectURL(u)
+  })
+  if (purpose !== 'proof') {
+    previewUrls.value = urls ? [...urls] : []
+    return
+  }
+  if (!urls || urls.length === 0) {
+    previewUrls.value = []
+    return
+  }
+  const blobUrls = await Promise.all(
+    urls.map(url => store.fetchProofImageBlob(url).catch(() => url))
+  )
+  previewUrls.value = blobUrls
+}, { immediate: true })
+
+onUnmounted(() => {
+  previewUrls.value.forEach(u => {
+    if (u.startsWith('blob:')) URL.revokeObjectURL(u)
+  })
+})
 
 const uploading = ref(false)
 const uploadProgress = ref(0)
@@ -86,9 +116,6 @@ async function processFiles(files: File[]) {
   uploadProgress.value = 0
   let progressInterval: ReturnType<typeof setInterval> | undefined
   try {
-    const { useCampusHubStore } = await import('@/stores/campusHub')
-    const store = useCampusHubStore()
-
     // Simulate progress (real progress from fetch would need XMLHttpRequest)
     progressInterval = setInterval(() => {
       if (uploadProgress.value < 90) {
@@ -96,7 +123,7 @@ async function processFiles(files: File[]) {
       }
     }, 150)
 
-    const urls = await store.uploadImages(toUpload)
+    const urls = await store.uploadImages(toUpload, props.purpose ?? 'demand')
     uploadProgress.value = 100
 
     emit('update:modelValue', [...props.modelValue, ...urls])
@@ -153,7 +180,7 @@ function removeImage(index: number) {
 
     <!-- Preview grid -->
     <div v-if="modelValue.length > 0" class="preview-grid">
-      <div v-for="(url, index) in modelValue" :key="url" class="preview-item">
+      <div v-for="(url, index) in previewUrls" :key="url" class="preview-item">
         <img :src="url" alt="预览图片" class="preview-img" />
         <button type="button" class="remove-btn" @click.stop="removeImage(index)" title="移除图片">×</button>
       </div>

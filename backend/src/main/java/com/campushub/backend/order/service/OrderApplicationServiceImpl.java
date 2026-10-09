@@ -18,6 +18,8 @@ import com.campushub.backend.order.domain.OrderStatus;
 import com.campushub.backend.order.domain.OrderStatusHistoryEntry;
 import com.campushub.backend.order.dto.AcceptOrderCommand;
 import com.campushub.backend.order.dto.OrderDetailResponse;
+import com.campushub.backend.upload.repository.UploadedAssetRepository;
+import com.campushub.backend.upload.repository.entity.UploadedAssetEntity;
 import com.campushub.backend.order.dto.OrderHistoryQuery;
 import com.campushub.backend.order.dto.OrderSummaryResponse;
 import com.campushub.backend.order.dto.RequestOrderArbitrationCommand;
@@ -42,6 +44,9 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
     private static final String REQUESTER_CONFIRMED_NOTE = "REQUESTER_CONFIRMED_COMPLETION";
     private static final String COMPLETION_FINAL_NOTE = "ORDER_COMPLETED";
     private static final int MAX_ARBITRATION_REASON_LENGTH = 500;
+    private static final int MAX_PROOF_URL_LENGTH = 512;
+    private static final java.util.regex.Pattern PROOF_URL_PATTERN =
+        java.util.regex.Pattern.compile("/api/v1/uploads/\\d{4}/\\d{2}/[a-zA-Z0-9][a-zA-Z0-9._-]*");
 
     private final OrderRepository orderRepository;
     private final DemandRepository demandRepository;
@@ -49,6 +54,7 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
     private final NotificationApplicationService notificationApplicationService;
     private final RewardSettlementService rewardSettlementService;
     private final UserActionLogRepository userActionLogRepository;
+    private final UploadedAssetRepository uploadedAssetRepository;
 
     public OrderApplicationServiceImpl(
         OrderRepository orderRepository,
@@ -56,7 +62,8 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         UserRepository userRepository,
         NotificationApplicationService notificationApplicationService,
         RewardSettlementService rewardSettlementService,
-        UserActionLogRepository userActionLogRepository
+        UserActionLogRepository userActionLogRepository,
+        UploadedAssetRepository uploadedAssetRepository
     ) {
         this.orderRepository = orderRepository;
         this.demandRepository = demandRepository;
@@ -64,6 +71,7 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         this.notificationApplicationService = notificationApplicationService;
         this.rewardSettlementService = rewardSettlementService;
         this.userActionLogRepository = userActionLogRepository;
+        this.uploadedAssetRepository = uploadedAssetRepository;
     }
 
     @Override
@@ -198,7 +206,7 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
             return confirmCompletion(operatorId, order, demand, command);
         }
 
-        validateTransition(order, operatorId, targetStatus, command.proofImageCount());
+        validateTransition(order, operatorId, targetStatus);
         OrderStatus fromStatus = order.getStatus();
         LocalDateTime now = LocalDateTime.now();
         order.setStatus(targetStatus);
@@ -330,19 +338,22 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
             throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "completion already confirmed by this user");
         }
         if (operatorIsAccepter) {
-            validateProviderProof(command.proofImageCount());
+            validateProviderProof(command.proofImageUrls(), order.getAccepterId());
         }
 
         LocalDateTime now = LocalDateTime.now();
         if (!hasCompletionConfirmation(order, counterpartId)) {
             if (operatorIsAccepter) {
+                List<String> proofImageUrls = command.proofImageUrls();
                 order.setProofSubmitted(true);
-                order.setProofImageCount(command.proofImageCount());
+                order.setProofImageUrls(proofImageUrls);
+                order.setProofImageCount(proofImageUrls.size());
             }
             String pendingNote = operatorIsAccepter ? PROVIDER_CONFIRMED_NOTE : REQUESTER_CONFIRMED_NOTE;
             order.addHistory(OrderStatus.IN_PROGRESS, OrderStatus.IN_PROGRESS, operatorId, pendingNote, now);
             order.setUpdatedAt(now);
             orderRepository.save(order);
+            bindProofImagesAsPrivate(order.getProofImageUrls(), order.getId());
             notificationApplicationService.notifyOrderCompletionPending(counterpartId, order.getId());
             return OrderDetailResponse.from(order, DemandDetailResponse.from(demand));
         }
@@ -351,14 +362,17 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         order.setCompletedAt(now);
         order.setUpdatedAt(now);
         if (operatorIsAccepter && !order.isProofSubmitted()) {
+            List<String> proofImageUrls = command.proofImageUrls();
             order.setProofSubmitted(true);
-            order.setProofImageCount(command.proofImageCount());
+            order.setProofImageUrls(proofImageUrls);
+            order.setProofImageCount(proofImageUrls.size());
         }
         order.addHistory(OrderStatus.IN_PROGRESS, OrderStatus.COMPLETED, operatorId, COMPLETION_FINAL_NOTE, now);
         demand.setStatus(DemandStatus.COMPLETED);
         demand.setUpdatedAt(now);
         orderRepository.save(order);
         demandRepository.save(demand);
+        bindProofImagesAsPrivate(order.getProofImageUrls(), order.getId());
         transferReward(demand, order);
 
         notificationApplicationService.notifyOrderStatusChanged(order.getPublisherId(), order.getId(), OrderStatus.COMPLETED, true);
@@ -366,13 +380,43 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         return OrderDetailResponse.from(order, DemandDetailResponse.from(demand));
     }
 
-    private void validateProviderProof(Integer proofImageCount) {
-        if (proofImageCount == null || proofImageCount < 1 || proofImageCount > 3) {
-            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "proofImageCount must be between 1 and 3");
+    private void validateProviderProof(List<String> proofImageUrls, Long accepterId) {
+        if (proofImageUrls == null || proofImageUrls.isEmpty() || proofImageUrls.size() > 3) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "proofImageUrls must contain 1 to 3 images");
+        }
+        for (int i = 0; i < proofImageUrls.size(); i++) {
+            String url = proofImageUrls.get(i);
+            if (url == null) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "proofImageUrls[" + i + "] must not be null");
+            }
+            String trimmed = url.trim();
+            if (trimmed.isEmpty()) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "proofImageUrls[" + i + "] must not be blank");
+            }
+            if (trimmed.length() > MAX_PROOF_URL_LENGTH) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "proofImageUrls[" + i + "] length must not exceed " + MAX_PROOF_URL_LENGTH);
+            }
+            String lower = trimmed.toLowerCase(Locale.ROOT);
+            if (lower.startsWith("http://") || lower.startsWith("https://")) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "proofImageUrls[" + i + "] must be an internal upload URL, external URLs are not allowed");
+            }
+            if (!PROOF_URL_PATTERN.matcher(trimmed).matches()) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "proofImageUrls[" + i + "] must match /api/v1/uploads/YYYY/MM/filename format");
+            }
+            UploadedAssetEntity asset = uploadedAssetRepository.findByUrlPath(trimmed);
+            if (asset == null) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "proofImageUrls[" + i + "] is not from a valid upload");
+            }
+            if (!Boolean.TRUE.equals(asset.getIsPrivate())) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "proofImageUrls[" + i + "] must be a private upload (purpose=proof)");
+            }
+            if (!asset.getUploaderId().equals(accepterId)) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "proofImageUrls[" + i + "] does not belong to the current user");
+            }
         }
     }
 
-    private void validateTransition(Order order, Long operatorId, OrderStatus targetStatus, Integer proofImageCount) {
+    private void validateTransition(Order order, Long operatorId, OrderStatus targetStatus) {
         OrderStatus currentStatus = order.getStatus();
         if (currentStatus == OrderStatus.IN_ARBITRATION) {
             throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "order is waiting for admin arbitration");
@@ -391,14 +435,10 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
                 }
             }
             case COMPLETED -> {
+                // COMPLETED 实际由 confirmCompletion 处理（updateStatus 中提前分支），此处不会执行；
+                // 保留状态校验以防未来重构遗漏，但不再校验 proofImageCount（proofImageUrls 是唯一 source of truth）
                 if (currentStatus != OrderStatus.IN_PROGRESS) {
                     throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "only in progress orders can be completed");
-                }
-                if (!operatorId.equals(order.getAccepterId())) {
-                    throw new BusinessException(ErrorCode.PERMISSION_DENIED, "only accepter can complete the order");
-                }
-                if (proofImageCount == null || proofImageCount < 1 || proofImageCount > 3) {
-                    throw new BusinessException(ErrorCode.VALIDATION_FAILED, "proofImageCount must be between 1 and 3");
                 }
             }
             case CANCELLED -> {
@@ -520,5 +560,27 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
 
     private boolean isDemandExpired(Demand demand, LocalDateTime now) {
         return demand.getEndTime() != null && demand.getEndTime().isBefore(now);
+    }
+
+    private void bindProofImagesAsPrivate(List<String> proofImageUrls, Long orderId) {
+        if (proofImageUrls == null || proofImageUrls.isEmpty() || orderId == null) {
+            return;
+        }
+        for (String url : proofImageUrls) {
+            if (url == null || url.isBlank()) {
+                continue;
+            }
+            String trimmed = url.trim();
+            int updated = uploadedAssetRepository.markAsPrivateAndBindOrder(trimmed, orderId);
+            if (updated == 0) {
+                UploadedAssetEntity asset = uploadedAssetRepository.findByUrlPath(trimmed);
+                if (asset != null && asset.getBoundOrderId() != null && !asset.getBoundOrderId().equals(orderId)) {
+                    throw new BusinessException(ErrorCode.BUSINESS_CONFLICT,
+                        "proof image already bound to another order: " + trimmed);
+                }
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED,
+                    "failed to bind proof image to order: " + trimmed);
+            }
+        }
     }
 }

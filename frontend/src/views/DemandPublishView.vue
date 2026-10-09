@@ -408,16 +408,9 @@ async function checkRewardBalance(): Promise<void> {
   }
 
   try {
-    let available = Number(await store.fetchBalance())
-    if (available === 0 && store.currentUser) {
-      try {
-        await store.fetchProfile()
-        available = Number(store.currentUser?.balance ?? available)
-      } catch {
-        // ignore
-      }
-    }
-
+    const balance = Number(store.currentUser?.balance ?? 0)
+    const frozen = Number(store.currentUser?.frozenBalance ?? 0)
+    const available = Math.max(0, balance - frozen)
     if (amount > available) {
       rewardError.value = `报酬不能超过当前可用余额 ${formatMoney(available)}`
       errors.reward = rewardError.value

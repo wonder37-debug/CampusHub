@@ -43,7 +43,7 @@ import org.springframework.test.web.servlet.ResultActions;
     "spring.datasource.username=sa",
     "spring.datasource.password=",
     "spring.sql.init.mode=always",
-    "spring.sql.init.schema-locations=classpath:schema.sql,classpath:schema-demand.sql,classpath:schema-response.sql,classpath:schema-order.sql,classpath:schema-review.sql,classpath:schema-notification.sql,classpath:schema-recommendation.sql",
+    "spring.sql.init.schema-locations=classpath:schema.sql,classpath:schema-demand.sql,classpath:schema-response.sql,classpath:schema-order.sql,classpath:schema-review.sql,classpath:schema-notification.sql,classpath:schema-recommendation.sql,classpath:schema-asset.sql",
     "spring.datasource.hikari.connection-timeout=3000"
 })
 @AutoConfigureMockMvc
@@ -64,6 +64,9 @@ class FrontendIntegrationFlowTest {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private com.campushub.backend.upload.repository.UploadedAssetRepository uploadedAssetRepository;
 
     @BeforeEach
     void seedAdminUser() {
@@ -173,11 +176,15 @@ class FrontendIntegrationFlowTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.status").value("IN_PROGRESS"));
 
-        updateOrder(accepter.token(), orderId, "COMPLETED", "delivered", 2)
+        uploadedAssetRepository.insert(new com.campushub.backend.upload.repository.entity.UploadedAssetEntity("proof1.png", "/api/v1/uploads/2026/10/proof1.png", accepter.userId(), true, null));
+        uploadedAssetRepository.insert(new com.campushub.backend.upload.repository.entity.UploadedAssetEntity("proof2.png", "/api/v1/uploads/2026/10/proof2.png", accepter.userId(), true, null));
+        updateOrder(accepter.token(), orderId, "COMPLETED", "delivered", List.of("/api/v1/uploads/2026/10/proof1.png", "/api/v1/uploads/2026/10/proof2.png"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.status").value("IN_PROGRESS"))
             .andExpect(jsonPath("$.data.proofSubmitted").value(true))
-            .andExpect(jsonPath("$.data.proofImageCount").value(2));
+            .andExpect(jsonPath("$.data.proofImageCount").value(2))
+            .andExpect(jsonPath("$.data.proofImageUrls[0]").value("/api/v1/uploads/2026/10/proof1.png"))
+            .andExpect(jsonPath("$.data.proofImageUrls[1]").value("/api/v1/uploads/2026/10/proof2.png"));
 
         updateOrder(publisher.token(), orderId, "COMPLETED", "confirm", null)
             .andExpect(status().isOk())
@@ -416,13 +423,13 @@ class FrontendIntegrationFlowTest {
         Long orderId,
         String targetStatus,
         String note,
-        Integer proofImageCount
+        List<String> proofImageUrls
     ) throws Exception {
         Map<String, Object> body = new java.util.HashMap<>();
         body.put("targetStatus", targetStatus);
         body.put("note", note);
-        if (proofImageCount != null) {
-            body.put("proofImageCount", proofImageCount);
+        if (proofImageUrls != null) {
+            body.put("proofImageUrls", proofImageUrls);
         }
         return mockMvc.perform(put("/api/v1/orders/{orderId}", orderId)
             .header("Authorization", bearer(token))
