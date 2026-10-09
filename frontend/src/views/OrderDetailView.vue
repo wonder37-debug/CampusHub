@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue'
+import { computed, ref, onMounted, watch, onUnmounted } from 'vue'
 import { handleError } from '@/utils/errorHandler'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -30,9 +30,24 @@ const proofImages = ref<string[]>([])
 // 关键操作（开始执行/提交完成/取消/评价/仲裁）防重复点击 loading
 const submitting = ref(false)
 
-const proofImageUrlsWithToken = computed(() => {
-  if (!order.value?.proofImageUrls) return []
-  return order.value.proofImageUrls.map(url => store.getProofImageUrl(url))
+const proofImageBlobUrls = ref<string[]>([])
+
+watch(() => order.value?.proofImageUrls, async (urls) => {
+  proofImageBlobUrls.value.forEach(u => {
+    if (u.startsWith('blob:')) URL.revokeObjectURL(u)
+  })
+  proofImageBlobUrls.value = []
+  if (!urls || urls.length === 0) return
+  const blobUrls = await Promise.all(
+    urls.map(url => store.fetchProofImageBlob(url).catch(() => url))
+  )
+  proofImageBlobUrls.value = blobUrls
+}, { immediate: true })
+
+onUnmounted(() => {
+  proofImageBlobUrls.value.forEach(u => {
+    if (u.startsWith('blob:')) URL.revokeObjectURL(u)
+  })
 })
 
 // Image viewer
@@ -465,7 +480,7 @@ onMounted(() => {
         <p class="eyebrow">完成凭证 ({{ order.proofImageUrls.length }})</p>
         <div class="image-grid">
           <a
-            v-for="(url, pIdx) in proofImageUrlsWithToken"
+            v-for="(url, pIdx) in proofImageBlobUrls"
             :key="url"
             :href="url"
             target="_blank"

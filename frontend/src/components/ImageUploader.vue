@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 import { useCampusHubStore } from '@/stores/campusHub'
 
 const store = useCampusHubStore()
@@ -18,9 +18,30 @@ const emit = defineEmits<{
 const maxCount = computed(() => props.maxCount ?? 6)
 const maxSizeBytes = computed(() => (props.maxSizeMB ?? 10) * 1024 * 1024)
 
-const previewUrls = computed(() => {
-  if (props.purpose !== 'proof') return props.modelValue
-  return props.modelValue.map(url => store.getProofImageUrl(url))
+const previewUrls = ref<string[]>([])
+
+watch(() => [props.modelValue, props.purpose] as const, async ([urls, purpose]) => {
+  previewUrls.value.forEach(u => {
+    if (u.startsWith('blob:')) URL.revokeObjectURL(u)
+  })
+  if (purpose !== 'proof') {
+    previewUrls.value = urls ? [...urls] : []
+    return
+  }
+  if (!urls || urls.length === 0) {
+    previewUrls.value = []
+    return
+  }
+  const blobUrls = await Promise.all(
+    urls.map(url => store.fetchProofImageBlob(url).catch(() => url))
+  )
+  previewUrls.value = blobUrls
+}, { immediate: true })
+
+onUnmounted(() => {
+  previewUrls.value.forEach(u => {
+    if (u.startsWith('blob:')) URL.revokeObjectURL(u)
+  })
 })
 
 const uploading = ref(false)

@@ -762,4 +762,67 @@ class OrderApplicationServiceImplTest {
         });
         return demandApplicationService.getDetail(demand.id());
     }
+
+    @Test
+    void shouldRejectCrossOrderBindingOfSameProofImage() {
+        DemandDetailResponse demand1 = createDemand();
+        DemandDetailResponse demand2 = createDemand();
+        OrderDetailResponse order1 = orderApplicationService.accept(accepterId, demand1.id(), new AcceptOrderCommand("处理1"));
+        OrderDetailResponse order2 = orderApplicationService.accept(accepterId, demand2.id(), new AcceptOrderCommand("处理2"));
+
+        orderApplicationService.updateStatus(accepterId, order1.orderId(),
+            new UpdateOrderStatusCommand("IN_PROGRESS", "开始1", null));
+        orderApplicationService.updateStatus(accepterId, order2.orderId(),
+            new UpdateOrderStatusCommand("IN_PROGRESS", "开始2", null));
+
+        // 第一个订单提交完成凭证 → 绑定成功
+        orderApplicationService.updateStatus(accepterId, order1.orderId(),
+            new UpdateOrderStatusCommand("COMPLETED", "完成1", 1, List.of("/api/v1/uploads/2026/10/proof1.png")));
+
+        var asset = uploadedAssetRepository.findByUrlPath("/api/v1/uploads/2026/10/proof1.png");
+        assertEquals(order1.orderId(), asset.getBoundOrderId());
+
+        // 第二个订单尝试使用同一张图片 → 绑定失败，抛异常
+        BusinessException exception = assertThrows(
+            BusinessException.class,
+            () -> orderApplicationService.updateStatus(accepterId, order2.orderId(),
+                new UpdateOrderStatusCommand("COMPLETED", "完成2", 1, List.of("/api/v1/uploads/2026/10/proof1.png")))
+        );
+        assertEquals(ErrorCode.BUSINESS_CONFLICT, exception.getErrorCode());
+
+        // 事务回滚：order2 状态仍为 IN_PROGRESS，proofSubmitted 仍为 false
+        OrderDetailResponse order2After = orderApplicationService.getDetail(accepterId, order2.orderId());
+        assertEquals("IN_PROGRESS", order2After.status());
+
+        // asset 仍只绑定到 order1
+        var assetAfter = uploadedAssetRepository.findByUrlPath("/api/v1/uploads/2026/10/proof1.png");
+        assertEquals(order1.orderId(), assetAfter.getBoundOrderId());
+    }
+
+    @Test
+    void shouldAllowIdempotentRebindToSameOrder() {
+        DemandDetailResponse demand = createDemand();
+        OrderDetailResponse order = orderApplicationService.accept(accepterId, demand.id(), new AcceptOrderCommand("我来"));
+        orderApplicationService.updateStatus(accepterId, order.orderId(),
+            new UpdateOrderStatusCommand("IN_PROGRESS", "开始", null));
+
+        // 接单方提交完成凭证（第一方确认）
+        OrderDetailResponse firstConfirm = orderApplicationService.updateStatus(accepterId, order.orderId(),
+            new UpdateOrderStatusCommand("COMPLETED", "完成", 1, List.of("/api/v1/uploads/2026/10/proof2.png")));
+        assertEquals("IN_PROGRESS", firstConfirm.status());
+        assertTrue(firstConfirm.proofSubmitted());
+
+        // asset 已绑定
+        var asset = uploadedAssetRepository.findByUrlPath("/api/v1/uploads/2026/10/proof2.png");
+        assertEquals(order.orderId(), asset.getBoundOrderId());
+
+        // 发布方确认完成（第二方确认）→ bindProofImagesAsPrivate 再次调用同一 orderId，幂等
+        OrderDetailResponse secondConfirm = orderApplicationService.updateStatus(publisherId, order.orderId(),
+            new UpdateOrderStatusCommand("COMPLETED", "确认", null));
+        assertEquals("COMPLETED", secondConfirm.status());
+
+        // asset 仍绑定到同一订单
+        var assetAfter = uploadedAssetRepository.findByUrlPath("/api/v1/uploads/2026/10/proof2.png");
+        assertEquals(order.orderId(), assetAfter.getBoundOrderId());
+    }
 }

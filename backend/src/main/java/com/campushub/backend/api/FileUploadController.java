@@ -200,16 +200,14 @@ public class FileUploadController {
      * Serve uploaded files via HTTP for local static storage mapping.
      *
      * <p>公开图片匿名访问（需求列表/详情等展示场景）；私密图片（凭证等）要求服务端鉴权，
-     * 仅上传者、订单参与者（publisher/accepter）和管理员可读取。私密图片禁用公开缓存。</p>
-     *
-     * @param token 可选 query parameter token，用于 {@code <img>} 标签无法携带 Authorization header 的场景
+     * 仅上传者、订单参与者（publisher/accepter）和管理员可读取。私密图片禁用公开缓存。
+     * 鉴权仅接受 Authorization header，不接受 query parameter token，避免 JWT 泄露到 URL/日志。
      */
     @GetMapping("/uploads/{year}/{month}/{filename}")
     public ResponseEntity<Resource> serveFile(
             @PathVariable String year,
             @PathVariable String month,
             @PathVariable String filename,
-            @RequestParam(value = "token", required = false) String token,
             HttpServletRequest request) {
         try {
             Path filePath = uploadRoot.resolve(year).resolve(month).resolve(filename).normalize();
@@ -228,7 +226,7 @@ public class FileUploadController {
             UploadedAssetEntity asset = uploadedAssetRepository.findByUrlPath(urlPath);
 
             if (asset != null && Boolean.TRUE.equals(asset.getIsPrivate())) {
-                CurrentUser currentUser = requestUserExtractor.tryExtractWithToken(request, token);
+                CurrentUser currentUser = requestUserExtractor.tryExtract(request);
                 if (currentUser == null) {
                     return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
                 }

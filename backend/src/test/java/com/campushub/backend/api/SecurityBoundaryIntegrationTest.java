@@ -275,9 +275,9 @@ class SecurityBoundaryIntegrationTest {
         mockMvc.perform(get(proofUrl).header("Authorization", bearer(adminToken)))
             .andExpect(status().isOk());
 
-        // query parameter token 也可以访问
+        // query parameter token 不再支持（JWT 不应出现在 URL 中）→ 401
         mockMvc.perform(get(proofUrl + "?token=" + accepter.token()))
-            .andExpect(status().isOk());
+            .andExpect(status().isUnauthorized());
 
         // 无关用户不能访问 → 403
         mockMvc.perform(get(proofUrl).header("Authorization", bearer(outsider.token())))

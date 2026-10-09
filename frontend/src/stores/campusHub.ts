@@ -1364,10 +1364,18 @@ export const useCampusHubStore = defineStore('campusHub', {
       }
     },
 
-    getProofImageUrl(url: string): string {
+    async fetchProofImageBlob(url: string): Promise<string> {
       if (!url || !this.token) return url
-      const separator = url.includes('?') ? '&' : '?'
-      return `${url}${separator}token=${encodeURIComponent(this.token)}`
+      try {
+        const response = await fetch(url, {
+          headers: { Authorization: `Bearer ${this.token}` }
+        })
+        if (!response.ok) return url
+        const blob = await response.blob()
+        return URL.createObjectURL(blob)
+      } catch {
+        return url
+      }
     }
   }
 })

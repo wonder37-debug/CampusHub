@@ -570,10 +570,16 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
             if (url == null || url.isBlank()) {
                 continue;
             }
-            try {
-                uploadedAssetRepository.markAsPrivateAndBindOrder(url.trim(), orderId);
-            } catch (RuntimeException ignored) {
-                // 绑定失败不阻断订单主流程，但资产记录可能仍为公开状态
+            String trimmed = url.trim();
+            int updated = uploadedAssetRepository.markAsPrivateAndBindOrder(trimmed, orderId);
+            if (updated == 0) {
+                UploadedAssetEntity asset = uploadedAssetRepository.findByUrlPath(trimmed);
+                if (asset != null && asset.getBoundOrderId() != null && !asset.getBoundOrderId().equals(orderId)) {
+                    throw new BusinessException(ErrorCode.BUSINESS_CONFLICT,
+                        "proof image already bound to another order: " + trimmed);
+                }
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED,
+                    "failed to bind proof image to order: " + trimmed);
             }
         }
     }
