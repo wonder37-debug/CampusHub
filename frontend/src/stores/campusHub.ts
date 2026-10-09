@@ -1218,7 +1218,7 @@ export const useCampusHubStore = defineStore('campusHub', {
         this.currentProfile = profile
         this.currentUserId = profile.id || this.currentUserId
       } catch (err: any) {
-        if (err?.status === 401) {
+        if (err?.status === 401 && requestToken) {
           clearExpiredSession(requestToken)
         }
       }

@@ -144,7 +144,10 @@ public class FileUploadController {
                 }
 
                 String storedFilename = generateStoredFilename(normalizedExtension);
-                Path dateDir = getDateDir();
+                LocalDate today = LocalDate.now();
+                Path dateDir = uploadRoot
+                        .resolve(String.valueOf(today.getYear()))
+                        .resolve(String.format("%02d", today.getMonthValue()));
                 Files.createDirectories(dateDir);
                 Path targetPath = dateDir.resolve(storedFilename).normalize();
                 // 路径穿越兜底：最终写入路径必须仍在 uploadRoot 之下
@@ -157,10 +160,18 @@ public class FileUploadController {
                     Files.copy(in, targetPath, StandardCopyOption.REPLACE_EXISTING);
                 }
 
-                // Build accessible URL: /api/v1/uploads/YYYY/MM/filename
-                String datePath = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy/MM"));
-                urls.add("/api/v1/uploads/" + datePath + "/" + storedFilename);
-                uploadedAssetRepository.insert(new UploadedAssetEntity(storedFilename, currentUser.userId()));
+                // Build accessible URL: /api/v1/uploads/YYYY/MM/filename（与存储路径用同一个 today，避免日期切换不一致）
+                String datePath = today.format(DateTimeFormatter.ofPattern("yyyy/MM"));
+                String urlPath = "/api/v1/uploads/" + datePath + "/" + storedFilename;
+                urls.add(urlPath);
+                try {
+                    uploadedAssetRepository.insert(new UploadedAssetEntity(storedFilename, urlPath, currentUser.userId()));
+                } catch (RuntimeException e) {
+                    // 上传记录保存失败时清理已写入的文件，避免产生无记录的孤立资源
+                    Files.deleteIfExists(targetPath);
+                    errors.add((originalFilename == null ? "文件" : originalFilename) + " 上传记录保存失败");
+                    continue;
+                }
             } catch (IOException e) {
                 errors.add((originalFilename == null ? "文件" : originalFilename) + " 上传失败: " + e.getMessage());
             }

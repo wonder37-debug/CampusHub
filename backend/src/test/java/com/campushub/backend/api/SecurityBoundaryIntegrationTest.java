@@ -141,7 +141,7 @@ class SecurityBoundaryIntegrationTest {
         updateOrder(accepter.token(), orderId, "IN_PROGRESS", "started", null)
             .andExpect(status().isOk());
         Long accepterUserId = userRepository.findByStudentId(accepter.studentId()).orElseThrow().getId();
-        uploadedAssetRepository.insert(new com.campushub.backend.upload.repository.entity.UploadedAssetEntity("test.jpg", accepterUserId));
+        uploadedAssetRepository.insert(new com.campushub.backend.upload.repository.entity.UploadedAssetEntity("test.jpg", "/api/v1/uploads/2026/10/test.jpg", accepterUserId));
         updateOrder(accepter.token(), orderId, "COMPLETED", "done", java.util.List.of("/api/v1/uploads/2026/10/test.jpg"))
             .andExpect(status().isOk());
         // requester confirms completion → COMPLETED

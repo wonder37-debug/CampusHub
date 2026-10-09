@@ -103,7 +103,7 @@ class OrderApplicationServiceImplTest {
         for (String fn : java.util.List.of("proof1.png", "proof2.png", "proof-a.png", "proof-b.png",
                 "p1.png", "p2.png", "p3.png", "single.png", "a.png")) {
             uploadedAssetRepository.insert(
-                new com.campushub.backend.upload.repository.entity.UploadedAssetEntity(fn, accepterId));
+                new com.campushub.backend.upload.repository.entity.UploadedAssetEntity(fn, "/api/v1/uploads/2026/10/" + fn, accepterId));
         }
     }
 
@@ -692,13 +692,45 @@ class OrderApplicationServiceImplTest {
             new UpdateOrderStatusCommand("IN_PROGRESS", "开始处理", null));
 
         uploadedAssetRepository.insert(
-            new com.campushub.backend.upload.repository.entity.UploadedAssetEntity("other-user-asset.png", publisherId));
+            new com.campushub.backend.upload.repository.entity.UploadedAssetEntity("other-user-asset.png", "/api/v1/uploads/2026/10/other-user-asset.png", publisherId));
 
         BusinessException exception = assertThrows(
             BusinessException.class,
             () -> orderApplicationService.updateStatus(accepterId, accepted.orderId(),
                 new UpdateOrderStatusCommand("COMPLETED", "他人凭证", 1,
                     List.of("/api/v1/uploads/2026/10/other-user-asset.png")))
+        );
+        assertEquals(ErrorCode.VALIDATION_FAILED, exception.getErrorCode());
+    }
+
+    @Test
+    void shouldRejectProviderCompletionWithNonExistentProofUrl() {
+        DemandDetailResponse demand = createDemand();
+        OrderDetailResponse accepted = orderApplicationService.accept(accepterId, demand.id(), new AcceptOrderCommand("我来"));
+        orderApplicationService.updateStatus(accepterId, accepted.orderId(),
+            new UpdateOrderStatusCommand("IN_PROGRESS", "开始处理", null));
+
+        BusinessException exception = assertThrows(
+            BusinessException.class,
+            () -> orderApplicationService.updateStatus(accepterId, accepted.orderId(),
+                new UpdateOrderStatusCommand("COMPLETED", "伪造路径", 1,
+                    List.of("/api/v1/uploads/2026/10/nonexistent.png")))
+        );
+        assertEquals(ErrorCode.VALIDATION_FAILED, exception.getErrorCode());
+    }
+
+    @Test
+    void shouldRejectProviderCompletionWithMismatchedDatePath() {
+        DemandDetailResponse demand = createDemand();
+        OrderDetailResponse accepted = orderApplicationService.accept(accepterId, demand.id(), new AcceptOrderCommand("我来"));
+        orderApplicationService.updateStatus(accepterId, accepted.orderId(),
+            new UpdateOrderStatusCommand("IN_PROGRESS", "开始处理", null));
+
+        BusinessException exception = assertThrows(
+            BusinessException.class,
+            () -> orderApplicationService.updateStatus(accepterId, accepted.orderId(),
+                new UpdateOrderStatusCommand("COMPLETED", "日期不匹配", 1,
+                    List.of("/api/v1/uploads/2025/01/proof1.png")))
         );
         assertEquals(ErrorCode.VALIDATION_FAILED, exception.getErrorCode());
     }

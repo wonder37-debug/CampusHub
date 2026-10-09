@@ -401,8 +401,7 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
             if (!PROOF_URL_PATTERN.matcher(trimmed).matches()) {
                 throw new BusinessException(ErrorCode.VALIDATION_FAILED, "proofImageUrls[" + i + "] must match /api/v1/uploads/YYYY/MM/filename format");
             }
-            String filename = trimmed.substring(trimmed.lastIndexOf('/') + 1);
-            UploadedAssetEntity asset = uploadedAssetRepository.findByFilename(filename);
+            UploadedAssetEntity asset = uploadedAssetRepository.findByUrlPath(trimmed);
             if (asset == null) {
                 throw new BusinessException(ErrorCode.VALIDATION_FAILED, "proofImageUrls[" + i + "] is not from a valid upload");
             }

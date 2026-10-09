@@ -173,7 +173,7 @@ class ReviewApplicationServiceImplTest {
         )).getId();
         for (String fn : java.util.List.of("proof1.png", "proof2.png")) {
             uploadedAssetRepository.insert(
-                new com.campushub.backend.upload.repository.entity.UploadedAssetEntity(fn, accepterId));
+                new com.campushub.backend.upload.repository.entity.UploadedAssetEntity(fn, "/api/v1/uploads/2026/10/" + fn, accepterId));
         }
     }
 

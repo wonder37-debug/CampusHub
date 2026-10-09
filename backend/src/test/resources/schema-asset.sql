@@ -2,8 +2,10 @@ DROP TABLE IF EXISTS uploaded_asset;
 CREATE TABLE uploaded_asset (
     id          BIGINT       NOT NULL AUTO_INCREMENT,
     filename    VARCHAR(255) NOT NULL,
+    url_path    VARCHAR(512) NOT NULL,
     uploader_id BIGINT       NOT NULL,
     uploaded_at TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
-    CONSTRAINT uk_asset_filename UNIQUE (filename)
+    CONSTRAINT uk_asset_filename UNIQUE (filename),
+    CONSTRAINT uk_asset_url_path UNIQUE (url_path)
 );

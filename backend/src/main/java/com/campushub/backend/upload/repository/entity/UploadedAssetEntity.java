@@ -12,14 +12,16 @@ public class UploadedAssetEntity {
     private Long id;
 
     private String filename;
+    private String urlPath;
     private Long uploaderId;
     private LocalDateTime uploadedAt;
 
     public UploadedAssetEntity() {
     }
 
-    public UploadedAssetEntity(String filename, Long uploaderId) {
+    public UploadedAssetEntity(String filename, String urlPath, Long uploaderId) {
         this.filename = filename;
+        this.urlPath = urlPath;
         this.uploaderId = uploaderId;
         this.uploadedAt = LocalDateTime.now();
     }
@@ -38,6 +40,14 @@ public class UploadedAssetEntity {
 
     public void setFilename(String filename) {
         this.filename = filename;
+    }
+
+    public String getUrlPath() {
+        return urlPath;
+    }
+
+    public void setUrlPath(String urlPath) {
+        this.urlPath = urlPath;
     }
 
     public Long getUploaderId() {

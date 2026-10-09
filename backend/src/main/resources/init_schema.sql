@@ -80,18 +80,16 @@ VALUES ('test2@edu.cn', 'TEST002', '$2a$10$ZZ9LIwTu25X6iXkfc1SASe4YEghRHDiD1jTMu
 
 ON DUPLICATE KEY UPDATE id=id;
 
--- 幂等补充预置账号余额：用 balance_seeded 标志确保只发放一次，不因重启重复补发
-ALTER TABLE `sys_user` ADD COLUMN IF NOT EXISTS `balance_seeded` tinyint(1) NOT NULL DEFAULT 0 COMMENT '初始余额是否已发放';
-UPDATE `sys_user` SET `balance` = 100.00, `balance_seeded` = 1 WHERE `student_id` IN ('ADMIN001', 'TEST001', 'TEST002') AND `balance_seeded` = 0;
-
 -- 上传资源所有权记录表
 CREATE TABLE IF NOT EXISTS `uploaded_asset` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `filename` varchar(255) NOT NULL COMMENT '服务端生成的文件名（UUID+扩展名）',
+  `url_path` varchar(512) NOT NULL COMMENT '完整相对路径 /api/v1/uploads/YYYY/MM/filename',
   `uploader_id` bigint NOT NULL COMMENT '上传者用户ID',
   `uploaded_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_asset_filename` (`filename`),
+  UNIQUE KEY `uk_asset_url_path` (`url_path`),
   KEY `idx_asset_uploader` (`uploader_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='上传资源所有权记录';
 

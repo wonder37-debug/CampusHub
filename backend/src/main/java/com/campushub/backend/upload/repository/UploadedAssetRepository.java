@@ -9,6 +9,6 @@ import org.apache.ibatis.annotations.Select;
 @Mapper
 public interface UploadedAssetRepository extends BaseMapper<UploadedAssetEntity> {
 
-    @Select("SELECT * FROM uploaded_asset WHERE filename = #{filename}")
-    UploadedAssetEntity findByFilename(@Param("filename") String filename);
+    @Select("SELECT * FROM uploaded_asset WHERE url_path = #{urlPath}")
+    UploadedAssetEntity findByUrlPath(@Param("urlPath") String urlPath);
 }
