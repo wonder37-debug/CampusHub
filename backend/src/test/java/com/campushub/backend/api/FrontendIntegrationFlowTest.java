@@ -432,6 +432,39 @@ class FrontendIntegrationFlowTest {
     }
 
     @Test
+    void shouldAllowPastStartTimeOnUpdate() throws Exception {
+        TestUser publisher = registerAndLogin("publisher-update-past-start");
+        String adminToken = login("admin", "Admin1234").token();
+        Long demandId = publishDemand(publisher.token());
+        approveDemand(adminToken, demandId);
+
+        // 更新需求时将开始时间设为过去时间，应允许
+        mockMvc.perform(put("/api/v1/demands/{demandId}", demandId)
+                .header("Authorization", bearer(publisher.token()))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json(Map.of("startTime", LocalDateTime.now().minusDays(2).toString()))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.startTime").isNotEmpty());
+    }
+
+    @Test
+    void shouldRejectEndTimeBeforeStartTimeOnUpdate() throws Exception {
+        TestUser publisher = registerAndLogin("publisher-update-end-before-start");
+        String adminToken = login("admin", "Admin1234").token();
+        Long demandId = publishDemand(publisher.token());
+        approveDemand(adminToken, demandId);
+
+        // 更新需求时结束时间早于开始时间，应被拒绝
+        mockMvc.perform(put("/api/v1/demands/{demandId}", demandId)
+                .header("Authorization", bearer(publisher.token()))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json(Map.of(
+                    "startTime", LocalDateTime.now().plusDays(5).toString(),
+                    "endTime", LocalDateTime.now().plusDays(1).toString()))))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void shouldRejectPublisherAcceptingOwnDemand() throws Exception {
         TestUser publisher = registerAndLogin("publisher-own-accept");
         String adminToken = login("admin", "Admin1234").token();
