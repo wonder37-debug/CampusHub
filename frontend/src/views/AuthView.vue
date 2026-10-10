@@ -185,9 +185,18 @@ async function submitRegister(): Promise<void> {
 
   const email = registrationEmail.value
 
-  // 注册前，若有暂存头像 File，注册时先不传 avatarUrl（blob URL 无法持久化）
-  const pendingAvatarFile = avatarCropperRef.value?.getPendingFile() ?? null
-  const registerAvatarUrl = pendingAvatarFile ? '' : (registerForm.avatarUrl?.trim() || '')
+  // 注册前判断头像来源：只有当 avatarUrl 仍是当前暂存文件的 blob: 预览地址时，
+  // 才使用 pendingFile 上传；若用户粘贴了 HTTPS 链接，清理旧的暂存文件并保留新链接。
+  const avatarUrl = registerForm.avatarUrl?.trim() || ''
+  const isBlobAvatar = avatarUrl.startsWith('blob:')
+  const pendingAvatarFile = isBlobAvatar ? (avatarCropperRef.value?.getPendingFile() ?? null) : null
+
+  // 用户粘贴了非 blob: URL（如 HTTPS 链接），清理旧的暂存文件
+  if (!isBlobAvatar && avatarCropperRef.value?.getPendingFile()) {
+    avatarCropperRef.value?.clearPendingFile()
+  }
+
+  const registerAvatarUrl = pendingAvatarFile ? '' : avatarUrl
 
   try {
     const user = await store.register({

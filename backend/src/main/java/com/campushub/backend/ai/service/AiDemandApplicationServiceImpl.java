@@ -15,6 +15,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -45,6 +46,9 @@ public class AiDemandApplicationServiceImpl implements AiDemandApplicationServic
     private static final Logger log = LoggerFactory.getLogger(AiDemandApplicationServiceImpl.class);
 
     private static final DateTimeFormatter CURRENT_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+    /** 统一输出格式：yyyy-MM-dd'T'HH:mm:ss，截断至秒，避免小数秒泄漏给 API 调用方 */
+    private static final DateTimeFormatter ISO_SECONDS_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
 
     private static final String SYSTEM_PROMPT = """
         你是 CampusHub 的"校园需求草稿生成器"。
@@ -239,17 +243,24 @@ public class AiDemandApplicationServiceImpl implements AiDemandApplicationServic
         }
 
         // 时间校验
-        LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Shanghai"));
+        LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Shanghai")).truncatedTo(ChronoUnit.SECONDS);
         LocalDateTime start = parseTime(raw.startTime(), "startTime");
         // startTime 默认为当前时间（Asia/Shanghai），不要求用户手动补填
         String startTimeStr;
         if (start != null) {
-            startTimeStr = raw.startTime().trim();
+            // 统一格式化 AI 返回的时间，避免小数秒格式泄漏
+            start = start.truncatedTo(ChronoUnit.SECONDS);
+            startTimeStr = start.format(ISO_SECONDS_FORMATTER);
         } else {
             start = now;
-            startTimeStr = now.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+            startTimeStr = now.format(ISO_SECONDS_FORMATTER);
         }
         LocalDateTime end = parseTime(raw.endTime(), "endTime");
+        String endTimeStr = null;
+        if (end != null) {
+            end = end.truncatedTo(ChronoUnit.SECONDS);
+            endTimeStr = end.format(ISO_SECONDS_FORMATTER);
+        }
         if (start != null && end != null && !end.isAfter(start)) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED,
                 "AI 返回内容无法识别，请重新描述需求");
@@ -295,7 +306,7 @@ public class AiDemandApplicationServiceImpl implements AiDemandApplicationServic
         missingFields.clear();
         missingFields.addAll(trimmedMissingFields);
         canonicalizeMissingFields(missingFields, category, title, campusZone, location,
-            startTimeStr, raw.endTime(), reward, interactionMode, targetParticipantCount);
+            startTimeStr, endTimeStr, reward, interactionMode, targetParticipantCount);
 
         // 白名单 + 去重
         List<String> normalizedMissingFields = normalizeMissingFields(missingFields);
@@ -307,7 +318,7 @@ public class AiDemandApplicationServiceImpl implements AiDemandApplicationServic
             campusZone,
             location,
             startTimeStr,
-            raw.endTime(),
+            endTimeStr,
             reward,
             normalizedTags,
             interactionMode,

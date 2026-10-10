@@ -580,4 +580,55 @@ describe('DemandPublishView - AI 帮我发布', () => {
     // 联系方式保持用户的手动输入
     expect((wrapper.find('#demand-contact').element as HTMLInputElement).value).toBe('微信: abc123')
   })
+
+  // ========== Fix 6: AI 字段来源追踪 ==========
+
+  it('第二轮 AI 不提及联系方式时，上一轮 AI 自动填写的 contactInfo 应清空', async () => {
+    // 第一轮 AI 填入联系方式
+    mockGenerate.mockResolvedValue(buildDraft({ contactInfo: 'QQ: 25984515619' }))
+    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
+    await wrapper.find('[data-testid="ai-prompt-input"]').setValue('组队打球')
+    await wrapper.find('[data-testid="ai-generate-button"]').trigger('click')
+    await flushPromises()
+
+    // 验证第一轮填入了联系方式
+    expect((wrapper.find('#demand-contact').element as HTMLInputElement).value).toBe('QQ: 25984515619')
+
+    // 第二轮 AI 不提及联系方式（完全不同的需求）
+    mockGenerate.mockResolvedValue(buildDraft({
+      title: '取快递',
+      description: '帮我取快递',
+      category: 'EXPRESS',
+      contactInfo: null
+    }))
+    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
+    await wrapper.find('[data-testid="ai-prompt-input"]').setValue('取快递')
+    await wrapper.find('[data-testid="ai-generate-button"]').trigger('click')
+    await flushPromises()
+
+    // 上一轮 AI 自动填写的联系方式应清空，不残留到无关的新需求中
+    expect((wrapper.find('#demand-contact').element as HTMLInputElement).value).toBe('')
+  })
+
+  it('用户手动修改 contactInfo 后，第二轮 AI 不提及时保留用户值', async () => {
+    // 第一轮 AI 填入联系方式
+    mockGenerate.mockResolvedValue(buildDraft({ contactInfo: 'QQ: 123456' }))
+    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
+    await wrapper.find('[data-testid="ai-prompt-input"]').setValue('组队')
+    await wrapper.find('[data-testid="ai-generate-button"]').trigger('click')
+    await flushPromises()
+
+    // 用户手动修改联系方式
+    await wrapper.find('#demand-contact').setValue('微信: manual_value')
+
+    // 第二轮 AI 不提及联系方式
+    mockGenerate.mockResolvedValue(buildDraft({ contactInfo: null }))
+    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
+    await wrapper.find('[data-testid="ai-prompt-input"]').setValue('取快递')
+    await wrapper.find('[data-testid="ai-generate-button"]').trigger('click')
+    await flushPromises()
+
+    // 用户手动修改的值应保留
+    expect((wrapper.find('#demand-contact').element as HTMLInputElement).value).toBe('微信: manual_value')
+  })
 })

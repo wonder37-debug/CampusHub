@@ -76,6 +76,14 @@ const form = reactive({
   anonymous: false
 })
 
+// AI 字段来源追踪：记录哪些字段是 AI 自动填写的（非用户手动修改）
+// 新一轮 AI 生成时，上一轮 AI 自动填写的字段如果新 AI 返回 null，应清空而非残留
+const aiFilledFields = ref<Set<string>>(new Set())
+
+function markFieldManual(field: string): void {
+  aiFilledFields.value.delete(field)
+}
+
 // 业务规则：TEAM_UP 固定为 SELECT_MANY，不需要用户选择 interactionMode
 const effectiveInteractionMode = computed<string>(() => {
   if (form.category === 'TEAM_UP') return 'SELECT_MANY'
@@ -490,14 +498,24 @@ function applyAiDraft(draft: import('@/types/campushub').AiDemandDraft): void {
   form.interactionMode = draft.interactionMode ?? ''
   form.targetParticipantCount = draft.targetParticipantCount == null ? '' : String(draft.targetParticipantCount)
 
-  // contactInfo：AI null → 保留用户已有值；AI 有值 → 覆盖（AI 负责从自然语言中提取联系方式）
+  // contactInfo：AI 有值 → 覆盖 + 标记为 AI 填写；AI null → 清除上一轮 AI 填写但不覆盖用户手动值
   if (draft.contactInfo != null) {
     form.contactInfo = draft.contactInfo
+    aiFilledFields.value.add('contactInfo')
+  } else if (aiFilledFields.value.has('contactInfo')) {
+    // 上一轮 AI 自动填写的联系方式，新一轮 AI 未识别到，应清空不残留
+    form.contactInfo = ''
+    aiFilledFields.value.delete('contactInfo')
   }
 
-  // anonymous：AI true → 开启匿名；AI null/false → 不覆盖用户已有的手动选择
+  // anonymous：AI true → 开启 + 标记为 AI 填写；AI null/false → 清除上一轮 AI 填写但不覆盖用户手动值
   if (draft.anonymous === true) {
     form.anonymous = true
+    aiFilledFields.value.add('anonymous')
+  } else if (aiFilledFields.value.has('anonymous')) {
+    // 上一轮 AI 自动开启的匿名，新一轮 AI 未提及，应重置为 false
+    form.anonymous = false
+    aiFilledFields.value.delete('anonymous')
   }
 
   // missingFields 提示：转换为中文标签，引导用户补充
@@ -688,12 +706,12 @@ async function generateAiDraft(): Promise<void> {
 
           <div class="field" style="grid-column: 1 / -1;">
             <label for="demand-contact">联系方式（可选）</label>
-            <input id="demand-contact" v-model="form.contactInfo" maxlength="200" placeholder="电话/微信/QQ/邮箱，接单后对方可见" />
+            <input id="demand-contact" v-model="form.contactInfo" maxlength="200" placeholder="电话/微信/QQ/邮箱，接单后对方可见" @input="markFieldManual('contactInfo')" />
             <p class="input-help">填写后仅接单人可见，方便线下沟通。</p>
           </div>
 
           <label class="chip" style="grid-column: 1 / -1; width: fit-content;">
-            <input v-model="form.anonymous" type="checkbox" style="margin: 0 8px 0 0;" />
+            <input v-model="form.anonymous" type="checkbox" style="margin: 0 8px 0 0;" @change="markFieldManual('anonymous')" />
             匿名发布
           </label>
 

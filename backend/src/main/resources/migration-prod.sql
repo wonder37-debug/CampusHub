@@ -61,13 +61,21 @@ EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
 -- 4. 更新 sys_notification 表的 chk_notify_type 约束，新增 DEMAND_RESPONSE_RECEIVED 通知类型
--- MySQL 不支持直接修改 CHECK 约束，需先 DROP 再 ADD
--- 幂等：先检查约束是否存在，存在则 DROP + ADD（已包含新类型），不存在则直接 ADD
+-- 最低 MySQL 版本要求：8.0.16+（CHECK 约束强制执行 + DROP CONSTRAINT 语法支持）
+-- 幂等：先检查 CHECK 类型约束是否存在，存在则 DROP + ADD（已包含新类型），不存在则直接 ADD
+-- 安全：仅操作 constraint_type='CHECK' 的约束，避免误删 FOREIGN KEY / UNIQUE 等其他约束
 SET @constraint_exists = (SELECT COUNT(*) FROM information_schema.table_constraints
-    WHERE table_schema = DATABASE() AND table_name = 'sys_notification' AND constraint_name = 'chk_notify_type');
+    WHERE table_schema = DATABASE() AND table_name = 'sys_notification'
+    AND constraint_name = 'chk_notify_type' AND constraint_type = 'CHECK');
 SET @sql = IF(@constraint_exists > 0,
     'ALTER TABLE `sys_notification` DROP CONSTRAINT `chk_notify_type`, ADD CONSTRAINT `chk_notify_type` CHECK (`type` IN (''ORDER_ACCEPTED'',''STATUS_CHANGED'',''REVIEW_RECEIVED'',''REVIEW_REQUEST'',''DEMAND_REJECTED'',''DEMAND_APPROVED'',''PENDING_REVIEW'',''ORDER_ARBITRATION_REQUESTED'',''ORDER_ARBITRATION_RESOLVED'',''RESPONSE_REVIEW_RECEIVED'',''DEMAND_RESPONSE_RECEIVED''))',
     'ALTER TABLE `sys_notification` ADD CONSTRAINT `chk_notify_type` CHECK (`type` IN (''ORDER_ACCEPTED'',''STATUS_CHANGED'',''REVIEW_RECEIVED'',''REVIEW_REQUEST'',''DEMAND_REJECTED'',''DEMAND_APPROVED'',''PENDING_REVIEW'',''ORDER_ARBITRATION_REQUESTED'',''ORDER_ARBITRATION_RESOLVED'',''RESPONSE_REVIEW_RECEIVED'',''DEMAND_RESPONSE_RECEIVED''))');
 PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
+
+-- 4.1 验证迁移结果：确认 DEMAND_RESPONSE_RECEIVED 类型可被约束接受（不实际插入，仅检查约束定义）
+-- 如果迁移成功，以下查询应返回包含 DEMAND_RESPONSE_RECEIVED 的约束定义
+SELECT CONSTRAINT_NAME, CHECK_CLAUSE
+FROM information_schema.check_constraints
+WHERE CONSTRAINT_SCHEMA = DATABASE() AND CONSTRAINT_NAME = 'chk_notify_type';

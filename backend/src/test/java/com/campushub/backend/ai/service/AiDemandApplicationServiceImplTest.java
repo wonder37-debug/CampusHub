@@ -745,6 +745,39 @@ class AiDemandApplicationServiceImplTest {
         assertFalse(result.missingFields().contains("startTime"));
     }
 
+    @Test
+    void shouldFormatStartTimeWithoutFractionalSeconds() {
+        when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(buildRaw(
+            "取快递", "描述", "EXPRESS", "XIANLIN", "图书馆",
+            null, "2099-12-31T12:00:00", BigDecimal.ZERO,
+            List.of(), "DIRECT_ACCEPT", null, List.of("startTime")));
+
+        DemandDraft result = service.generateDraft(new GenerateDemandDraftCommand("帮我取快递"));
+
+        // startTime 必须按 yyyy-MM-dd'T'HH:mm:ss 格式输出，不含小数秒
+        assertNotNull(result.startTime());
+        assertTrue(result.startTime().matches("\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}"),
+            "startTime 格式应为 yyyy-MM-dd'T'HH:mm:ss，实际: " + result.startTime());
+    }
+
+    @Test
+    void shouldFormatAiReturnedTimeWithoutFractionalSeconds() {
+        // AI 返回含小数秒的时间，服务端应统一格式化截断至秒
+        when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(buildRaw(
+            "取快递", "描述", "EXPRESS", "XIANLIN", "图书馆",
+            "2099-12-31T10:00:00.123", "2099-12-31T12:00:00.456", BigDecimal.ZERO,
+            List.of(), "DIRECT_ACCEPT", null, List.of()));
+
+        DemandDraft result = service.generateDraft(new GenerateDemandDraftCommand("帮我取快递"));
+
+        assertNotNull(result.startTime());
+        assertTrue(result.startTime().matches("\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}"),
+            "startTime 应截断至秒，实际: " + result.startTime());
+        assertNotNull(result.endTime());
+        assertTrue(result.endTime().matches("\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}"),
+            "endTime 应截断至秒，实际: " + result.endTime());
+    }
+
     private void assertFalseContains(String actual, String fragment) {
         String lower = actual == null ? "" : actual.toLowerCase();
         assertTrue(!lower.contains(fragment.toLowerCase()),

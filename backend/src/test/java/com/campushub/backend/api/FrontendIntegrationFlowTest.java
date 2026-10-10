@@ -317,6 +317,58 @@ class FrontendIntegrationFlowTest {
     }
 
     @Test
+    void shouldListOwnReviewingDemandUnderRecommendSort() throws Exception {
+        TestUser publisher = registerAndLogin("publisher-rec-reviewing");
+        String title = "Rec reviewing demand " + System.nanoTime();
+        Long demandId = publishDemand(publisher.token(), title);
+
+        // 推荐排序下也能看到自己的审核中需求
+        mockMvc.perform(get("/api/v1/demands")
+                .header("Authorization", bearer(publisher.token()))
+                .param("q", title)
+                .param("sort", "recommend")
+                .param("page", "1")
+                .param("size", "10"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.total").value(1))
+            .andExpect(jsonPath("$.data.items[0].id").value(demandId))
+            .andExpect(jsonPath("$.data.items[0].status").value("REVIEWING"));
+    }
+
+    @Test
+    void shouldListCompletedDemandUnderRecommendSort() throws Exception {
+        TestUser publisher = registerAndLogin("publisher-rec-completed");
+        TestUser accepter = registerAndLogin("accepter-rec-completed");
+        String adminToken = login("admin", "Admin1234").token();
+        String title = "Rec completed demand " + System.nanoTime();
+        Long demandId = publishDemand(publisher.token(), title);
+        approveDemand(adminToken, demandId);
+
+        // 接单并完成
+        Long orderId = acceptDemand(accepter.token(), demandId);
+        updateOrder(accepter.token(), orderId, "IN_PROGRESS", "started", null);
+        // 接单方提交完成（带凭证图片）
+        uploadedAssetRepository.insert(new com.campushub.backend.upload.repository.entity.UploadedAssetEntity(
+            "proof-rec-1.png", "/api/v1/uploads/2026/10/proof-rec-1.png", accepter.userId(), true, null));
+        updateOrder(accepter.token(), orderId, "COMPLETED", "delivered",
+            List.of("/api/v1/uploads/2026/10/proof-rec-1.png"));
+        // 发布方确认完成
+        updateOrder(publisher.token(), orderId, "COMPLETED", "confirm", null);
+
+        // 推荐排序下已完成需求也能看到（作为历史记录）
+        mockMvc.perform(get("/api/v1/demands")
+                .header("Authorization", bearer(publisher.token()))
+                .param("q", title)
+                .param("sort", "recommend")
+                .param("page", "1")
+                .param("size", "10"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.total").value(1))
+            .andExpect(jsonPath("$.data.items[0].id").value(demandId))
+            .andExpect(jsonPath("$.data.items[0].status").value("COMPLETED"));
+    }
+
+    @Test
     void shouldRejectPublisherAcceptingOwnDemand() throws Exception {
         TestUser publisher = registerAndLogin("publisher-own-accept");
         String adminToken = login("admin", "Admin1234").token();
