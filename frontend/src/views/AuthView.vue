@@ -11,6 +11,7 @@ import AvatarCropper from '@/components/AvatarCropper.vue'
 const store = useCampusHubStore()
 const router = useRouter()
 const route = useRoute()
+const avatarCropperRef = ref<InstanceType<typeof AvatarCropper> | null>(null)
 const emailDomainOptions = [
   { label: '@nju.edu.cn', value: 'nju.edu.cn' },
   { label: '@smail.nju.edu.cn', value: 'smail.nju.edu.cn' }
@@ -184,11 +185,42 @@ async function submitRegister(): Promise<void> {
 
   const email = registrationEmail.value
 
+  // 注册前，若有暂存头像 File，注册时先不传 avatarUrl（blob URL 无法持久化）
+  const pendingAvatarFile = avatarCropperRef.value?.getPendingFile() ?? null
+  const registerAvatarUrl = pendingAvatarFile ? '' : (registerForm.avatarUrl?.trim() || '')
+
   try {
     const user = await store.register({
       ...registerForm,
-      email
+      email,
+      avatarUrl: registerAvatarUrl
     })
+
+    // 注册并自动登录成功后，若有暂存头像，使用新 JWT 上传并更新资料
+    if (pendingAvatarFile) {
+      try {
+        const urls = await store.uploadImages([pendingAvatarFile])
+        if (urls.length > 0) {
+          await store.updateProfile({
+            nickname: user.nickname,
+            avatarUrl: urls[0]
+          })
+        }
+      } catch (avatarError) {
+        // 头像上传失败不影响已注册成功的账号
+        message.value = `注册成功，但头像上传失败：${handleError(avatarError, '上传失败')}。请登录后在个人中心重试。`
+        avatarCropperRef.value?.clearPendingFile()
+        const redirect = route.query.redirect as string | undefined
+        if (redirect) {
+          router.replace(redirect)
+        } else {
+          router.replace('/profile')
+        }
+        return
+      }
+    }
+
+    avatarCropperRef.value?.clearPendingFile()
     message.value = `注册成功，${user.nickname} 已自动登录。`
     activeTab.value = 'login'
     registerForm.verificationCode = ''
@@ -201,7 +233,7 @@ async function submitRegister(): Promise<void> {
       router.replace('/profile')
     }
   } catch (registerError) {
-      error.value = handleError(registerError, '注册失败')
+    error.value = handleError(registerError, '注册失败')
   }
 }
 
@@ -393,7 +425,7 @@ async function submitForgotPassword(): Promise<void> {
         <div class="field" style="grid-column: 1 / -1;">
           <label>头像 <span class="optional-hint">（选填）</span></label>
           <div class="register-avatar-section">
-            <AvatarCropper v-model="registerForm.avatarUrl" :size="80" />
+            <AvatarCropper ref="avatarCropperRef" v-model="registerForm.avatarUrl" :size="80" defer-upload />
           </div>
           <div class="avatar-url-fallback">
             <input

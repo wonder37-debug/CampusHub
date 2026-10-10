@@ -59,3 +59,15 @@ SET @sql = IF(@idx_exists = 0,
 PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
+
+-- 4. 更新 sys_notification 表的 chk_notify_type 约束，新增 DEMAND_RESPONSE_RECEIVED 通知类型
+-- MySQL 不支持直接修改 CHECK 约束，需先 DROP 再 ADD
+-- 幂等：先检查约束是否存在，存在则 DROP + ADD（已包含新类型），不存在则直接 ADD
+SET @constraint_exists = (SELECT COUNT(*) FROM information_schema.table_constraints
+    WHERE table_schema = DATABASE() AND table_name = 'sys_notification' AND constraint_name = 'chk_notify_type');
+SET @sql = IF(@constraint_exists > 0,
+    'ALTER TABLE `sys_notification` DROP CONSTRAINT `chk_notify_type`, ADD CONSTRAINT `chk_notify_type` CHECK (`type` IN (''ORDER_ACCEPTED'',''STATUS_CHANGED'',''REVIEW_RECEIVED'',''REVIEW_REQUEST'',''DEMAND_REJECTED'',''DEMAND_APPROVED'',''PENDING_REVIEW'',''ORDER_ARBITRATION_REQUESTED'',''ORDER_ARBITRATION_RESOLVED'',''RESPONSE_REVIEW_RECEIVED'',''DEMAND_RESPONSE_RECEIVED''))',
+    'ALTER TABLE `sys_notification` ADD CONSTRAINT `chk_notify_type` CHECK (`type` IN (''ORDER_ACCEPTED'',''STATUS_CHANGED'',''REVIEW_RECEIVED'',''REVIEW_REQUEST'',''DEMAND_REJECTED'',''DEMAND_APPROVED'',''PENDING_REVIEW'',''ORDER_ARBITRATION_REQUESTED'',''ORDER_ARBITRATION_RESOLVED'',''RESPONSE_REVIEW_RECEIVED'',''DEMAND_RESPONSE_RECEIVED''))');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;

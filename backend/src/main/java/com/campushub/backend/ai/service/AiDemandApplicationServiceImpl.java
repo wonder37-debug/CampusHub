@@ -68,12 +68,35 @@ public class AiDemandApplicationServiceImpl implements AiDemandApplicationServic
            - OTHER -> 由用户最终确认，可填 DIRECT_ACCEPT/SELECT_ONE/SELECT_MANY，禁止 HELP
         8. TEAM_UP 必须对应 SELECT_MANY；如果用户没有明确人数，targetParticipantCount 返回 null 并把 "targetParticipantCount" 加入 missingFields。
         9. campusZone 只能是 GULOU、XIANLIN、SUZHOU；不确定时返回 null 并加入 missingFields。
-        10. startTime/endTime 使用 ISO-8601 格式 yyyy-MM-dd'T'HH:mm:ss；不确定时返回 null 并加入 missingFields。
-        11. reward 为数字（单位元），不确定时返回 null 并加入 missingFields；明确说"免费/无报酬"时填 0。
+        10. startTime/endTime 使用 ISO-8601 格式 yyyy-MM-dd'T'HH:mm:ss。
+            - 用户未指定开始时间时，startTime 填入当前时间（下方提供的"当前时间"），不要返回 null，也不要加入 missingFields。
+            - 用户未指定结束时间时，endTime 返回 null 并加入 missingFields。
+            - 解析"5天后""五天后"等相对时间时，基于当前时间计算。例如当前时间加5天。
+            - 解析"明天""下周一"等模糊日期时，基于当前时间推算。
+        11. reward 为数字（单位：校邻币，不是人民币）。不确定时返回 null 并加入 missingFields；明确说"免费/无报酬"时填 0。
+            - 用户明确写出"50校邻币"时，reward 填 50。
+            - 用户明确使用其他货币（如"50元""50块钱""50 RMB"等人民币或其他货币）时，不得直接当作校邻币，也不得擅自换算；reward 返回 null 并把 "reward" 加入 missingFields，让用户确认。
         12. tags 为字符串数组，没有则返回空数组 []。
         13. title 长度 3-200 字符；description 不超过 2000 字符。
         14. 不要替代后端 SensitiveWordChecker，不要自行审核内容。
         15. AI 产生的是草稿，不是最终发布结果。所有最终发布都必须通过 CampusHub 现有 Demand 发布流程。
+
+        联系方式（contactInfo）：
+        16. 从用户自然语言中识别 QQ 号、微信号、手机号、邮箱等联系方式，填入 contactInfo 字段。
+            - 格式示例："QQ: 123456789" 或 "微信: abcdef" 或 "手机: 13800138000" 或 "邮箱: test@example.com"
+            - 多个联系方式用分号分隔，如 "QQ: 123456789; 手机: 13800138000"
+            - 不要把联系方式写进 title 或 description 中。
+            - 没有识别到联系方式时，contactInfo 返回 null（不加入 missingFields，联系方式为选填）。
+
+        匿名发布（anonymous）：
+        17. 用户明确要求匿名发布（如"匿名发布""匿名""不要透露身份"等）时，anonymous 填 true。
+            - 用户未提及匿名要求时，anonymous 返回 null（不覆盖用户已有的手动选择）。
+            - 不要在 title 或 description 中写"匿名发布"等字样。
+
+        描述去重（description）：
+        18. description 中不要机械重复已有独立字段的信息（地点、截止时间、联系方式、报酬、匿名标记等）。
+            - 但应保留实际任务内容和必要要求。例如"还需要5名队员，其中需要一位守门员"是任务内容，应保留。
+            - 如果用户原始输入中的联系方式、地点、时间等信息已提取到对应字段，description 中不应重复这些信息。
 
         输出 JSON 字段（按此顺序）：
         {
@@ -88,6 +111,8 @@ public class AiDemandApplicationServiceImpl implements AiDemandApplicationServic
           "tags": [...],
           "interactionMode": "...",
           "targetParticipantCount": ...,
+          "contactInfo": "...",
+          "anonymous": ...,
           "missingFields": [...]
         }
         """;
@@ -97,6 +122,7 @@ public class AiDemandApplicationServiceImpl implements AiDemandApplicationServic
     private static final int LOCATION_MAX_LENGTH = 256;
     private static final int TAGS_MAX_SIZE = 20;
     private static final int TARGET_PARTICIPANT_COUNT_MAX = 100;
+    private static final int CONTACT_INFO_MAX_LENGTH = 500;
 
     /**
      * missingFields 白名单：只允许 DemandDraft 已知字段名，避免 AI 注入任意字符串到前端提示。
@@ -213,7 +239,16 @@ public class AiDemandApplicationServiceImpl implements AiDemandApplicationServic
         }
 
         // 时间校验
+        LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Shanghai"));
         LocalDateTime start = parseTime(raw.startTime(), "startTime");
+        // startTime 默认为当前时间（Asia/Shanghai），不要求用户手动补填
+        String startTimeStr;
+        if (start != null) {
+            startTimeStr = raw.startTime().trim();
+        } else {
+            start = now;
+            startTimeStr = now.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+        }
         LocalDateTime end = parseTime(raw.endTime(), "endTime");
         if (start != null && end != null && !end.isAfter(start)) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED,
@@ -224,6 +259,20 @@ public class AiDemandApplicationServiceImpl implements AiDemandApplicationServic
         String title = truncate(raw.title(), TITLE_MAX_LENGTH);
         String description = truncate(raw.description(), DESCRIPTION_MAX_LENGTH);
         String location = truncate(raw.location(), LOCATION_MAX_LENGTH);
+
+        // contactInfo 校验：截断 + 去除前后空白
+        String contactInfo = truncate(raw.contactInfo() == null ? null : raw.contactInfo().trim(), CONTACT_INFO_MAX_LENGTH);
+
+        // anonymous 校验：只允许 true 或 null（null 表示未提及，不覆盖用户已有选择）
+        Boolean anonymous = null;
+        if (raw.anonymous() != null) {
+            if (raw.anonymous()) {
+                anonymous = Boolean.TRUE;
+            } else {
+                // AI 返回 false 也当作 null（不主动取消用户已有的匿名选择）
+                anonymous = null;
+            }
+        }
 
         // tags 校验
         List<String> tags = raw.tags() == null ? List.of() : raw.tags();
@@ -236,8 +285,17 @@ public class AiDemandApplicationServiceImpl implements AiDemandApplicationServic
             .toList();
 
         // canonicalize missingFields：服务端根据字段最终值重算（不信任 LLM 声明）
+        // 先 trim 所有 missingFields 中的元素，确保后续 remove 能精确匹配
+        LinkedHashSet<String> trimmedMissingFields = new LinkedHashSet<>();
+        for (String field : missingFields) {
+            if (field != null && !field.isBlank()) {
+                trimmedMissingFields.add(field.trim());
+            }
+        }
+        missingFields.clear();
+        missingFields.addAll(trimmedMissingFields);
         canonicalizeMissingFields(missingFields, category, title, campusZone, location,
-            raw.startTime(), raw.endTime(), reward, interactionMode, targetParticipantCount);
+            startTimeStr, raw.endTime(), reward, interactionMode, targetParticipantCount);
 
         // 白名单 + 去重
         List<String> normalizedMissingFields = normalizeMissingFields(missingFields);
@@ -248,12 +306,14 @@ public class AiDemandApplicationServiceImpl implements AiDemandApplicationServic
             category,
             campusZone,
             location,
-            raw.startTime(),
+            startTimeStr,
             raw.endTime(),
             reward,
             normalizedTags,
             interactionMode,
             targetParticipantCount,
+            contactInfo,
+            anonymous,
             normalizedMissingFields
         );
     }
@@ -329,7 +389,8 @@ public class AiDemandApplicationServiceImpl implements AiDemandApplicationServic
         updateMissing(missingFields, "title", isBlank(title));
         updateMissing(missingFields, "campusZone", isBlank(campusZone));
         updateMissing(missingFields, "location", isBlank(location));
-        updateMissing(missingFields, "startTime", isBlank(startTime));
+        // startTime 已默认为当前时间，不再算作缺失
+        missingFields.remove("startTime");
         updateMissing(missingFields, "endTime", isBlank(endTime));
         // reward：null → 缺失；0 → 有效值（不缺失）
         updateMissing(missingFields, "reward", reward == null);

@@ -13,6 +13,8 @@ import java.util.List;
  *   <li>{@code interactionMode} 仅允许 DIRECT_ACCEPT/SELECT_ONE/SELECT_MANY/HELP</li>
  *   <li>{@code campusZone} 仅允许 GULOU/XIANLIN/SUZHOU</li>
  *   <li>{@code startTime}/{@code endTime} 使用 ISO-8601 字符串，服务端解析为 LocalDateTime 后校验</li>
+ *   <li>{@code contactInfo} 从自然语言中提取的联系方式（QQ/微信/手机号/邮箱等），填入独立字段</li>
+ *   <li>{@code anonymous} 用户明确要求匿名时为 true；未提及时为 null，不覆盖用户已有选择</li>
  *   <li>{@code missingFields} 标识 AI 未能从自然语言中提取的必填字段，前端据此提示用户补充</li>
  * </ul>
  */
@@ -29,6 +31,8 @@ public record DemandDraft(
     List<String> tags,
     String interactionMode,
     Integer targetParticipantCount,
+    String contactInfo,
+    Boolean anonymous,
     List<String> missingFields
 ) {
 }

@@ -35,6 +35,12 @@ public interface NotificationApplicationService {
 
     void notifyOrderArbitrationResolved(Long receiverId, Long orderId, String outcome, String reason);
 
+    /**
+     * 新留言/报名通知：其他用户在需求下提交留言/报名/回答后，通知需求发布者。
+     * relatedId 语义为 demandId，前端跳转 demand 详情。本人不通知自己。
+     */
+    void notifyDemandResponseReceived(Long receiverId, Long demandId, String demandTitle, String responderNickname);
+
     PageResponse<NotificationResponse> list(Long userId, NotificationQuery query);
 
     void markAsRead(Long userId, Long notificationId);

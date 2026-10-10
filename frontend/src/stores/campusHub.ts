@@ -317,6 +317,7 @@ function mapReviewRecord(raw: any): ReviewRecord {
     orderId: raw.orderId == null ? null : String(raw.orderId),
     responseId: raw.responseId == null ? null : String(raw.responseId),
     demandId: raw.demandId == null ? null : String(raw.demandId),
+    demandTitle: raw.demandTitle == null ? null : String(raw.demandTitle),
     reviewerId: String(author.id ?? raw.authorId ?? ''),
     reviewerName: String(author.nickname ?? raw.reviewerName ?? '匿名'),
     targetId: String(raw.targetId ?? ''),
@@ -357,6 +358,8 @@ function normalizeAiDemandDraft(raw: any): AiDemandDraft {
     tags: Array.isArray(raw?.tags) ? raw.tags.map((tag: any) => String(tag)) : [],
     interactionMode: raw?.interactionMode == null ? null : String(raw.interactionMode),
     targetParticipantCount: raw?.targetParticipantCount == null ? null : Number(raw.targetParticipantCount),
+    contactInfo: raw?.contactInfo == null ? null : String(raw.contactInfo),
+    anonymous: raw?.anonymous == null ? null : Boolean(raw.anonymous),
     missingFields: Array.isArray(raw?.missingFields) ? raw.missingFields.map((f: any) => String(f)) : []
   }
 }
@@ -931,6 +934,18 @@ export const useCampusHubStore = defineStore('campusHub', {
       if (!this.reviews.some((r) => r.id === mapped.id)) {
         this.reviews.unshift(mapped)
       }
+      // 刷新评价列表和用户资料，确保个人中心能看到最新评价
+      await this.fetchNotifications()
+      try {
+        await this.fetchCurrentUserReviews()
+      } catch {
+        // ignore
+      }
+      try {
+        await this.fetchProfile()
+      } catch {
+        // ignore
+      }
       return mapped
     },
 
@@ -1039,6 +1054,8 @@ export const useCampusHubStore = defineStore('campusHub', {
       if (!this.reviews.some((r) => r.id === mapped.id)) {
         this.reviews.unshift(mapped)
       }
+      // 刷新当前订单详情，确保 currentUserReviewed 和 reviews 字段是最新的
+      await this.fetchOrderDetail(orderId)
       await this.fetchOrders()
       await this.fetchNotifications()
       // 后端可能已经返回更新后的信用分，优先使用；否则主动刷新用户信息

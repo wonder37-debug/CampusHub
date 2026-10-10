@@ -51,13 +51,24 @@ class AiDemandApplicationServiceImplTest {
         service = new AiDemandApplicationServiceImpl(chatClient, 1000);
     }
 
-    /** 构造 DemandDraft（note 字段已删除，12 参数）。 */
+    /** 构造 DemandDraft（14 参数，含 contactInfo 和 anonymous）。 */
     private DemandDraft buildRaw(String title, String description, String category, String campusZone,
         String location, String startTime, String endTime, BigDecimal reward,
         List<String> tags, String interactionMode, Integer targetParticipantCount,
         List<String> missingFields) {
         return new DemandDraft(title, description, category, campusZone, location,
-            startTime, endTime, reward, tags, interactionMode, targetParticipantCount, missingFields);
+            startTime, endTime, reward, tags, interactionMode, targetParticipantCount,
+            null, null, missingFields);
+    }
+
+    /** 构造 DemandDraft（含 contactInfo 和 anonymous 覆盖）。 */
+    private DemandDraft buildRawWithContact(String title, String description, String category, String campusZone,
+        String location, String startTime, String endTime, BigDecimal reward,
+        List<String> tags, String interactionMode, Integer targetParticipantCount,
+        String contactInfo, Boolean anonymous, List<String> missingFields) {
+        return new DemandDraft(title, description, category, campusZone, location,
+            startTime, endTime, reward, tags, interactionMode, targetParticipantCount,
+            contactInfo, anonymous, missingFields);
     }
 
     @Test
@@ -91,13 +102,15 @@ class AiDemandApplicationServiceImplTest {
         assertEquals("DIRECT_ACCEPT", result.interactionMode());
         assertNull(result.campusZone());
         assertNull(result.location());
-        assertNull(result.startTime());
+        // startTime 默认为当前时间，不为 null
+        assertNotNull(result.startTime());
         assertNull(result.endTime());
         assertNull(result.reward());
         // canonicalize 根据实际 null 字段补充 missingFields
         assertTrue(result.missingFields().contains("campusZone"));
         assertTrue(result.missingFields().contains("reward"));
-        assertTrue(result.missingFields().contains("startTime"));
+        // startTime 已默认为当前时间，不再算作缺失
+        assertFalse(result.missingFields().contains("startTime"));
         assertTrue(result.missingFields().contains("endTime"));
     }
 
@@ -390,7 +403,8 @@ class AiDemandApplicationServiceImplTest {
         assertTrue(result.missingFields().contains("title"));
         assertTrue(result.missingFields().contains("campusZone"));
         assertTrue(result.missingFields().contains("location"));
-        assertTrue(result.missingFields().contains("startTime"));
+        // startTime 默认为当前时间，不再算作缺失
+        assertFalse(result.missingFields().contains("startTime"));
         assertTrue(result.missingFields().contains("endTime"));
         assertTrue(result.missingFields().contains("reward"));
     }
@@ -420,14 +434,15 @@ class AiDemandApplicationServiceImplTest {
 
         DemandDraft result = service.generateDraft(new GenerateDemandDraftCommand("帮我找人买咖啡"));
 
-        // 白名单过滤掉 invalidField/anotherJunk，去重 campusZone，trim startTime
+        // 白名单过滤掉 invalidField/anotherJunk，去重 campusZone
         assertTrue(result.missingFields().contains("campusZone"));
         assertTrue(result.missingFields().contains("location"));
         assertTrue(result.missingFields().contains("reward"));
-        assertTrue(result.missingFields().contains("startTime"));
+        // startTime 已默认为当前时间，不再进入 missingFields（即使 LLM 声明也会被移除）
+        assertFalse(result.missingFields().contains("startTime"));
         // canonicalize 补充 endTime（raw 的 endTime=null，原 missingFields 没声明）
         assertTrue(result.missingFields().contains("endTime"));
-        assertEquals(5, result.missingFields().size());
+        assertEquals(4, result.missingFields().size());
         assertFalse(result.missingFields().contains("invalidField"));
         assertFalse(result.missingFields().contains("anotherJunk"));
     }
@@ -631,6 +646,103 @@ class AiDemandApplicationServiceImplTest {
         DemandDraft result = service.generateDraft(new GenerateDemandDraftCommand("取快递"));
 
         assertTrue(result.tags().size() <= 20);
+    }
+
+    // ========== Bug 2: AI 结构化提取与回填回归测试 ==========
+
+    @Test
+    void shouldExtractContactInfoAndAnonymousFromTeamUpDemand() {
+        // 回归用例：苏州校区足球队组队
+        when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(buildRawWithContact(
+            "苏州校区足球队组队", "目前还需要5名队员，其中需要一位守门员", "TEAM_UP", "SUZHOU",
+            "西区足球场", null, null, new BigDecimal("50"),
+            List.of("足球"), "SELECT_MANY", 5,
+            "QQ: 25984515619", null,
+            List.of("startTime", "endTime")));
+
+        DemandDraft result = service.generateDraft(new GenerateDemandDraftCommand(
+            "苏州校区足球队组队，目前还需要5名队员，其中需要一位守门员；截止日期到五天后；地点在西区足球场，具体问题可联系我的QQ：25984515619，报酬为50校邻币。"));
+
+        assertEquals("TEAM_UP", result.category());
+        assertEquals("SUZHOU", result.campusZone());
+        assertEquals("西区足球场", result.location());
+        assertEquals("SELECT_MANY", result.interactionMode());
+        assertEquals(5, result.targetParticipantCount());
+        assertEquals(new BigDecimal("50"), result.reward());
+        assertEquals("QQ: 25984515619", result.contactInfo());
+        // startTime 默认为当前时间
+        assertNotNull(result.startTime());
+        // endTime 未在 missingFields 中（AI 返回了 null 但补充了）
+        // 未提及匿名 → anonymous 为 null
+        assertNull(result.anonymous());
+    }
+
+    @Test
+    void shouldSetAnonymousTrueWhenUserExplicitlyRequestsAnonymity() {
+        when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(buildRawWithContact(
+            "匿名求助", "匿名求助", "HELP", "XIANLIN", "图书馆",
+            "2026-10-08T10:00:00", "2026-10-08T12:00:00", BigDecimal.ZERO,
+            List.of(), "HELP", null, null, Boolean.TRUE, List.of()));
+
+        DemandDraft result = service.generateDraft(new GenerateDemandDraftCommand("匿名发布一个求助需求"));
+
+        assertEquals(Boolean.TRUE, result.anonymous());
+    }
+
+    @Test
+    void shouldNotOverrideAnonymousWhenUserDidNotMentionAnonymity() {
+        when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(buildRawWithContact(
+            "取快递", "描述", "EXPRESS", "XIANLIN", "图书馆",
+            "2026-10-08T10:00:00", "2026-10-08T12:00:00", BigDecimal.ZERO,
+            List.of(), "DIRECT_ACCEPT", null, null, null, List.of()));
+
+        DemandDraft result = service.generateDraft(new GenerateDemandDraftCommand("帮我取快递"));
+
+        // 未提及匿名 → null（不覆盖用户已有选择）
+        assertNull(result.anonymous());
+    }
+
+    @Test
+    void shouldNotTreatNonCampusCoinCurrencyAsReward() {
+        // 用户说 "50元"（人民币），不应当作校邻币 50
+        when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(buildRaw(
+            "取快递", "描述", "EXPRESS", "XIANLIN", "图书馆",
+            "2026-10-08T10:00:00", "2026-10-08T12:00:00", null,
+            List.of(), "DIRECT_ACCEPT", null, List.of("reward")));
+
+        DemandDraft result = service.generateDraft(new GenerateDemandDraftCommand("帮我取快递，给50元"));
+
+        // reward 为 null（不把人民币当作校邻币）
+        assertNull(result.reward());
+        assertTrue(result.missingFields().contains("reward"));
+    }
+
+    @Test
+    void shouldExtractMultipleContactInfoTypes() {
+        when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(buildRawWithContact(
+            "取快递", "描述", "EXPRESS", "XIANLIN", "图书馆",
+            "2026-10-08T10:00:00", "2026-10-08T12:00:00", new BigDecimal("10"),
+            List.of(), "DIRECT_ACCEPT", null,
+            "QQ: 123456; 手机: 13800138000", null, List.of()));
+
+        DemandDraft result = service.generateDraft(new GenerateDemandDraftCommand("帮我取快递，QQ: 123456，手机: 13800138000"));
+
+        assertEquals("QQ: 123456; 手机: 13800138000", result.contactInfo());
+    }
+
+    @Test
+    void shouldDefaultStartTimeToCurrentTimeWhenNotProvided() {
+        when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(buildRaw(
+            "取快递", "描述", "EXPRESS", "XIANLIN", "图书馆",
+            null, "2099-12-31T12:00:00", BigDecimal.ZERO,
+            List.of(), "DIRECT_ACCEPT", null, List.of("startTime")));
+
+        DemandDraft result = service.generateDraft(new GenerateDemandDraftCommand("帮我取快递"));
+
+        // startTime 默认为当前时间，不为 null
+        assertNotNull(result.startTime());
+        // startTime 不在 missingFields 中
+        assertFalse(result.missingFields().contains("startTime"));
     }
 
     private void assertFalseContains(String actual, String fragment) {

@@ -474,22 +474,31 @@ function isLegalCampusZone(value: string | null): value is CampusZone {
 function applyAiDraft(draft: import('@/types/campushub').AiDemandDraft): void {
   // AI-managed fields 完全替换：每次 AI 成功生成的 DemandDraft 当作全新草稿，不是旧草稿的 patch。
   // AI null → 清空对应字段；AI [] → 清空数组/字符串字段；AI 有值 → 直接写入。
-  // 非 AI-managed fields（images/contactInfo/anonymous）不修改，保留用户已有值。
   form.title = draft.title ?? ''
   form.description = draft.description ?? ''
   form.location = draft.location ?? ''
   form.startDateTime = draft.startTime ? toDateTimeLocal(draft.startTime) : ''
   form.endDateTime = draft.endTime ? toDateTimeLocal(draft.endTime) : ''
-  // reward：null → 清空（不保留默认 '10'，避免用户误提交 10 元）；0 → '0'（有效值，不误判为空）
+  // reward：null → 清空（不保留默认 '10'，避免用户误提交 10 校邻币）；0 → '0'（有效值，不误判为空）
   form.reward = draft.reward == null ? '' : String(draft.reward)
   // tags：数组完全替换，[] → ''，['打印','资料'] → '打印,资料'（不 append 旧值）
   form.tags = Array.isArray(draft.tags) ? draft.tags.join(',') : ''
-  // category/campusZone：合法值覆盖，非法/null → 清空（整体替换，避免旧 category 残留）
+  // category/campusZone：合法值覆盖，非法/null → 清空（整体替换，避免旧 category 拘留）
   form.category = (isLegalCategory(draft.category) ? draft.category : '') as typeof form.category
   form.campusZone = (isLegalCampusZone(draft.campusZone) ? draft.campusZone : '') as typeof form.campusZone
   // interactionMode/targetParticipantCount：完全由本次 AI 决定，null → 清空（避免旧 category 的依赖字段残留）
   form.interactionMode = draft.interactionMode ?? ''
   form.targetParticipantCount = draft.targetParticipantCount == null ? '' : String(draft.targetParticipantCount)
+
+  // contactInfo：AI null → 保留用户已有值；AI 有值 → 覆盖（AI 负责从自然语言中提取联系方式）
+  if (draft.contactInfo != null) {
+    form.contactInfo = draft.contactInfo
+  }
+
+  // anonymous：AI true → 开启匿名；AI null/false → 不覆盖用户已有的手动选择
+  if (draft.anonymous === true) {
+    form.anonymous = true
+  }
 
   // missingFields 提示：转换为中文标签，引导用户补充
   if (draft.missingFields && draft.missingFields.length > 0) {
@@ -674,7 +683,7 @@ async function generateAiDraft(): Promise<void> {
 
           <div class="field" style="grid-column: 1 / -1;">
             <label>上传图片</label>
-            <ImageUploader v-model="form.images" :max-count="6" :max-size-m-b="5" />
+            <ImageUploader v-model="form.images" :max-count="6" :max-size-m-b="10" />
           </div>
 
           <div class="field" style="grid-column: 1 / -1;">

@@ -136,14 +136,16 @@ public class MyBatisDemandRepository implements DemandRepository {
         LocalDateTime now = LocalDateTime.now();
         Long currentUserId = query.currentUserId();
         LambdaQueryWrapper<DemandEntity> wrapper = new LambdaQueryWrapper<>();
-        List<String> publicStatuses = List.of(
+        List<String> activeStatuses = List.of(
             DemandStatus.PENDING.name(),
-            DemandStatus.IN_PROGRESS.name(),
-            DemandStatus.COMPLETED.name());
+            DemandStatus.IN_PROGRESS.name());
         wrapper.and(w -> {
-            w.and(v -> v.isNull(DemandEntity::getEndTime).or().ge(DemandEntity::getEndTime, now))
-                .in(DemandEntity::getStatus, publicStatuses);
+            // 公开可见：活跃需求（PENDING/IN_PROGRESS）需未过期；已完成需求作为历史记录不受 end_time 限制
+            w.and(v -> v.in(DemandEntity::getStatus, activeStatuses)
+                    .and(vv -> vv.isNull(DemandEntity::getEndTime).or().ge(DemandEntity::getEndTime, now)))
+             .or(v -> v.eq(DemandEntity::getStatus, DemandStatus.COMPLETED.name()));
             if (currentUserId != null) {
+                // 自己发布的需求（含审核中 REVIEWING 状态）始终可见
                 w.or(o -> o.eq(DemandEntity::getPublisherId, currentUserId));
             }
         });

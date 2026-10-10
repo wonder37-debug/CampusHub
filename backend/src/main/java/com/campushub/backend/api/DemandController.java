@@ -120,6 +120,8 @@ public class DemandController {
         @RequestParam(defaultValue = "1") int page,
         @RequestParam(defaultValue = "20") int size
     ) {
+        // includeOwn 参数已废弃：已登录用户始终能看到自己的需求（含审核中），不再依赖此参数。
+        // 保留参数以兼容现有前端调用，不影响 API 契约。
         CurrentUser currentUser = requestUserExtractor.tryExtract(request);
         DemandSort resolvedSort = parseSort(sort);
 
@@ -161,7 +163,7 @@ public class DemandController {
                 startTimeTo,
                 resolvedSort,
                 new PageQuery(page, size),
-                includeOwn && currentUser != null ? currentUser.userId() : null
+                currentUser != null ? currentUser.userId() : null
             )
         );
         List<Long> demandIds = rawPage.items().stream().map(DemandSummaryResponse::id).toList();

@@ -247,6 +247,9 @@ public class ApiViewMapper {
         return new ReviewView(
             review.id(),
             review.orderId(),
+            review.responseId(),
+            review.demandId(),
+            demand != null ? demand.getTitle() : null,
             review.rating(),
             review.comment(),
             (!canSeePublisher && publisherId != null && publisherId.equals(review.targetId()))
@@ -287,9 +290,24 @@ public class ApiViewMapper {
                 ? (anonymousCode != null ? anonymousCode : "匿名校友")
                 : target.getNickname();
 
+        // 查询关联需求标题，优先 demandId，其次通过 orderId 反查
+        String demandTitle = null;
+        if (review.getDemandId() != null) {
+            demandTitle = demandRepository.findById(review.getDemandId()).map(Demand::getTitle).orElse(null);
+        }
+        if (demandTitle == null && review.getOrderId() != null) {
+            Order order = orderRepository.findById(review.getOrderId()).orElse(null);
+            if (order != null && order.getDemandId() != null) {
+                demandTitle = demandRepository.findById(order.getDemandId()).map(Demand::getTitle).orElse(null);
+            }
+        }
+
         return new ReviewView(
             review.getId(),
             review.getOrderId(),
+            review.getResponseId(),
+            review.getDemandId(),
+            demandTitle,
             review.getRating(),
             review.getComment(),
             (!canSeePublisher && publisherId != null && publisherId.equals(review.getTargetId()))

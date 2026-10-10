@@ -57,15 +57,25 @@ function filteredDemandItems(source: DemandRecord[]): DemandRecord[] {
   const selectedStatus = filters.status
 
   return source
-    .filter((demand) => !['EXPIRED', 'REVIEWING', 'CANCELLED'].includes(demand.status))
+    .filter((demand) => {
+      // 审核中需求仅对发布者本人可见，不公开展示
+      if (demand.status === 'REVIEWING') {
+        return demand.publisherId === store.currentUser?.id
+      }
+      return !['EXPIRED', 'CANCELLED'].includes(demand.status)
+    })
     .filter((demand) => !selectedCategory || demand.category === selectedCategory)
     .filter((demand) => !selectedCampusZone || demand.campusZone === selectedCampusZone)
     .filter((demand) => !filters.q.trim() || `${demand.title} ${demand.description} ${demand.location}`.toLowerCase().includes(filters.q.trim().toLowerCase()))
     .filter((demand) => {
       if (!selectedStatus) return true
       if (selectedStatus === 'ACCEPTED') {
-        // “已接单”对应 demand.status === 'IN_PROGRESS'（接单时后端已将需求状态更新为 IN_PROGRESS）
         return demand.status === 'IN_PROGRESS'
+      }
+      if (selectedStatus === 'PENDING') {
+        if (demand.status === 'PENDING') return true
+        if (demand.status === 'REVIEWING' && demand.publisherId === store.currentUser?.id) return true
+        return false
       }
       return demand.status === selectedStatus
     })

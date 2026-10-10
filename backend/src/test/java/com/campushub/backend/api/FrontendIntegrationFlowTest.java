@@ -197,15 +197,25 @@ class FrontendIntegrationFlowTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.orderId").value(orderId))
             .andExpect(jsonPath("$.data.targetId").value(accepter.userId()))
-            .andExpect(jsonPath("$.data.rating").value(5));
+            .andExpect(jsonPath("$.data.rating").value(5))
+            .andExpect(jsonPath("$.data.demandTitle").isNotEmpty());
 
         mockMvc.perform(get("/api/v1/orders/{orderId}", orderId)
                 .header("Authorization", bearer(publisher.token())))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.reviews[0].rating").value(5))
+            .andExpect(jsonPath("$.data.reviews[0].demandTitle").isNotEmpty())
             .andExpect(jsonPath("$.data.currentUserReviewed").value(true))
             .andExpect(jsonPath("$.data.pendingReviewTarget").doesNotExist())
             .andExpect(jsonPath("$.data.completionHint").value("双方已确认完成"));
+
+        // 用户评价列表也应返回 demandTitle
+        mockMvc.perform(get("/api/v1/users/{userId}/reviews", publisher.userId())
+                .header("Authorization", bearer(publisher.token()))
+                .param("page", "1")
+                .param("size", "10"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.items[0].demandTitle").isNotEmpty());
     }
 
     @Test
@@ -277,19 +287,23 @@ class FrontendIntegrationFlowTest {
     }
 
     @Test
-    void shouldListOwnReviewingDemandOnlyWhenRequested() throws Exception {
+    void shouldAlwaysListOwnReviewingDemandForLoggedInUser() throws Exception {
         TestUser publisher = registerAndLogin("publisher-own-reviewing-list");
         String title = "Own reviewing demand " + System.nanoTime();
         Long demandId = publishDemand(publisher.token(), title);
 
+        // 已登录用户即使不传 includeOwn，也能看到自己发布的审核中需求
         mockMvc.perform(get("/api/v1/demands")
                 .header("Authorization", bearer(publisher.token()))
                 .param("q", title)
                 .param("page", "1")
                 .param("size", "10"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.total").value(0));
+            .andExpect(jsonPath("$.data.total").value(1))
+            .andExpect(jsonPath("$.data.items[0].id").value(demandId))
+            .andExpect(jsonPath("$.data.items[0].status").value("REVIEWING"));
 
+        // 传 includeOwn=true 时同样能看到
         mockMvc.perform(get("/api/v1/demands")
                 .header("Authorization", bearer(publisher.token()))
                 .param("q", title)

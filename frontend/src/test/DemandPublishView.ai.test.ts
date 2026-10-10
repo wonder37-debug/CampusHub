@@ -45,6 +45,8 @@ function buildDraft(overrides: Partial<AiDemandDraft> = {}): AiDemandDraft {
     tags: ['快递', '跑腿'],
     interactionMode: 'DIRECT_ACCEPT',
     targetParticipantCount: null,
+    contactInfo: null,
+    anonymous: null,
     missingFields: [],
     ...overrides
   }
@@ -511,5 +513,71 @@ describe('DemandPublishView - AI 帮我发布', () => {
     await cancelButton?.trigger('click')
 
     expect(wrapper.find('[data-testid="ai-modal"]').exists()).toBe(false)
+  })
+
+  // ========== Bug 2: AI 结构化提取与回填回归测试 ==========
+
+  it('AI 回填 contactInfo 到联系方式字段', async () => {
+    mockGenerate.mockResolvedValue(buildDraft({
+      contactInfo: 'QQ: 25984515619',
+      category: 'TEAM_UP',
+      campusZone: 'SUZHOU',
+      interactionMode: 'SELECT_MANY',
+      targetParticipantCount: 5,
+      reward: 50
+    }))
+    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
+    await wrapper.find('[data-testid="ai-prompt-input"]').setValue('苏州校区足球队组队')
+    await wrapper.find('[data-testid="ai-generate-button"]').trigger('click')
+    await flushPromises()
+
+    const contactInput = wrapper.find('#demand-contact')
+    expect((contactInput.element as HTMLInputElement).value).toBe('QQ: 25984515619')
+  })
+
+  it('AI anonymous=true 时开启匿名控件', async () => {
+    mockGenerate.mockResolvedValue(buildDraft({
+      anonymous: true,
+      category: 'HELP'
+    }))
+    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
+    await wrapper.find('[data-testid="ai-prompt-input"]').setValue('匿名发布求助')
+    await wrapper.find('[data-testid="ai-generate-button"]').trigger('click')
+    await flushPromises()
+
+    const anonCheckbox = wrapper.find('input[type="checkbox"]')
+    expect((anonCheckbox.element as HTMLInputElement).checked).toBe(true)
+  })
+
+  it('AI anonymous=null 时不覆盖用户已有的匿名选择', async () => {
+    // 用户先手动勾选匿名
+    const anonCheckbox = wrapper.find('input[type="checkbox"]')
+    await anonCheckbox.setValue(true)
+    expect((anonCheckbox.element as HTMLInputElement).checked).toBe(true)
+
+    // AI 返回 anonymous=null（未提及匿名）
+    mockGenerate.mockResolvedValue(buildDraft({ anonymous: null }))
+    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
+    await wrapper.find('[data-testid="ai-prompt-input"]').setValue('取快递')
+    await wrapper.find('[data-testid="ai-generate-button"]').trigger('click')
+    await flushPromises()
+
+    // 匿名状态保持用户的手动选择
+    expect((wrapper.find('input[type="checkbox"]').element as HTMLInputElement).checked).toBe(true)
+  })
+
+  it('AI contactInfo=null 时保留用户已有的联系方式', async () => {
+    // 用户先手动输入联系方式
+    await wrapper.find('#demand-contact').setValue('微信: abc123')
+
+    // AI 返回 contactInfo=null
+    mockGenerate.mockResolvedValue(buildDraft({ contactInfo: null }))
+    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
+    await wrapper.find('[data-testid="ai-prompt-input"]').setValue('取快递')
+    await wrapper.find('[data-testid="ai-generate-button"]').trigger('click')
+    await flushPromises()
+
+    // 联系方式保持用户的手动输入
+    expect((wrapper.find('#demand-contact').element as HTMLInputElement).value).toBe('微信: abc123')
   })
 })
