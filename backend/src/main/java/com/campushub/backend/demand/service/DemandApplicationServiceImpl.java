@@ -240,6 +240,7 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
             demand.setTags(command.tags());
         }
         if (command.contactInfo() != null) {
+            validateContactInfo(command.contactInfo());
             demand.setContactInfo(trimToNull(command.contactInfo()));
         }
         if (command.anonymous() != null) {
@@ -344,6 +345,7 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
         parseCategory(command.category());
         parseCampusZone(command.campusZone());
         validateLocation(command.location());
+        validateContactInfo(command.contactInfo());
         validateTimeWindow(command.startTime(), command.endTime());
         normalizeReward(command.reward());
         validateTags(command.tags());
@@ -367,9 +369,20 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
         }
     }
 
+    private static final int CONTACT_INFO_MAX_LENGTH = 200;
+
+    private void validateContactInfo(String contactInfo) {
+        if (contactInfo != null && contactInfo.trim().length() > CONTACT_INFO_MAX_LENGTH) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "contactInfo length must not exceed 200");
+        }
+    }
+
     private void validateTimeWindow(LocalDateTime startTime, LocalDateTime endTime) {
         if (startTime != null && endTime != null && endTime.isBefore(startTime)) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "endTime must not be before startTime");
+        }
+        if (startTime != null && startTime.isBefore(LocalDateTime.now())) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "startTime must not be in the past");
         }
     }
 

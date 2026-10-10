@@ -126,7 +126,7 @@ public class AiDemandApplicationServiceImpl implements AiDemandApplicationServic
     private static final int LOCATION_MAX_LENGTH = 256;
     private static final int TAGS_MAX_SIZE = 20;
     private static final int TARGET_PARTICIPANT_COUNT_MAX = 100;
-    private static final int CONTACT_INFO_MAX_LENGTH = 500;
+    private static final int CONTACT_INFO_MAX_LENGTH = 200;
 
     /**
      * missingFields 白名单：只允许 DemandDraft 已知字段名，避免 AI 注入任意字符串到前端提示。
@@ -250,6 +250,11 @@ public class AiDemandApplicationServiceImpl implements AiDemandApplicationServic
         if (start != null) {
             // 统一格式化 AI 返回的时间，避免小数秒格式泄漏
             start = start.truncatedTo(ChronoUnit.SECONDS);
+            // 不允许过去开始时间，与正式发布 validateTimeWindow 一致
+            if (start.isBefore(now)) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED,
+                    "AI 返回内容无法识别，请重新描述需求");
+            }
             startTimeStr = start.format(ISO_SECONDS_FORMATTER);
         } else {
             start = now;

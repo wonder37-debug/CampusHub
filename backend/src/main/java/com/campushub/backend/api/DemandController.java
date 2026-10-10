@@ -128,7 +128,7 @@ public class DemandController {
         // sort=RECOMMEND：推荐排序的推荐顺序由前端通过 GET /api/v1/recommendations 单独获取，
         // 后端需求列表查询使用与普通排序相同的可见性逻辑（含本人 REVIEWING 和已完成 COMPLETED），
         // 保证推荐排序下本人审核中需求和已完成历史需求也能正确显示。
-        // 推荐候选池（PENDING 且非本人）仍由推荐服务提供，前端按推荐顺序排列，非推荐候选按时间排列在后。
+        // applySort 中 RECOMMEND 与 TIME 行为一致（按 createdAt 降序），但保留 RECOMMEND 语义不转换。
         PageResponse<DemandSummaryResponse> rawPage = demandApplicationService.list(
             new DemandQuery(
                 q,
@@ -137,7 +137,7 @@ public class DemandController {
                 location,
                 startTimeFrom,
                 startTimeTo,
-                resolvedSort == DemandSort.RECOMMEND ? DemandSort.TIME : resolvedSort,
+                resolvedSort,
                 new PageQuery(page, size),
                 currentUser != null ? currentUser.userId() : null
             )

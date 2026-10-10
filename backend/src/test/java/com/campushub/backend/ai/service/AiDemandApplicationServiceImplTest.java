@@ -75,7 +75,7 @@ class AiDemandApplicationServiceImplTest {
     void shouldGenerateValidExpressDemand() {
         when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(buildRaw(
             "代取快递并送到南区宿舍", "明天下午三点帮我从菜鸟驿站取快递送到南区宿舍",
-            "EXPRESS", "XIANLIN", "南区宿舍", "2026-10-08T15:00:00", "2026-10-08T17:00:00",
+            "EXPRESS", "XIANLIN", "南区宿舍", "2099-12-31T15:00:00", "2099-12-31T17:00:00",
             new BigDecimal("10"), List.of("快递", "跑腿"), "DIRECT_ACCEPT", null, List.of()));
 
         DemandDraft result = service.generateDraft(new GenerateDemandDraftCommand(
@@ -118,7 +118,7 @@ class AiDemandApplicationServiceImplTest {
     void shouldResolveTeamUpDemand() {
         when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(buildRaw(
             "周六下午找3个人一起打羽毛球", "周六下午找3个人一起打羽毛球",
-            "TEAM_UP", null, null, "2026-10-10T14:00:00", "2026-10-10T17:00:00",
+            "TEAM_UP", null, null, "2099-12-31T14:00:00", "2099-12-31T17:00:00",
             BigDecimal.ZERO, List.of("羽毛球"), "SELECT_MANY", 3,
             List.of("campusZone", "location")));
 
@@ -137,7 +137,7 @@ class AiDemandApplicationServiceImplTest {
     void shouldForceSelectManyForTeamUpWhenInteractionModeMismatched() {
         when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(buildRaw(
             "组队打球", "组队打球", "TEAM_UP", "XIANLIN", "操场",
-            "2026-10-10T14:00:00", "2026-10-10T17:00:00", BigDecimal.ZERO,
+            "2099-12-31T14:00:00", "2099-12-31T17:00:00", BigDecimal.ZERO,
             List.of(), "DIRECT_ACCEPT", 3, List.of()));
 
         DemandDraft result = service.generateDraft(new GenerateDemandDraftCommand("组队打球"));
@@ -166,7 +166,7 @@ class AiDemandApplicationServiceImplTest {
     void shouldRejectInvalidCategory() {
         when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(buildRaw(
             "标题", "描述", "INVALID", "XIANLIN", "图书馆",
-            "2026-10-08T10:00:00", "2026-10-08T12:00:00", BigDecimal.ZERO,
+            "2099-12-31T10:00:00", "2099-12-31T12:00:00", BigDecimal.ZERO,
             List.of(), "DIRECT_ACCEPT", null, List.of()));
 
         BusinessException exception = assertThrows(BusinessException.class,
@@ -180,7 +180,7 @@ class AiDemandApplicationServiceImplTest {
     void shouldRejectInvalidInteractionModeForOther() {
         when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(buildRaw(
             "标题", "描述", "OTHER", "XIANLIN", "图书馆",
-            "2026-10-08T10:00:00", "2026-10-08T12:00:00", BigDecimal.ZERO,
+            "2099-12-31T10:00:00", "2099-12-31T12:00:00", BigDecimal.ZERO,
             List.of(), "INVALID_MODE", null, List.of()));
 
         BusinessException exception = assertThrows(BusinessException.class,
@@ -193,7 +193,7 @@ class AiDemandApplicationServiceImplTest {
     void shouldRejectHelpModeForOtherCategory() {
         when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(buildRaw(
             "标题", "描述", "OTHER", "XIANLIN", "图书馆",
-            "2026-10-08T10:00:00", "2026-10-08T12:00:00", BigDecimal.ZERO,
+            "2099-12-31T10:00:00", "2099-12-31T12:00:00", BigDecimal.ZERO,
             List.of(), "HELP", null, List.of()));
 
         BusinessException exception = assertThrows(BusinessException.class,
@@ -206,7 +206,7 @@ class AiDemandApplicationServiceImplTest {
     void shouldAcceptOtherCategoryWithSelectOneMode() {
         when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(buildRaw(
             "其他需求", "描述", "OTHER", "XIANLIN", "图书馆",
-            "2026-10-08T10:00:00", "2026-10-08T12:00:00", BigDecimal.ZERO,
+            "2099-12-31T10:00:00", "2099-12-31T12:00:00", BigDecimal.ZERO,
             List.of(), "SELECT_ONE", null, List.of()));
 
         DemandDraft result = service.generateDraft(new GenerateDemandDraftCommand("其他需求"));
@@ -219,7 +219,7 @@ class AiDemandApplicationServiceImplTest {
     void shouldForceSelectManyForTeamUpWithNullInteractionMode() {
         when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(buildRaw(
             "组队打球", "组队打球", "TEAM_UP", "XIANLIN", "操场",
-            "2026-10-10T14:00:00", "2026-10-10T17:00:00", BigDecimal.ZERO,
+            "2099-12-31T14:00:00", "2099-12-31T17:00:00", BigDecimal.ZERO,
             List.of(), null, 3, List.of()));
 
         DemandDraft result = service.generateDraft(new GenerateDemandDraftCommand("组队打球"));
@@ -234,7 +234,7 @@ class AiDemandApplicationServiceImplTest {
     void shouldForceHelpInteractionModeForHelpCategory() {
         when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(buildRaw(
             "求助问题", "求助问题", "HELP", "XIANLIN", "图书馆",
-            "2026-10-08T10:00:00", "2026-10-08T12:00:00", BigDecimal.ZERO,
+            "2099-12-31T10:00:00", "2099-12-31T12:00:00", BigDecimal.ZERO,
             List.of(), null, null, List.of()));
 
         DemandDraft result = service.generateDraft(new GenerateDemandDraftCommand("求助"));
@@ -248,7 +248,7 @@ class AiDemandApplicationServiceImplTest {
     void shouldRejectInvalidCampusZone() {
         when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(buildRaw(
             "标题", "描述", "EXPRESS", "INVALID_ZONE", "图书馆",
-            "2026-10-08T10:00:00", "2026-10-08T12:00:00", BigDecimal.ZERO,
+            "2099-12-31T10:00:00", "2099-12-31T12:00:00", BigDecimal.ZERO,
             List.of(), "DIRECT_ACCEPT", null, List.of()));
 
         BusinessException exception = assertThrows(BusinessException.class,
@@ -261,7 +261,7 @@ class AiDemandApplicationServiceImplTest {
     void shouldAcceptNullCampusZone() {
         when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(buildRaw(
             "取快递", "描述", "EXPRESS", null, "图书馆",
-            "2026-10-08T10:00:00", "2026-10-08T12:00:00", BigDecimal.ZERO,
+            "2099-12-31T10:00:00", "2099-12-31T12:00:00", BigDecimal.ZERO,
             List.of(), "DIRECT_ACCEPT", null, List.of("campusZone")));
 
         DemandDraft result = service.generateDraft(new GenerateDemandDraftCommand("取快递"));
@@ -273,7 +273,7 @@ class AiDemandApplicationServiceImplTest {
     void shouldNormalizeCampusZoneCaseInsensitive() {
         when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(buildRaw(
             "取快递", "描述", "EXPRESS", "xianlin", "图书馆",
-            "2026-10-08T10:00:00", "2026-10-08T12:00:00", BigDecimal.ZERO,
+            "2099-12-31T10:00:00", "2099-12-31T12:00:00", BigDecimal.ZERO,
             List.of(), "DIRECT_ACCEPT", null, List.of()));
 
         DemandDraft result = service.generateDraft(new GenerateDemandDraftCommand("取快递"));
@@ -285,7 +285,7 @@ class AiDemandApplicationServiceImplTest {
     void shouldRejectNegativeReward() {
         when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(buildRaw(
             "标题", "描述", "EXPRESS", "XIANLIN", "图书馆",
-            "2026-10-08T10:00:00", "2026-10-08T12:00:00", new BigDecimal("-5"),
+            "2099-12-31T10:00:00", "2099-12-31T12:00:00", new BigDecimal("-5"),
             List.of(), "DIRECT_ACCEPT", null, List.of()));
 
         BusinessException exception = assertThrows(BusinessException.class,
@@ -298,7 +298,7 @@ class AiDemandApplicationServiceImplTest {
     void shouldRejectInvalidTargetParticipantCount() {
         when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(buildRaw(
             "组队", "组队", "TEAM_UP", "XIANLIN", "操场",
-            "2026-10-08T10:00:00", "2026-10-08T12:00:00", BigDecimal.ZERO,
+            "2099-12-31T10:00:00", "2099-12-31T12:00:00", BigDecimal.ZERO,
             List.of(), "SELECT_MANY", 0, List.of()));
 
         BusinessException exception = assertThrows(BusinessException.class,
@@ -311,7 +311,7 @@ class AiDemandApplicationServiceImplTest {
     void shouldRejectTargetParticipantCountExceeding100() {
         when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(buildRaw(
             "组队", "组队", "TEAM_UP", "XIANLIN", "操场",
-            "2026-10-08T10:00:00", "2026-10-08T12:00:00", BigDecimal.ZERO,
+            "2099-12-31T10:00:00", "2099-12-31T12:00:00", BigDecimal.ZERO,
             List.of(), "SELECT_MANY", 200, List.of()));
 
         assertThrows(BusinessException.class,
@@ -322,7 +322,7 @@ class AiDemandApplicationServiceImplTest {
     void shouldRejectEndTimeBeforeStartTime() {
         when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(buildRaw(
             "标题", "描述", "EXPRESS", "XIANLIN", "图书馆",
-            "2026-10-08T12:00:00", "2026-10-08T10:00:00", BigDecimal.ZERO,
+            "2099-12-31T12:00:00", "2099-12-31T10:00:00", BigDecimal.ZERO,
             List.of(), "DIRECT_ACCEPT", null, List.of()));
 
         BusinessException exception = assertThrows(BusinessException.class,
@@ -335,7 +335,7 @@ class AiDemandApplicationServiceImplTest {
     void shouldRejectInvalidTimeFormat() {
         when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(buildRaw(
             "标题", "描述", "EXPRESS", "XIANLIN", "图书馆",
-            "not-a-date", "2026-10-08T12:00:00", BigDecimal.ZERO,
+            "not-a-date", "2099-12-31T12:00:00", BigDecimal.ZERO,
             List.of(), "DIRECT_ACCEPT", null, List.of()));
 
         BusinessException exception = assertThrows(BusinessException.class,
@@ -351,7 +351,7 @@ class AiDemandApplicationServiceImplTest {
         // Case 1: reward=null, LLM 声明 missingFields=[]，服务端必须补充 reward
         when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(buildRaw(
             "取快递", "描述", "EXPRESS", "XIANLIN", "图书馆",
-            "2026-10-08T10:00:00", "2026-10-08T12:00:00", null,
+            "2099-12-31T10:00:00", "2099-12-31T12:00:00", null,
             List.of(), "DIRECT_ACCEPT", null, List.of()));
 
         DemandDraft result = service.generateDraft(new GenerateDemandDraftCommand("取快递"));
@@ -366,7 +366,7 @@ class AiDemandApplicationServiceImplTest {
         // Case 2: reward=0 是有效值，不应进入 missingFields
         when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(buildRaw(
             "取快递", "描述", "EXPRESS", "XIANLIN", "图书馆",
-            "2026-10-08T10:00:00", "2026-10-08T12:00:00", BigDecimal.ZERO,
+            "2099-12-31T10:00:00", "2099-12-31T12:00:00", BigDecimal.ZERO,
             List.of(), "DIRECT_ACCEPT", null, List.of()));
 
         DemandDraft result = service.generateDraft(new GenerateDemandDraftCommand("取快递"));
@@ -381,7 +381,7 @@ class AiDemandApplicationServiceImplTest {
         // Case 3: reward=positive，LLM 误报 missingFields=["reward"]，服务端应以实际值为准移除
         when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(buildRaw(
             "取快递", "描述", "EXPRESS", "XIANLIN", "图书馆",
-            "2026-10-08T10:00:00", "2026-10-08T12:00:00", new BigDecimal("10"),
+            "2099-12-31T10:00:00", "2099-12-31T12:00:00", new BigDecimal("10"),
             List.of(), "DIRECT_ACCEPT", null, List.of("reward")));
 
         DemandDraft result = service.generateDraft(new GenerateDemandDraftCommand("取快递"));
@@ -414,7 +414,7 @@ class AiDemandApplicationServiceImplTest {
         // description/tags 可空，不应进入 missingFields
         when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(buildRaw(
             "标题", null, "EXPRESS", "XIANLIN", "图书馆",
-            "2026-10-08T10:00:00", "2026-10-08T12:00:00", BigDecimal.ZERO,
+            "2099-12-31T10:00:00", "2099-12-31T12:00:00", BigDecimal.ZERO,
             List.of(), "DIRECT_ACCEPT", null, List.of("description", "tags")));
 
         DemandDraft result = service.generateDraft(new GenerateDemandDraftCommand("取快递"));
@@ -625,7 +625,7 @@ class AiDemandApplicationServiceImplTest {
         String longDescription = "描述".repeat(1500);
         when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(buildRaw(
             longTitle, longDescription, "EXPRESS", "XIANLIN", "图书馆",
-            "2026-10-08T10:00:00", "2026-10-08T12:00:00", BigDecimal.ZERO,
+            "2099-12-31T10:00:00", "2099-12-31T12:00:00", BigDecimal.ZERO,
             List.of(), "DIRECT_ACCEPT", null, List.of()));
 
         DemandDraft result = service.generateDraft(new GenerateDemandDraftCommand("取快递"));
@@ -640,7 +640,7 @@ class AiDemandApplicationServiceImplTest {
         List<String> tooManyTags = java.util.stream.Stream.generate(() -> "tag").limit(30).toList();
         when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(buildRaw(
             "标题", "描述", "EXPRESS", "XIANLIN", "图书馆",
-            "2026-10-08T10:00:00", "2026-10-08T12:00:00", BigDecimal.ZERO,
+            "2099-12-31T10:00:00", "2099-12-31T12:00:00", BigDecimal.ZERO,
             tooManyTags, "DIRECT_ACCEPT", null, List.of()));
 
         DemandDraft result = service.generateDraft(new GenerateDemandDraftCommand("取快递"));
@@ -681,7 +681,7 @@ class AiDemandApplicationServiceImplTest {
     void shouldSetAnonymousTrueWhenUserExplicitlyRequestsAnonymity() {
         when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(buildRawWithContact(
             "匿名求助", "匿名求助", "HELP", "XIANLIN", "图书馆",
-            "2026-10-08T10:00:00", "2026-10-08T12:00:00", BigDecimal.ZERO,
+            "2099-12-31T10:00:00", "2099-12-31T12:00:00", BigDecimal.ZERO,
             List.of(), "HELP", null, null, Boolean.TRUE, List.of()));
 
         DemandDraft result = service.generateDraft(new GenerateDemandDraftCommand("匿名发布一个求助需求"));
@@ -693,7 +693,7 @@ class AiDemandApplicationServiceImplTest {
     void shouldNotOverrideAnonymousWhenUserDidNotMentionAnonymity() {
         when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(buildRawWithContact(
             "取快递", "描述", "EXPRESS", "XIANLIN", "图书馆",
-            "2026-10-08T10:00:00", "2026-10-08T12:00:00", BigDecimal.ZERO,
+            "2099-12-31T10:00:00", "2099-12-31T12:00:00", BigDecimal.ZERO,
             List.of(), "DIRECT_ACCEPT", null, null, null, List.of()));
 
         DemandDraft result = service.generateDraft(new GenerateDemandDraftCommand("帮我取快递"));
@@ -707,7 +707,7 @@ class AiDemandApplicationServiceImplTest {
         // 用户说 "50元"（人民币），不应当作校邻币 50
         when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(buildRaw(
             "取快递", "描述", "EXPRESS", "XIANLIN", "图书馆",
-            "2026-10-08T10:00:00", "2026-10-08T12:00:00", null,
+            "2099-12-31T10:00:00", "2099-12-31T12:00:00", null,
             List.of(), "DIRECT_ACCEPT", null, List.of("reward")));
 
         DemandDraft result = service.generateDraft(new GenerateDemandDraftCommand("帮我取快递，给50元"));
@@ -721,7 +721,7 @@ class AiDemandApplicationServiceImplTest {
     void shouldExtractMultipleContactInfoTypes() {
         when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(buildRawWithContact(
             "取快递", "描述", "EXPRESS", "XIANLIN", "图书馆",
-            "2026-10-08T10:00:00", "2026-10-08T12:00:00", new BigDecimal("10"),
+            "2099-12-31T10:00:00", "2099-12-31T12:00:00", new BigDecimal("10"),
             List.of(), "DIRECT_ACCEPT", null,
             "QQ: 123456; 手机: 13800138000", null, List.of()));
 
@@ -776,6 +776,35 @@ class AiDemandApplicationServiceImplTest {
         assertNotNull(result.endTime());
         assertTrue(result.endTime().matches("\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}"),
             "endTime 应截断至秒，实际: " + result.endTime());
+    }
+
+    @Test
+    void shouldRejectPastStartTime() {
+        when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(buildRaw(
+            "取快递", "描述", "EXPRESS", "XIANLIN", "图书馆",
+            "2020-01-01T10:00:00", "2099-12-31T12:00:00", BigDecimal.ZERO,
+            List.of(), "DIRECT_ACCEPT", null, List.of()));
+
+        BusinessException ex = assertThrows(BusinessException.class, () ->
+            service.generateDraft(new GenerateDemandDraftCommand("帮我取快递")));
+        assertEquals(ErrorCode.VALIDATION_FAILED, ex.getErrorCode());
+    }
+
+    @Test
+    void shouldTruncateContactInfoExceeding200Chars() {
+        String longContact = "QQ: " + "a".repeat(250);
+        when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(buildRawWithContact(
+            "取快递", "描述", "EXPRESS", "XIANLIN", "图书馆",
+            "2099-12-31T10:00:00", "2099-12-31T12:00:00", BigDecimal.ZERO,
+            List.of(), "DIRECT_ACCEPT", null,
+            longContact, null, List.of()));
+
+        DemandDraft result = service.generateDraft(new GenerateDemandDraftCommand("帮我取快递"));
+
+        // AI 草稿截断 contactInfo 至 200 字符，不等到数据库写入时失败
+        assertNotNull(result.contactInfo());
+        assertTrue(result.contactInfo().length() <= 200,
+            "contactInfo should be truncated to 200, actual: " + result.contactInfo().length());
     }
 
     private void assertFalseContains(String actual, String fragment) {
