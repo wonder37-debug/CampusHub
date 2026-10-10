@@ -373,7 +373,7 @@ class SecurityBoundaryIntegrationTest {
         body.put("category", "EXPRESS");
         body.put("campusZone", "XIANLIN");
         body.put("location", "station");
-        body.put("startTime", LocalDateTime.now().minusHours(2).toString());
+        // 不传 startTime（null），避免过去开始时间校验；endTime 为过去时间模拟过期需求
         body.put("endTime", endTime.toString());
         body.put("reward", BigDecimal.ZERO);
         body.put("tags", java.util.List.of("tag"));

@@ -76,6 +76,14 @@ const form = reactive({
   anonymous: false
 })
 
+// AI 字段来源追踪：记录哪些字段是 AI 自动填写的（非用户手动修改）
+// 新一轮 AI 生成时，上一轮 AI 自动填写的字段如果新 AI 返回 null，应清空而非残留
+const aiFilledFields = ref<Set<string>>(new Set())
+
+function markFieldManual(field: string): void {
+  aiFilledFields.value.delete(field)
+}
+
 // 业务规则：TEAM_UP 固定为 SELECT_MANY，不需要用户选择 interactionMode
 const effectiveInteractionMode = computed<string>(() => {
   if (form.category === 'TEAM_UP') return 'SELECT_MANY'
@@ -95,17 +103,6 @@ const showInteractionMode = computed(() => form.category === 'OTHER')
 // datetime-local 输入格式为 YYYY-MM-DDTHH:MM，与 startTime/endTime 兼容
 const startTime = computed(() => form.startDateTime)
 const endTime = computed(() => form.endDateTime)
-
-// 获取当前时间（YYYY-MM-DDTHH:MM 格式，用于 min 约束）
-const minDateTime = computed(() => {
-  const now = new Date()
-  const year = now.getFullYear()
-  const month = String(now.getMonth() + 1).padStart(2, '0')
-  const day = String(now.getDate()).padStart(2, '0')
-  const hours = String(now.getHours()).padStart(2, '0')
-  const minutes = String(now.getMinutes()).padStart(2, '0')
-  return `${year}-${month}-${day}T${hours}:${minutes}`
-})
 
 const forbiddenForAdmin = computed(() => store.currentUser?.role === 'ADMIN')
 const canSubmit = computed(() => !submitting.value && !published.value && !forbiddenForAdmin.value)
@@ -474,22 +471,41 @@ function isLegalCampusZone(value: string | null): value is CampusZone {
 function applyAiDraft(draft: import('@/types/campushub').AiDemandDraft): void {
   // AI-managed fields 完全替换：每次 AI 成功生成的 DemandDraft 当作全新草稿，不是旧草稿的 patch。
   // AI null → 清空对应字段；AI [] → 清空数组/字符串字段；AI 有值 → 直接写入。
-  // 非 AI-managed fields（images/contactInfo/anonymous）不修改，保留用户已有值。
   form.title = draft.title ?? ''
   form.description = draft.description ?? ''
   form.location = draft.location ?? ''
   form.startDateTime = draft.startTime ? toDateTimeLocal(draft.startTime) : ''
   form.endDateTime = draft.endTime ? toDateTimeLocal(draft.endTime) : ''
-  // reward：null → 清空（不保留默认 '10'，避免用户误提交 10 元）；0 → '0'（有效值，不误判为空）
+  // reward：null → 清空（不保留默认 '10'，避免用户误提交 10 校邻币）；0 → '0'（有效值，不误判为空）
   form.reward = draft.reward == null ? '' : String(draft.reward)
   // tags：数组完全替换，[] → ''，['打印','资料'] → '打印,资料'（不 append 旧值）
   form.tags = Array.isArray(draft.tags) ? draft.tags.join(',') : ''
-  // category/campusZone：合法值覆盖，非法/null → 清空（整体替换，避免旧 category 残留）
+  // category/campusZone：合法值覆盖，非法/null → 清空（整体替换，避免旧 category 拘留）
   form.category = (isLegalCategory(draft.category) ? draft.category : '') as typeof form.category
   form.campusZone = (isLegalCampusZone(draft.campusZone) ? draft.campusZone : '') as typeof form.campusZone
   // interactionMode/targetParticipantCount：完全由本次 AI 决定，null → 清空（避免旧 category 的依赖字段残留）
   form.interactionMode = draft.interactionMode ?? ''
   form.targetParticipantCount = draft.targetParticipantCount == null ? '' : String(draft.targetParticipantCount)
+
+  // contactInfo：AI 有值 → 覆盖 + 标记为 AI 填写；AI null → 清除上一轮 AI 填写但不覆盖用户手动值
+  if (draft.contactInfo != null) {
+    form.contactInfo = draft.contactInfo
+    aiFilledFields.value.add('contactInfo')
+  } else if (aiFilledFields.value.has('contactInfo')) {
+    // 上一轮 AI 自动填写的联系方式，新一轮 AI 未识别到，应清空不残留
+    form.contactInfo = ''
+    aiFilledFields.value.delete('contactInfo')
+  }
+
+  // anonymous：AI true → 开启 + 标记为 AI 填写；AI null/false → 清除上一轮 AI 填写但不覆盖用户手动值
+  if (draft.anonymous === true) {
+    form.anonymous = true
+    aiFilledFields.value.add('anonymous')
+  } else if (aiFilledFields.value.has('anonymous')) {
+    // 上一轮 AI 自动开启的匿名，新一轮 AI 未提及，应重置为 false
+    form.anonymous = false
+    aiFilledFields.value.delete('anonymous')
+  }
 
   // missingFields 提示：转换为中文标签，引导用户补充
   if (draft.missingFields && draft.missingFields.length > 0) {
@@ -648,7 +664,6 @@ async function generateAiDraft(): Promise<void> {
               id="demand-start-datetime"
               v-model="form.startDateTime"
               type="datetime-local"
-              :min="minDateTime"
               @change="clearStartTimeError"
             />
             <p v-if="errors.startTime" class="input-help" style="color: var(--danger)">{{ errors.startTime }}</p>
@@ -660,7 +675,7 @@ async function generateAiDraft(): Promise<void> {
               id="demand-end-datetime"
               v-model="form.endDateTime"
               type="datetime-local"
-              :min="form.startDateTime || minDateTime"
+              :min="form.startDateTime || undefined"
               @change="clearEndTimeError"
             />
             <p v-if="errors.endTime" class="input-help" style="color: var(--danger)">{{ errors.endTime }}</p>
@@ -674,17 +689,17 @@ async function generateAiDraft(): Promise<void> {
 
           <div class="field" style="grid-column: 1 / -1;">
             <label>上传图片</label>
-            <ImageUploader v-model="form.images" :max-count="6" :max-size-m-b="5" />
+            <ImageUploader v-model="form.images" :max-count="6" :max-size-m-b="10" />
           </div>
 
           <div class="field" style="grid-column: 1 / -1;">
             <label for="demand-contact">联系方式（可选）</label>
-            <input id="demand-contact" v-model="form.contactInfo" maxlength="200" placeholder="电话/微信/QQ/邮箱，接单后对方可见" />
+            <input id="demand-contact" v-model="form.contactInfo" maxlength="200" placeholder="电话/微信/QQ/邮箱，接单后对方可见" @input="markFieldManual('contactInfo')" />
             <p class="input-help">填写后仅接单人可见，方便线下沟通。</p>
           </div>
 
           <label class="chip" style="grid-column: 1 / -1; width: fit-content;">
-            <input v-model="form.anonymous" type="checkbox" style="margin: 0 8px 0 0;" />
+            <input v-model="form.anonymous" type="checkbox" style="margin: 0 8px 0 0;" @change="markFieldManual('anonymous')" />
             匿名发布
           </label>
 

@@ -120,37 +120,17 @@ public class DemandController {
         @RequestParam(defaultValue = "1") int page,
         @RequestParam(defaultValue = "20") int size
     ) {
+        // includeOwn 参数已废弃：已登录用户始终能看到自己的需求（含审核中），不再依赖此参数。
+        // 保留参数以兼容现有前端调用，不影响 API 契约。
         CurrentUser currentUser = requestUserExtractor.tryExtract(request);
         DemandSort resolvedSort = parseSort(sort);
 
-        // sort=RECOMMEND：先获取候选需求、完成推荐打分/排序/diversity rerank，再执行分页，
-        // 避免“先分页后推荐”导致高推荐分需求永远无法进入第一页
-        if (resolvedSort == DemandSort.RECOMMEND && currentUser != null) {
-            PageResponse<DemandSummaryResponse> recPage = recommendationApplicationService.recommendDemandList(
-                currentUser.userId(),
-                new DemandQuery(q, category, campusZone, location, startTimeFrom, startTimeTo, DemandSort.RECOMMEND, new PageQuery(page, Math.min(size, 50)))
-            );
-            List<Long> recDemandIds = recPage.items().stream().map(DemandSummaryResponse::id).toList();
-            if (recDemandIds.isEmpty()) {
-                return ApiResponse.success(new PageResponse<>(List.of(), recPage.page(), recPage.size(), recPage.total()));
-            }
-            Map<Long, Demand> recDemandMap = demandRepository.findAllById(recDemandIds).stream()
-                .collect(Collectors.toMap(Demand::getId, d -> d));
-            Set<Long> recPublisherIds = recDemandMap.values().stream().map(Demand::getPublisherId).filter(Objects::nonNull).collect(Collectors.toSet());
-            Map<Long, User> recUserMap = recPublisherIds.isEmpty() ? Map.of()
-                : userRepository.findAllById(recPublisherIds).stream().collect(Collectors.toMap(User::getId, u -> u));
-            Map<Long, Order> recOrderMap = orderRepository.findAllByDemandIdIn(recDemandIds).stream()
-                .collect(Collectors.toMap(Order::getDemandId, o -> o));
-            Map<Long, Long> recSelectedCountMap = demandResponseRepository.countSelectedByDemandIds(recDemandIds);
-            List<DemandView> recItems = recDemandIds.stream()
-                .map(recDemandMap::get)
-                .filter(Objects::nonNull)
-                .map(demand -> apiViewMapper.toDemandView(demand, currentUser, recUserMap, recOrderMap, recSelectedCountMap))
-                .toList();
-            return ApiResponse.success(new PageResponse<>(recItems, recPage.page(), recPage.size(), recPage.total()));
-        }
-
-        // 普通 TIME / REWARD / DISTANCE 排序保持现有语义
+        // sort=RECOMMEND 接口行为说明：
+        // - 后端 /api/v1/demands?sort=recommend 返回所有满足筛选条件的需求（按 createdAt 降序），
+        //   含本人 REVIEWING 需求和 COMPLETED 历史需求，与 TIME 排序的可见性和分页逻辑一致。
+        // - 推荐排序顺序（推荐候选在前、非推荐候选在后）由 /api/v1/recommendations 独立提供，
+        //   前端通过 fetchRecommendations 获取并在 visibleDemands 中合并排序。
+        // - 后端不在 demands 列表中做推荐排序，仅保证数据完整可见；推荐服务通过独立端点提供推荐顺序。
         PageResponse<DemandSummaryResponse> rawPage = demandApplicationService.list(
             new DemandQuery(
                 q,
@@ -161,7 +141,7 @@ public class DemandController {
                 startTimeTo,
                 resolvedSort,
                 new PageQuery(page, size),
-                includeOwn && currentUser != null ? currentUser.userId() : null
+                currentUser != null ? currentUser.userId() : null
             )
         );
         List<Long> demandIds = rawPage.items().stream().map(DemandSummaryResponse::id).toList();

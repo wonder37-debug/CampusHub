@@ -17,7 +17,8 @@ export const NOTIFICATION_TYPE_OPTIONS = [
   'PENDING_REVIEW',
   'ORDER_ARBITRATION_REQUESTED',
   'ORDER_ARBITRATION_RESOLVED',
-  'RESPONSE_REVIEW_RECEIVED'
+  'RESPONSE_REVIEW_RECEIVED',
+  'DEMAND_RESPONSE_RECEIVED'
 ] as const
 
 export type DemandCategory = (typeof DEMAND_CATEGORY_OPTIONS)[number]
@@ -157,6 +158,7 @@ export interface ReviewRecord {
   orderId: string | null
   responseId: string | null
   demandId: string | null
+  demandTitle: string | null
   reviewerId: string
   reviewerName: string
   targetId: string
@@ -270,5 +272,7 @@ export interface AiDemandDraft {
   tags: string[]
   interactionMode: string | null
   targetParticipantCount: number | null
+  contactInfo: string | null
+  anonymous: boolean | null
   missingFields: string[]
 }

@@ -169,7 +169,8 @@ public class ApiViewMapper {
             && (currentUser.isAdmin() || order.isParticipant(currentUser.userId()));
 
         List<ReviewView> reviews = resolveReviews(order.getId(), reviewByOrderIdMap).stream()
-            .map(review -> toReviewView(review, canSeePublisher, order.getPublisherId(), anonymousCode))
+            .map(review -> toReviewView(review, canSeePublisher, order.getPublisherId(), anonymousCode,
+                demand != null ? demand.getTitle() : null))
             .toList();
         boolean currentUserReviewed = currentUser != null
             && (reviewedOrderIdsByCurrentUser != null
@@ -216,8 +217,58 @@ public class ApiViewMapper {
         return reviewRepository.findByOrderId(orderId);
     }
 
+    /**
+     * 单条评价转换（fallback 到 repository 查询需求标题）。
+     */
     public ReviewView toReviewView(Review review) {
-        return toReviewView(review, true, null, null);
+        return toReviewView(review, true, null, null, null);
+    }
+
+    /**
+     * 批量场景传入预加载的 demandTitle，避免每条评价重复查询 Demand（N+1）。
+     */
+    private ReviewView toReviewView(Review review, boolean canSeePublisher, Long publisherId, String anonymousCode, String preloadedDemandTitle) {
+        User author = userRepository.findById(review.getAuthorId()).orElse(null);
+        User target = userRepository.findById(review.getTargetId()).orElse(null);
+        PublicUserSummaryView authorView = author == null ? null
+            : anonymizePublicUserSummary(
+                PublicUserSummaryView.from(author),
+                canSeePublisher || publisherId == null || !publisherId.equals(review.getAuthorId()),
+                anonymousCode
+            );
+        String targetName = target == null ? null
+            : (!canSeePublisher && publisherId != null && publisherId.equals(review.getTargetId()))
+                ? (anonymousCode != null ? anonymousCode : "匿名校友")
+                : target.getNickname();
+
+        // 优先使用预加载的 demandTitle（批量场景），fallback 到 repository 查询（单条场景）
+        String demandTitle = preloadedDemandTitle;
+        if (demandTitle == null) {
+            if (review.getDemandId() != null) {
+                demandTitle = demandRepository.findById(review.getDemandId()).map(Demand::getTitle).orElse(null);
+            }
+            if (demandTitle == null && review.getOrderId() != null) {
+                Order order = orderRepository.findById(review.getOrderId()).orElse(null);
+                if (order != null && order.getDemandId() != null) {
+                    demandTitle = demandRepository.findById(order.getDemandId()).map(Demand::getTitle).orElse(null);
+                }
+            }
+        }
+
+        return new ReviewView(
+            review.getId(),
+            review.getOrderId(),
+            review.getResponseId(),
+            review.getDemandId(),
+            demandTitle,
+            review.getRating(),
+            review.getComment(),
+            (!canSeePublisher && publisherId != null && publisherId.equals(review.getTargetId()))
+                ? null : review.getTargetId(),
+            targetName,
+            authorView,
+            review.getCreatedAt()
+        );
     }
 
     public ReviewView toAnonymizedReviewView(ReviewResponse review, CurrentUser currentUser) {
@@ -247,6 +298,9 @@ public class ApiViewMapper {
         return new ReviewView(
             review.id(),
             review.orderId(),
+            review.responseId(),
+            review.demandId(),
+            demand != null ? demand.getTitle() : null,
             review.rating(),
             review.comment(),
             (!canSeePublisher && publisherId != null && publisherId.equals(review.targetId()))
@@ -271,33 +325,6 @@ public class ApiViewMapper {
         }
         Order order = orderRepository.findById(orderId).orElse(null);
         return order != null ? order.getPublisherId() : null;
-    }
-
-    private ReviewView toReviewView(Review review, boolean canSeePublisher, Long publisherId, String anonymousCode) {
-        User author = userRepository.findById(review.getAuthorId()).orElse(null);
-        User target = userRepository.findById(review.getTargetId()).orElse(null);
-        PublicUserSummaryView authorView = author == null ? null
-            : anonymizePublicUserSummary(
-                PublicUserSummaryView.from(author),
-                canSeePublisher || publisherId == null || !publisherId.equals(review.getAuthorId()),
-                anonymousCode
-            );
-        String targetName = target == null ? null
-            : (!canSeePublisher && publisherId != null && publisherId.equals(review.getTargetId()))
-                ? (anonymousCode != null ? anonymousCode : "匿名校友")
-                : target.getNickname();
-
-        return new ReviewView(
-            review.getId(),
-            review.getOrderId(),
-            review.getRating(),
-            review.getComment(),
-            (!canSeePublisher && publisherId != null && publisherId.equals(review.getTargetId()))
-                ? null : review.getTargetId(),
-            targetName,
-            authorView,
-            review.getCreatedAt()
-        );
     }
 
     private boolean canSeeDemandPublisher(Demand demand, CurrentUser currentUser) {

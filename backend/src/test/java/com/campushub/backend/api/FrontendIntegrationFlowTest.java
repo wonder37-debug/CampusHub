@@ -197,15 +197,25 @@ class FrontendIntegrationFlowTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.orderId").value(orderId))
             .andExpect(jsonPath("$.data.targetId").value(accepter.userId()))
-            .andExpect(jsonPath("$.data.rating").value(5));
+            .andExpect(jsonPath("$.data.rating").value(5))
+            .andExpect(jsonPath("$.data.demandTitle").isNotEmpty());
 
         mockMvc.perform(get("/api/v1/orders/{orderId}", orderId)
                 .header("Authorization", bearer(publisher.token())))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.reviews[0].rating").value(5))
+            .andExpect(jsonPath("$.data.reviews[0].demandTitle").isNotEmpty())
             .andExpect(jsonPath("$.data.currentUserReviewed").value(true))
             .andExpect(jsonPath("$.data.pendingReviewTarget").doesNotExist())
             .andExpect(jsonPath("$.data.completionHint").value("双方已确认完成"));
+
+        // 用户评价列表也应返回 demandTitle
+        mockMvc.perform(get("/api/v1/users/{userId}/reviews", publisher.userId())
+                .header("Authorization", bearer(publisher.token()))
+                .param("page", "1")
+                .param("size", "10"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.items[0].demandTitle").isNotEmpty());
     }
 
     @Test
@@ -277,19 +287,23 @@ class FrontendIntegrationFlowTest {
     }
 
     @Test
-    void shouldListOwnReviewingDemandOnlyWhenRequested() throws Exception {
+    void shouldAlwaysListOwnReviewingDemandForLoggedInUser() throws Exception {
         TestUser publisher = registerAndLogin("publisher-own-reviewing-list");
         String title = "Own reviewing demand " + System.nanoTime();
         Long demandId = publishDemand(publisher.token(), title);
 
+        // 已登录用户即使不传 includeOwn，也能看到自己发布的审核中需求
         mockMvc.perform(get("/api/v1/demands")
                 .header("Authorization", bearer(publisher.token()))
                 .param("q", title)
                 .param("page", "1")
                 .param("size", "10"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.total").value(0));
+            .andExpect(jsonPath("$.data.total").value(1))
+            .andExpect(jsonPath("$.data.items[0].id").value(demandId))
+            .andExpect(jsonPath("$.data.items[0].status").value("REVIEWING"));
 
+        // 传 includeOwn=true 时同样能看到
         mockMvc.perform(get("/api/v1/demands")
                 .header("Authorization", bearer(publisher.token()))
                 .param("q", title)
@@ -300,6 +314,154 @@ class FrontendIntegrationFlowTest {
             .andExpect(jsonPath("$.data.total").value(1))
             .andExpect(jsonPath("$.data.items[0].id").value(demandId))
             .andExpect(jsonPath("$.data.items[0].status").value("REVIEWING"));
+    }
+
+    @Test
+    void shouldListOwnReviewingDemandUnderRecommendSort() throws Exception {
+        TestUser publisher = registerAndLogin("publisher-rec-reviewing");
+        String title = "Rec reviewing demand " + System.nanoTime();
+        Long demandId = publishDemand(publisher.token(), title);
+
+        // 推荐排序下也能看到自己的审核中需求
+        mockMvc.perform(get("/api/v1/demands")
+                .header("Authorization", bearer(publisher.token()))
+                .param("q", title)
+                .param("sort", "recommend")
+                .param("page", "1")
+                .param("size", "10"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.total").value(1))
+            .andExpect(jsonPath("$.data.items[0].id").value(demandId))
+            .andExpect(jsonPath("$.data.items[0].status").value("REVIEWING"));
+    }
+
+    @Test
+    void shouldListCompletedDemandUnderRecommendSort() throws Exception {
+        TestUser publisher = registerAndLogin("publisher-rec-completed");
+        TestUser accepter = registerAndLogin("accepter-rec-completed");
+        String adminToken = login("admin", "Admin1234").token();
+        String title = "Rec completed demand " + System.nanoTime();
+        Long demandId = publishDemand(publisher.token(), title);
+        approveDemand(adminToken, demandId);
+
+        // 接单并完成
+        Long orderId = acceptDemand(accepter.token(), demandId);
+        updateOrder(accepter.token(), orderId, "IN_PROGRESS", "started", null);
+        // 接单方提交完成（带凭证图片）
+        uploadedAssetRepository.insert(new com.campushub.backend.upload.repository.entity.UploadedAssetEntity(
+            "proof-rec-1.png", "/api/v1/uploads/2026/10/proof-rec-1.png", accepter.userId(), true, null));
+        updateOrder(accepter.token(), orderId, "COMPLETED", "delivered",
+            List.of("/api/v1/uploads/2026/10/proof-rec-1.png"));
+        // 发布方确认完成
+        updateOrder(publisher.token(), orderId, "COMPLETED", "confirm", null);
+
+        // 推荐排序下已完成需求也能看到（作为历史记录）
+        mockMvc.perform(get("/api/v1/demands")
+                .header("Authorization", bearer(publisher.token()))
+                .param("q", title)
+                .param("sort", "recommend")
+                .param("page", "1")
+                .param("size", "10"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.total").value(1))
+            .andExpect(jsonPath("$.data.items[0].id").value(demandId))
+            .andExpect(jsonPath("$.data.items[0].status").value("COMPLETED"));
+    }
+
+    @Test
+    void shouldAllowUpdatingEndTimeWithoutStartTime() throws Exception {
+        TestUser publisher = registerAndLogin("publisher-update-endtime");
+        String adminToken = login("admin", "Admin1234").token();
+        Long demandId = publishDemand(publisher.token());
+        approveDemand(adminToken, demandId);
+
+        // 只修改 endTime（不传 startTime），不应因 startTime 为 null 而失败
+        mockMvc.perform(put("/api/v1/demands/{demandId}", demandId)
+                .header("Authorization", bearer(publisher.token()))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json(Map.of("endTime", LocalDateTime.now().plusDays(7).toString()))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.endTime").isNotEmpty());
+    }
+
+    @Test
+    void shouldAllowPastStartTimeOnPublish() throws Exception {
+        TestUser publisher = registerAndLogin("publisher-past-start");
+        Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("title", "Past start demand " + System.nanoTime());
+        body.put("description", "desc");
+        body.put("category", "EXPRESS");
+        body.put("campusZone", "XIANLIN");
+        body.put("location", "station");
+        body.put("startTime", LocalDateTime.now().minusDays(2).toString());
+        body.put("endTime", LocalDateTime.now().plusDays(1).toString());
+        body.put("reward", BigDecimal.ZERO);
+        body.put("tags", List.of("tag"));
+        body.put("anonymous", false);
+
+        // 过去的开始时间是允许的，不拒绝
+        mockMvc.perform(post("/api/v1/demands")
+                .header("Authorization", bearer(publisher.token()))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json(body)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.status").value("REVIEWING"));
+    }
+
+    @Test
+    void shouldRejectEndTimeBeforeStartTimeOnPublish() throws Exception {
+        TestUser publisher = registerAndLogin("publisher-end-before-start");
+        Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("title", "End before start " + System.nanoTime());
+        body.put("description", "desc");
+        body.put("category", "EXPRESS");
+        body.put("campusZone", "XIANLIN");
+        body.put("location", "station");
+        body.put("startTime", LocalDateTime.now().plusDays(2).toString());
+        body.put("endTime", LocalDateTime.now().plusDays(1).toString());
+        body.put("reward", BigDecimal.ZERO);
+        body.put("tags", List.of("tag"));
+        body.put("anonymous", false);
+
+        // 结束时间早于开始时间仍被拒绝
+        mockMvc.perform(post("/api/v1/demands")
+                .header("Authorization", bearer(publisher.token()))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json(body)))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void shouldAllowPastStartTimeOnUpdate() throws Exception {
+        TestUser publisher = registerAndLogin("publisher-update-past-start");
+        String adminToken = login("admin", "Admin1234").token();
+        Long demandId = publishDemand(publisher.token());
+        approveDemand(adminToken, demandId);
+
+        // 更新需求时将开始时间设为过去时间，应允许
+        mockMvc.perform(put("/api/v1/demands/{demandId}", demandId)
+                .header("Authorization", bearer(publisher.token()))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json(Map.of("startTime", LocalDateTime.now().minusDays(2).toString()))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.startTime").isNotEmpty());
+    }
+
+    @Test
+    void shouldRejectEndTimeBeforeStartTimeOnUpdate() throws Exception {
+        TestUser publisher = registerAndLogin("publisher-update-end-before-start");
+        String adminToken = login("admin", "Admin1234").token();
+        Long demandId = publishDemand(publisher.token());
+        approveDemand(adminToken, demandId);
+
+        // 更新需求时结束时间早于开始时间，应被拒绝
+        mockMvc.perform(put("/api/v1/demands/{demandId}", demandId)
+                .header("Authorization", bearer(publisher.token()))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json(Map.of(
+                    "startTime", LocalDateTime.now().plusDays(5).toString(),
+                    "endTime", LocalDateTime.now().plusDays(1).toString()))))
+            .andExpect(status().isBadRequest());
     }
 
     @Test

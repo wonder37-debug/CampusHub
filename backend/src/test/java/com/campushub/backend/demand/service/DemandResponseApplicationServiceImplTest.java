@@ -2,6 +2,7 @@ package com.campushub.backend.demand.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -71,6 +72,9 @@ class DemandResponseApplicationServiceImplTest {
 
     @Autowired
     private com.campushub.backend.upload.repository.UploadedAssetRepository uploadedAssetRepository;
+
+    @Autowired
+    private com.campushub.backend.notification.repository.NotificationRepository notificationRepository;
 
     private Long publisherId;
     private Long responder1Id;
@@ -1265,6 +1269,77 @@ class DemandResponseApplicationServiceImplTest {
         ).id();
         approveDemand(demandId);
         return demandId;
+    }
+
+    // ==================== Bug 5: 新留言通知 ====================
+
+    @Test
+    void shouldNotifyPublisherWhenResponseCreated() {
+        Long demandId = createSecondHandDemand();
+        demandResponseApplicationService.createResponse(
+            responder1Id, demandId, new CreateDemandResponseCommand("我要这个"));
+
+        // 发布者应收到 DEMAND_RESPONSE_RECEIVED 通知
+        var notifications = notificationRepository.findPage(
+            publisherId,
+            new com.campushub.backend.notification.dto.NotificationQuery(
+                false, new com.campushub.backend.common.model.PageQuery(1, 50)));
+        boolean hasResponseNotification = notifications.stream()
+            .anyMatch(n -> n.getType() == com.campushub.backend.notification.domain.NotificationType.DEMAND_RESPONSE_RECEIVED);
+        assertTrue(hasResponseNotification, "发布者应收到新留言通知");
+    }
+
+    @Test
+    void shouldNotNotifySelfWhenCreatingResponseToOwnDemand() {
+        Long demandId = createSecondHandDemand();
+        // 发布者不能对自己的需求创建 Response（权限被拒），所以这里无法直接测试
+        // 但可以验证：responder 创建 Response 后，responder 自己不应收到通知
+        demandResponseApplicationService.createResponse(
+            responder1Id, demandId, new CreateDemandResponseCommand("我要这个"));
+
+        var notifications = notificationRepository.findPage(
+            responder1Id,
+            new com.campushub.backend.notification.dto.NotificationQuery(
+                false, new com.campushub.backend.common.model.PageQuery(1, 50)));
+        boolean hasResponseNotification = notifications.stream()
+            .anyMatch(n -> n.getType() == com.campushub.backend.notification.domain.NotificationType.DEMAND_RESPONSE_RECEIVED);
+        assertFalse(hasResponseNotification, "留言者自己不应收到留言通知");
+    }
+
+    // ==================== Bug 6: 撤回留言后原文不可见 ====================
+
+    @Test
+    void shouldNotReturnWithdrawnResponseInList() {
+        Long demandId = createSecondHandDemand();
+        DemandResponseDetail response = demandResponseApplicationService.createResponse(
+            responder1Id, demandId, new CreateDemandResponseCommand("我要这个"));
+
+        // 撤回留言
+        demandResponseApplicationService.withdrawResponse(responder1Id, response.id());
+
+        // 列表中不应包含已撤回的留言
+        List<DemandResponseDetail> responses = demandResponseApplicationService.listResponses(demandId);
+        assertFalse(responses.stream().anyMatch(r -> r.id().equals(response.id())),
+            "已撤回的留言不应出现在列表中");
+    }
+
+    @Test
+    void shouldNotAffectOtherResponsesWhenOneWithdrawn() {
+        Long demandId = createSecondHandDemand();
+        DemandResponseDetail response1 = demandResponseApplicationService.createResponse(
+            responder1Id, demandId, new CreateDemandResponseCommand("报名1"));
+        DemandResponseDetail response2 = demandResponseApplicationService.createResponse(
+            responder2Id, demandId, new CreateDemandResponseCommand("报名2"));
+
+        // 撤回 response1
+        demandResponseApplicationService.withdrawResponse(responder1Id, response1.id());
+
+        // response2 仍应在列表中
+        List<DemandResponseDetail> responses = demandResponseApplicationService.listResponses(demandId);
+        assertTrue(responses.stream().anyMatch(r -> r.id().equals(response2.id())),
+            "撤回一条留言不应影响其他留言");
+        assertFalse(responses.stream().anyMatch(r -> r.id().equals(response1.id())),
+            "已撤回的留言不应出现在列表中");
     }
 
     private void approveDemand(Long demandId) {

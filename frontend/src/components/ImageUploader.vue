@@ -87,7 +87,7 @@ function validateFile(file: File): string | null {
     return `"${file.name}" 格式不支持，仅支持 jpg/png/webp`
   }
   if (file.size > maxSizeBytes.value) {
-    return `"${file.name}" 超过 ${props.maxSizeMB ?? 5}MB 限制`
+    return `"${file.name}" 超过 ${(props.maxSizeMB ?? 10)}MB 限制`
   }
   return null
 }
@@ -172,7 +172,7 @@ function removeImage(index: number) {
       <div v-else class="upload-hint">
         <span class="upload-icon">📷</span>
         <span>点击上传或拖拽图片到此处</span>
-        <span class="upload-limit">支持 jpg/png/webp，单张 ≤{{ maxSizeMB ?? 5 }}MB，最多 {{ maxCount }} 张</span>
+        <span class="upload-limit">支持 jpg/png/webp，单张 ≤{{ maxSizeMB ?? 10 }}MB，最多 {{ maxCount }} 张</span>
       </div>
     </div>
 

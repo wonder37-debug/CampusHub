@@ -5,9 +5,11 @@ const props = withDefaults(defineProps<{
   modelValue: string
   size?: number
   maxSizeMB?: number
+  deferUpload?: boolean
 }>(), {
   size: 80,
-  maxSizeMB: 10
+  maxSizeMB: 10,
+  deferUpload: false
 })
 
 const emit = defineEmits<{
@@ -28,6 +30,7 @@ const previewCanvasRef = ref<HTMLCanvasElement | null>(null)
 const showCropModal = ref(false)
 const uploading = ref(false)
 const errorMsg = ref('')
+const pendingFile = ref<File | null>(null)
 
 /* ── 图像状态 ── */
 const imageEl = ref<HTMLImageElement | null>(null)
@@ -74,6 +77,12 @@ function handleFileChange(e: Event) {
   const file = target.files?.[0]
   if (!file) return
   target.value = ''
+
+  // 如果有暂存的 pendingFile（deferUpload 模式下重新选图），先清理旧的 blob URL
+  if (pendingFile.value) {
+    clearPendingFile()
+    emit('update:modelValue', '')
+  }
 
   const allowedExts = ['jpg', 'jpeg', 'png', 'webp']
   const ext = file.name.split('.').pop()?.toLowerCase()
@@ -344,7 +353,26 @@ async function confirmCrop() {
     const fileName = `avatar_${Date.now()}.png`
     const file = new File([blob], fileName, { type: 'image/png' })
 
-    // 3. 上传
+    if (props.deferUpload) {
+      // 延迟上传模式：注册时尚无 JWT，仅暂存 blob URL + File 对象
+      // 先撤销旧的裁剪预览 URL（loadImageFile 创建的原始文件 URL）
+      if (objectUrl.value) {
+        URL.revokeObjectURL(objectUrl.value)
+      }
+      const blobUrl = URL.createObjectURL(blob)
+      objectUrl.value = blobUrl
+      pendingFile.value = file
+      emit('update:modelValue', blobUrl)
+      // 关闭模态框但保留 blob URL（已 emit 给父组件用于预览）
+      showCropModal.value = false
+      imageEl.value = null
+      errorMsg.value = ''
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+      return
+    }
+
+    // 3. 上传（即时上传模式：已登录用户）
     const { useCampusHubStore } = await import('@/stores/campusHub')
     const store = useCampusHubStore()
     const urls = await store.uploadImages([file])
@@ -416,6 +444,21 @@ function closeCropModal() {
   window.removeEventListener('mousemove', onMouseMove)
   window.removeEventListener('mouseup', onMouseUp)
 }
+
+function getPendingFile(): File | null {
+  return pendingFile.value
+}
+
+function clearPendingFile(): void {
+  // 撤销暂存的 blob URL（deferUpload 模式下 emit 给父组件的预览 URL）
+  if (objectUrl.value) {
+    URL.revokeObjectURL(objectUrl.value)
+    objectUrl.value = ''
+  }
+  pendingFile.value = null
+}
+
+defineExpose({ getPendingFile, clearPendingFile })
 
 function cleanupObjectUrl() {
   if (objectUrl.value) {

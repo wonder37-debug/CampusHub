@@ -52,14 +52,25 @@ const reviewsGiven = computed(() =>
   store.currentUserReviews.filter((r) => r.reviewerId === store.currentUserId)
 )
 
-function getReviewOrderTitle(orderId: string): string {
+function getReviewOrderTitle(orderId: string, demandTitle?: string | null): string {
   const order = store.getOrderById(orderId)
-  return order?.demandTitle ?? '未知任务'
+  if (order?.demandTitle) {
+    return order.demandTitle
+  }
+  // 订单不在当前用户订单历史中时，优先使用后端返回的 demandTitle
+  if (demandTitle) {
+    return demandTitle
+  }
+  return '未知任务'
 }
 
 function getReviewTitle(review: ReviewRecord): string {
+  // 优先使用后端评价接口返回的 demandTitle（已关联需求标题）
+  if (review.demandTitle) {
+    return review.demandTitle
+  }
   if (review.orderId) {
-    return getReviewOrderTitle(review.orderId)
+    return getReviewOrderTitle(review.orderId, review.demandTitle)
   }
   if (review.demandId) {
     return store.getDemandById(String(review.demandId))?.title ?? '组队评价'

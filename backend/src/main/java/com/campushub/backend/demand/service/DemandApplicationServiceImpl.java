@@ -217,7 +217,10 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
         if (command.startTime() != null || command.endTime() != null) {
             LocalDateTime startTime = command.startTime() != null ? command.startTime() : demand.getStartTime();
             LocalDateTime endTime = command.endTime() != null ? command.endTime() : demand.getEndTime();
-            validateTimeWindow(startTime, endTime);
+            // endTime 必须晚于 startTime（始终校验）
+            if (startTime != null && endTime != null && endTime.isBefore(startTime)) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "endTime must not be before startTime");
+            }
             demand.setStartTime(startTime);
             demand.setEndTime(endTime);
         }
@@ -240,6 +243,7 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
             demand.setTags(command.tags());
         }
         if (command.contactInfo() != null) {
+            validateContactInfo(command.contactInfo());
             demand.setContactInfo(trimToNull(command.contactInfo()));
         }
         if (command.anonymous() != null) {
@@ -344,6 +348,7 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
         parseCategory(command.category());
         parseCampusZone(command.campusZone());
         validateLocation(command.location());
+        validateContactInfo(command.contactInfo());
         validateTimeWindow(command.startTime(), command.endTime());
         normalizeReward(command.reward());
         validateTags(command.tags());
@@ -364,6 +369,14 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
     private void validateLocation(String location) {
         if (location != null && location.length() > 256) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "location length must not exceed 256");
+        }
+    }
+
+    private static final int CONTACT_INFO_MAX_LENGTH = 200;
+
+    private void validateContactInfo(String contactInfo) {
+        if (contactInfo != null && contactInfo.trim().length() > CONTACT_INFO_MAX_LENGTH) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "contactInfo length must not exceed 200");
         }
     }
 

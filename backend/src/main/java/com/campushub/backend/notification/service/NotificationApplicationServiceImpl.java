@@ -102,6 +102,21 @@ public class NotificationApplicationServiceImpl implements NotificationApplicati
     }
 
     @Override
+    public void notifyDemandResponseReceived(Long receiverId, Long demandId, String demandTitle, String responderNickname) {
+        if (receiverId == null || demandId == null) {
+            return;
+        }
+        String title = demandTitle != null && !demandTitle.isBlank() ? demandTitle : resolveDemandTitle(demandId);
+        String nickname = responderNickname != null && !responderNickname.isBlank() ? responderNickname : "有同学";
+        createNotification(receiverId, new NotificationDraft(
+            NotificationType.DEMAND_RESPONSE_RECEIVED,
+            "收到新留言",
+            nickname + "在您的需求《" + title + "》下提交了留言，请及时查看。",
+            demandId
+        ));
+    }
+
+    @Override
     public PageResponse<NotificationResponse> list(Long userId, NotificationQuery query) {
         if (userId == null) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "userId must not be null");
@@ -342,7 +357,7 @@ public class NotificationApplicationServiceImpl implements NotificationApplicati
             case ORDER_ACCEPTED, STATUS_CHANGED, REVIEW_RECEIVED, PENDING_REVIEW,
                 ORDER_ARBITRATION_REQUESTED, ORDER_ARBITRATION_RESOLVED -> "ORDER";
             case REVIEW_REQUEST, DEMAND_REJECTED, DEMAND_APPROVED,
-                RESPONSE_REVIEW_RECEIVED -> "DEMAND";
+                RESPONSE_REVIEW_RECEIVED, DEMAND_RESPONSE_RECEIVED -> "DEMAND";
         };
     }
 
@@ -376,7 +391,8 @@ public class NotificationApplicationServiceImpl implements NotificationApplicati
         }
         return switch (type) {
             case REVIEW_REQUEST -> "REVIEW_DEMAND";
-            case DEMAND_REJECTED, DEMAND_APPROVED, RESPONSE_REVIEW_RECEIVED -> "VIEW_DEMAND";
+            case DEMAND_REJECTED, DEMAND_APPROVED, RESPONSE_REVIEW_RECEIVED,
+                DEMAND_RESPONSE_RECEIVED -> "VIEW_DEMAND";
             case REVIEW_RECEIVED, PENDING_REVIEW, ORDER_ACCEPTED, STATUS_CHANGED,
                 ORDER_ARBITRATION_REQUESTED, ORDER_ARBITRATION_RESOLVED ->
                 "ORDER".equals(targetType) ? "VIEW_ORDER" : "VIEW_DEMAND";

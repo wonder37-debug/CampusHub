@@ -208,6 +208,8 @@ export function formatNotificationType(type: NotificationType): string {
       return '仲裁结果'
     case 'RESPONSE_REVIEW_RECEIVED':
       return 'Response 评价收到'
+    case 'DEMAND_RESPONSE_RECEIVED':
+      return '新留言通知'
   }
 }
 

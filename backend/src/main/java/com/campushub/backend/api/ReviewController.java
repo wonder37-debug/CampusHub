@@ -1,5 +1,6 @@
 package com.campushub.backend.api;
 
+import com.campushub.backend.api.view.ReviewView;
 import com.campushub.backend.common.api.ApiResponse;
 import com.campushub.backend.common.security.CurrentUser;
 import com.campushub.backend.common.security.RequestUserExtractor;
@@ -23,22 +24,26 @@ public class ReviewController {
 
     private final ReviewApplicationService reviewApplicationService;
     private final RequestUserExtractor requestUserExtractor;
+    private final ApiViewMapper apiViewMapper;
 
     public ReviewController(
         ReviewApplicationService reviewApplicationService,
-        RequestUserExtractor requestUserExtractor
+        RequestUserExtractor requestUserExtractor,
+        ApiViewMapper apiViewMapper
     ) {
         this.reviewApplicationService = reviewApplicationService;
         this.requestUserExtractor = requestUserExtractor;
+        this.apiViewMapper = apiViewMapper;
     }
 
     @PostMapping("/{responseId}/reviews")
-    public ApiResponse<ReviewResponse> submitForResponse(
+    public ApiResponse<ReviewView> submitForResponse(
         HttpServletRequest request,
         @PathVariable Long responseId,
         @RequestBody SubmitReviewCommand command
     ) {
         CurrentUser currentUser = requestUserExtractor.requireCurrentUser(request);
-        return ApiResponse.success(reviewApplicationService.submitForResponse(currentUser.userId(), responseId, command));
+        ReviewResponse review = reviewApplicationService.submitForResponse(currentUser.userId(), responseId, command);
+        return ApiResponse.success(apiViewMapper.toAnonymizedReviewView(review, currentUser));
     }
 }

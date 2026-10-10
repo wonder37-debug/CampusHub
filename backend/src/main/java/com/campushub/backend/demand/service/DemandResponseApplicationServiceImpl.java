@@ -16,6 +16,7 @@ import com.campushub.backend.demand.dto.DemandResponseDetail;
 import com.campushub.backend.demand.dto.SelectResponsesCommand;
 import com.campushub.backend.demand.repository.DemandRepository;
 import com.campushub.backend.demand.repository.DemandResponseRepository;
+import com.campushub.backend.notification.service.NotificationApplicationService;
 import com.campushub.backend.order.dto.OrderDetailResponse;
 import com.campushub.backend.order.service.OrderApplicationService;
 import com.campushub.backend.order.service.RewardSettlementService;
@@ -39,19 +40,22 @@ public class DemandResponseApplicationServiceImpl implements DemandResponseAppli
     private final UserRepository userRepository;
     private final OrderApplicationService orderApplicationService;
     private final RewardSettlementService rewardSettlementService;
+    private final NotificationApplicationService notificationApplicationService;
 
     public DemandResponseApplicationServiceImpl(
         DemandResponseRepository demandResponseRepository,
         DemandRepository demandRepository,
         UserRepository userRepository,
         OrderApplicationService orderApplicationService,
-        RewardSettlementService rewardSettlementService
+        RewardSettlementService rewardSettlementService,
+        NotificationApplicationService notificationApplicationService
     ) {
         this.demandResponseRepository = demandResponseRepository;
         this.demandRepository = demandRepository;
         this.userRepository = userRepository;
         this.orderApplicationService = orderApplicationService;
         this.rewardSettlementService = rewardSettlementService;
+        this.notificationApplicationService = notificationApplicationService;
     }
 
     @Override
@@ -95,13 +99,22 @@ public class DemandResponseApplicationServiceImpl implements DemandResponseAppli
             now
         );
         response = demandResponseRepository.save(response);
+
+        // 通知需求发布者：有新留言/报名/回答（本人不通知自己）
+        if (demand.getPublisherId() != null && !demand.getPublisherId().equals(author.getId())) {
+            notificationApplicationService.notifyDemandResponseReceived(
+                demand.getPublisherId(), demandId, demand.getTitle(), author.getNickname());
+        }
+
         return DemandResponseDetail.from(response, author.getNickname());
     }
 
     @Override
     public List<DemandResponseDetail> listResponses(Long demandId) {
         Demand demand = findDemand(demandId);
-        List<DemandResponse> responses = demandResponseRepository.findByDemandId(demandId);
+        // 排除 WITHDRAWN 状态的记录，普通列表不返回已撤回留言的原文
+        List<DemandResponse> responses = demandResponseRepository.findByDemandIdAndStatusIn(
+            demandId, List.of(ResponseStatus.PENDING, ResponseStatus.SELECTED, ResponseStatus.REJECTED));
         if (responses.isEmpty()) {
             return List.of();
         }
