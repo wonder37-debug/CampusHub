@@ -242,14 +242,14 @@ public class AiDemandApplicationServiceImpl implements AiDemandApplicationServic
                 "AI 返回内容无法识别，请重新描述需求");
         }
 
-        // 时间校验
-        LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Shanghai")).truncatedTo(ChronoUnit.SECONDS);
+        // 时间校验：统一分钟精度，与前端 datetime-local 一致，避免秒级差异导致发布失败
+        LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Shanghai")).truncatedTo(ChronoUnit.MINUTES);
         LocalDateTime start = parseTime(raw.startTime(), "startTime");
-        // startTime 默认为当前时间（Asia/Shanghai），不要求用户手动补填
+        // startTime 默认为当前时间（Asia/Shanghai，分钟精度），不要求用户手动补填
         String startTimeStr;
         if (start != null) {
-            // 统一格式化 AI 返回的时间，避免小数秒格式泄漏
-            start = start.truncatedTo(ChronoUnit.SECONDS);
+            // 统一格式化 AI 返回的时间到分钟精度，避免小数秒格式泄漏
+            start = start.truncatedTo(ChronoUnit.MINUTES);
             // 不允许过去开始时间，与正式发布 validateTimeWindow 一致
             if (start.isBefore(now)) {
                 throw new BusinessException(ErrorCode.VALIDATION_FAILED,
@@ -263,7 +263,7 @@ public class AiDemandApplicationServiceImpl implements AiDemandApplicationServic
         LocalDateTime end = parseTime(raw.endTime(), "endTime");
         String endTimeStr = null;
         if (end != null) {
-            end = end.truncatedTo(ChronoUnit.SECONDS);
+            end = end.truncatedTo(ChronoUnit.MINUTES);
             endTimeStr = end.format(ISO_SECONDS_FORMATTER);
         }
         if (start != null && end != null && !end.isAfter(start)) {

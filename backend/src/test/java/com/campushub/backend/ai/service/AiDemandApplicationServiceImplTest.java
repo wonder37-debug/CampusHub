@@ -779,6 +779,21 @@ class AiDemandApplicationServiceImplTest {
     }
 
     @Test
+    void shouldDefaultStartTimeToMinutePrecision() {
+        when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(buildRaw(
+            "取快递", "描述", "EXPRESS", "XIANLIN", "图书馆",
+            null, "2099-12-31T12:00:00", BigDecimal.ZERO,
+            List.of(), "DIRECT_ACCEPT", null, List.of("startTime")));
+
+        DemandDraft result = service.generateDraft(new GenerateDemandDraftCommand("帮我取快递"));
+
+        assertNotNull(result.startTime());
+        // 默认开始时间截断到分钟，秒必须为 00（与前端 datetime-local 分钟精度一致）
+        assertTrue(result.startTime().endsWith(":00"),
+            "默认 startTime 秒应为 00（分钟精度），实际: " + result.startTime());
+    }
+
+    @Test
     void shouldRejectPastStartTime() {
         when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(buildRaw(
             "取快递", "描述", "EXPRESS", "XIANLIN", "图书馆",

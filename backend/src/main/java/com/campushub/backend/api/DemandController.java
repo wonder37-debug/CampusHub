@@ -125,10 +125,12 @@ public class DemandController {
         CurrentUser currentUser = requestUserExtractor.tryExtract(request);
         DemandSort resolvedSort = parseSort(sort);
 
-        // sort=RECOMMEND：推荐排序的推荐顺序由前端通过 GET /api/v1/recommendations 单独获取，
-        // 后端需求列表查询使用与普通排序相同的可见性逻辑（含本人 REVIEWING 和已完成 COMPLETED），
-        // 保证推荐排序下本人审核中需求和已完成历史需求也能正确显示。
-        // applySort 中 RECOMMEND 与 TIME 行为一致（按 createdAt 降序），但保留 RECOMMEND 语义不转换。
+        // sort=RECOMMEND 接口行为说明：
+        // - 后端 /api/v1/demands?sort=recommend 返回所有满足筛选条件的需求（按 createdAt 降序），
+        //   含本人 REVIEWING 需求和 COMPLETED 历史需求，与 TIME 排序的可见性和分页逻辑一致。
+        // - 推荐排序顺序（推荐候选在前、非推荐候选在后）由 /api/v1/recommendations 独立提供，
+        //   前端通过 fetchRecommendations 获取并在 visibleDemands 中合并排序。
+        // - 后端不在 demands 列表中做推荐排序，仅保证数据完整可见；推荐服务通过独立端点提供推荐顺序。
         PageResponse<DemandSummaryResponse> rawPage = demandApplicationService.list(
             new DemandQuery(
                 q,

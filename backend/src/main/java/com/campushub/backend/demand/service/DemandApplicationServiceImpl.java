@@ -27,6 +27,7 @@ import com.campushub.backend.order.service.OrderApplicationService;
 import com.campushub.backend.review.repository.ReviewRepository;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -217,7 +218,14 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
         if (command.startTime() != null || command.endTime() != null) {
             LocalDateTime startTime = command.startTime() != null ? command.startTime() : demand.getStartTime();
             LocalDateTime endTime = command.endTime() != null ? command.endTime() : demand.getEndTime();
-            validateTimeWindow(startTime, endTime);
+            // endTime 必须晚于 startTime（始终校验）
+            if (startTime != null && endTime != null && endTime.isBefore(startTime)) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "endTime must not be before startTime");
+            }
+            // 过去开始时间只在校验用户本次提交的新 startTime 时拒绝，已有的 startTime 不重新校验
+            if (command.startTime() != null && startTime.isBefore(LocalDateTime.now().truncatedTo(ChronoUnit.MINUTES))) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "startTime must not be in the past");
+            }
             demand.setStartTime(startTime);
             demand.setEndTime(endTime);
         }
@@ -381,7 +389,8 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
         if (startTime != null && endTime != null && endTime.isBefore(startTime)) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "endTime must not be before startTime");
         }
-        if (startTime != null && startTime.isBefore(LocalDateTime.now())) {
+        // 过去开始时间校验：统一分钟精度，与 AI 草稿和前端 datetime-local 一致
+        if (startTime != null && startTime.isBefore(LocalDateTime.now().truncatedTo(ChronoUnit.MINUTES))) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "startTime must not be in the past");
         }
     }

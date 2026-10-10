@@ -369,6 +369,22 @@ class FrontendIntegrationFlowTest {
     }
 
     @Test
+    void shouldAllowUpdatingEndTimeWithoutStartTime() throws Exception {
+        TestUser publisher = registerAndLogin("publisher-update-endtime");
+        String adminToken = login("admin", "Admin1234").token();
+        Long demandId = publishDemand(publisher.token());
+        approveDemand(adminToken, demandId);
+
+        // 只修改 endTime（不传 startTime），不应因 startTime 为 null 而失败
+        mockMvc.perform(put("/api/v1/demands/{demandId}", demandId)
+                .header("Authorization", bearer(publisher.token()))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json(Map.of("endTime", LocalDateTime.now().plusDays(7).toString()))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.endTime").isNotEmpty());
+    }
+
+    @Test
     void shouldRejectPublisherAcceptingOwnDemand() throws Exception {
         TestUser publisher = registerAndLogin("publisher-own-accept");
         String adminToken = login("admin", "Admin1234").token();
