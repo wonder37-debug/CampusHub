@@ -794,15 +794,16 @@ class AiDemandApplicationServiceImplTest {
     }
 
     @Test
-    void shouldRejectPastStartTime() {
+    void shouldAllowPastStartTime() {
         when(callResponseSpec.entity(eq(DemandDraft.class))).thenReturn(buildRaw(
             "取快递", "描述", "EXPRESS", "XIANLIN", "图书馆",
             "2020-01-01T10:00:00", "2099-12-31T12:00:00", BigDecimal.ZERO,
             List.of(), "DIRECT_ACCEPT", null, List.of()));
 
-        BusinessException ex = assertThrows(BusinessException.class, () ->
-            service.generateDraft(new GenerateDemandDraftCommand("帮我取快递")));
-        assertEquals(ErrorCode.VALIDATION_FAILED, ex.getErrorCode());
+        DemandDraft result = service.generateDraft(new GenerateDemandDraftCommand("帮我取快递"));
+
+        // 过去的开始时间是允许的，不拒绝
+        assertEquals("2020-01-01T10:00:00", result.startTime());
     }
 
     @Test

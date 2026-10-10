@@ -250,11 +250,6 @@ public class AiDemandApplicationServiceImpl implements AiDemandApplicationServic
         if (start != null) {
             // 统一格式化 AI 返回的时间到分钟精度，避免小数秒格式泄漏
             start = start.truncatedTo(ChronoUnit.MINUTES);
-            // 不允许过去开始时间，与正式发布 validateTimeWindow 一致
-            if (start.isBefore(now)) {
-                throw new BusinessException(ErrorCode.VALIDATION_FAILED,
-                    "AI 返回内容无法识别，请重新描述需求");
-            }
             startTimeStr = start.format(ISO_SECONDS_FORMATTER);
         } else {
             start = now;

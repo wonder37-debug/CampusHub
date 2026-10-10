@@ -385,6 +385,53 @@ class FrontendIntegrationFlowTest {
     }
 
     @Test
+    void shouldAllowPastStartTimeOnPublish() throws Exception {
+        TestUser publisher = registerAndLogin("publisher-past-start");
+        Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("title", "Past start demand " + System.nanoTime());
+        body.put("description", "desc");
+        body.put("category", "EXPRESS");
+        body.put("campusZone", "XIANLIN");
+        body.put("location", "station");
+        body.put("startTime", LocalDateTime.now().minusDays(2).toString());
+        body.put("endTime", LocalDateTime.now().plusDays(1).toString());
+        body.put("reward", BigDecimal.ZERO);
+        body.put("tags", List.of("tag"));
+        body.put("anonymous", false);
+
+        // 过去的开始时间是允许的，不拒绝
+        mockMvc.perform(post("/api/v1/demands")
+                .header("Authorization", bearer(publisher.token()))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json(body)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.status").value("REVIEWING"));
+    }
+
+    @Test
+    void shouldRejectEndTimeBeforeStartTimeOnPublish() throws Exception {
+        TestUser publisher = registerAndLogin("publisher-end-before-start");
+        Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("title", "End before start " + System.nanoTime());
+        body.put("description", "desc");
+        body.put("category", "EXPRESS");
+        body.put("campusZone", "XIANLIN");
+        body.put("location", "station");
+        body.put("startTime", LocalDateTime.now().plusDays(2).toString());
+        body.put("endTime", LocalDateTime.now().plusDays(1).toString());
+        body.put("reward", BigDecimal.ZERO);
+        body.put("tags", List.of("tag"));
+        body.put("anonymous", false);
+
+        // 结束时间早于开始时间仍被拒绝
+        mockMvc.perform(post("/api/v1/demands")
+                .header("Authorization", bearer(publisher.token()))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json(body)))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void shouldRejectPublisherAcceptingOwnDemand() throws Exception {
         TestUser publisher = registerAndLogin("publisher-own-accept");
         String adminToken = login("admin", "Admin1234").token();

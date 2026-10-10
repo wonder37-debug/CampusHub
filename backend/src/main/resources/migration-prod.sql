@@ -61,9 +61,10 @@ EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
 -- 4. 更新 sys_notification 表的 chk_notify_type 约束，新增 DEMAND_RESPONSE_RECEIVED 通知类型
--- 兼容 MySQL 8.0+：8.0.15 及以下 CHECK 约束不存储在 information_schema 中，走 ADD 分支；
--- 8.0.16+ 走 DROP CHECK + ADD 分支（DROP CHECK 是 MySQL 8.0.16+ 专用于删除 CHECK 约束的语法）。
--- 幂等：可安全重复执行（先检查 CHECK 类型约束是否存在再决定 DROP+ADD 或仅 ADD）。
+-- CHECK 约束强制执行最低要求 MySQL 8.0.16；8.0.15 及以下 ADD CONSTRAINT 仅语法解析不强制执行。
+-- 8.0.16+ 走 DROP CHECK + ADD 分支（DROP CHECK 是 MySQL 8.0.16+ 专用删除 CHECK 约束的语法）。
+-- 8.0.15 及以下 CHECK 约束不存储在 information_schema 中，走 ADD 分支（不执行 DROP）。
+-- 幂等：可安全重复执行（先检查 constraint_type='CHECK' 的约束是否存在再决定 DROP+ADD 或仅 ADD）。
 -- 安全：仅操作 constraint_type='CHECK' 的约束，避免误删 FOREIGN KEY / UNIQUE 等其他约束。
 SET @constraint_exists = (SELECT COUNT(*) FROM information_schema.table_constraints
     WHERE table_schema = DATABASE() AND table_name = 'sys_notification'

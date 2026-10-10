@@ -104,17 +104,6 @@ const showInteractionMode = computed(() => form.category === 'OTHER')
 const startTime = computed(() => form.startDateTime)
 const endTime = computed(() => form.endDateTime)
 
-// 获取当前时间（YYYY-MM-DDTHH:MM 格式，用于 min 约束）
-const minDateTime = computed(() => {
-  const now = new Date()
-  const year = now.getFullYear()
-  const month = String(now.getMonth() + 1).padStart(2, '0')
-  const day = String(now.getDate()).padStart(2, '0')
-  const hours = String(now.getHours()).padStart(2, '0')
-  const minutes = String(now.getMinutes()).padStart(2, '0')
-  return `${year}-${month}-${day}T${hours}:${minutes}`
-})
-
 const forbiddenForAdmin = computed(() => store.currentUser?.role === 'ADMIN')
 const canSubmit = computed(() => !submitting.value && !published.value && !forbiddenForAdmin.value)
 
@@ -675,7 +664,6 @@ async function generateAiDraft(): Promise<void> {
               id="demand-start-datetime"
               v-model="form.startDateTime"
               type="datetime-local"
-              :min="minDateTime"
               @change="clearStartTimeError"
             />
             <p v-if="errors.startTime" class="input-help" style="color: var(--danger)">{{ errors.startTime }}</p>
@@ -687,7 +675,7 @@ async function generateAiDraft(): Promise<void> {
               id="demand-end-datetime"
               v-model="form.endDateTime"
               type="datetime-local"
-              :min="form.startDateTime || minDateTime"
+              :min="form.startDateTime || undefined"
               @change="clearEndTimeError"
             />
             <p v-if="errors.endTime" class="input-help" style="color: var(--danger)">{{ errors.endTime }}</p>
