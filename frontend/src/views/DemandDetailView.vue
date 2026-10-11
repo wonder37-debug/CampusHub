@@ -387,7 +387,7 @@ async function completeOrder(): Promise<void> {
 
     if (!await useConfirm('确认完成', '确认完成此订单？此操作不可撤销。', { danger: true })) return
 
-    const proofImageUrls = isProvider.value ? proofImages.value : []
+    const proofImageUrls = isProvider.value ? proofImages.value : null
     const updatedOrder = await store.completeOrder(relatedOrder.value.id, proofImageUrls)
     completionSubmitted.value = updatedOrder.status !== 'COMPLETED'
     message.value = updatedOrder.status === 'COMPLETED'

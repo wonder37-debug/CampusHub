@@ -13,23 +13,35 @@ const props = defineProps<{
 
 const store = useCampusHubStore()
 const blobUrl = ref<string>('')
+let version = 0
 
-async function loadBlob(url: string) {
+function revokeCurrent() {
+  if (blobUrl.value.startsWith('blob:')) {
+    URL.revokeObjectURL(blobUrl.value)
+  }
+  blobUrl.value = ''
+}
+
+async function loadBlob(url: string, expectedVersion: number) {
   if (!url) {
-    blobUrl.value = ''
+    if (expectedVersion === version) revokeCurrent()
     return
   }
-  blobUrl.value = await store.fetchProofImageBlob(url).catch(() => url)
+  const fetched = await store.fetchProofImageBlob(url).catch(() => url)
+  if (expectedVersion !== version) return
+  revokeCurrent()
+  blobUrl.value = fetched
 }
 
 watch(() => props.src, (url) => {
-  if (blobUrl.value.startsWith('blob:')) URL.revokeObjectURL(blobUrl.value)
-  blobUrl.value = ''
-  if (url) loadBlob(url)
+  version++
+  revokeCurrent()
+  if (url) loadBlob(url, version)
 }, { immediate: true })
 
 onUnmounted(() => {
-  if (blobUrl.value.startsWith('blob:')) URL.revokeObjectURL(blobUrl.value)
+  version++
+  revokeCurrent()
 })
 </script>
 

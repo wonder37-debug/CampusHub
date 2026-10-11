@@ -53,6 +53,7 @@ onUnmounted(() => {
   proofImageBlobUrls.value.forEach(u => {
     if (u.startsWith('blob:')) URL.revokeObjectURL(u)
   })
+  revokeViewerBlobs()
 })
 
 // Image viewer
@@ -60,7 +61,20 @@ const showImageViewer = ref(false)
 const viewerInitialIndex = ref(0)
 const viewerImages = ref<string[]>([])
 
+function revokeViewerBlobs() {
+  viewerImages.value.forEach(u => {
+    if (u.startsWith('blob:')) URL.revokeObjectURL(u)
+  })
+}
+
+function closeImageViewer() {
+  revokeViewerBlobs()
+  viewerImages.value = []
+  showImageViewer.value = false
+}
+
 function openImageViewer(imagesOrIndex: string[] | number, idx?: number) {
+  revokeViewerBlobs()
   if (Array.isArray(imagesOrIndex)) {
     const index = idx ?? 0
     viewerImages.value = imagesOrIndex
@@ -74,12 +88,14 @@ function openImageViewer(imagesOrIndex: string[] | number, idx?: number) {
 }
 
 async function openPrivateImageViewer(urls: string[], idx: number) {
+  revokeViewerBlobs()
+  viewerImages.value = urls
+  viewerInitialIndex.value = idx
+  showImageViewer.value = true
   const blobUrls = await Promise.all(
     urls.map(url => store.fetchProofImageBlob(url).catch(() => url))
   )
   viewerImages.value = blobUrls
-  viewerInitialIndex.value = idx
-  showImageViewer.value = true
 }
 
 async function refreshOrder(): Promise<void> {
@@ -707,9 +723,16 @@ onMounted(() => {
 
   <!-- 补充说明对话框 -->
   <teleport to="body">
-    <div v-if="arbitrationResponseDialogOpen" class="dialog-overlay" @click.self="closeArbitrationResponseDialog">
-      <div class="dialog-panel">
-        <h2 class="dialog-title">补充说明</h2>
+    <div v-if="arbitrationResponseDialogOpen" class="modal-backdrop" @click.self="closeArbitrationResponseDialog">
+      <div class="modal-card panel">
+        <div class="modal-head">
+          <div>
+            <p class="eyebrow">仲裁补充说明</p>
+            <h3 class="section-title">提交补充说明</h3>
+          </div>
+          <button type="button" class="modal-close" @click="closeArbitrationResponseDialog" title="关闭" aria-label="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        </div>
+
         <p class="page-summary" style="margin-top: 0;">作为另一方，您可以提交补充说明和证据图片，管理员将根据双方材料做出裁决。</p>
         <div class="field">
           <label for="arbitration-response-reason">补充说明</label>
@@ -734,7 +757,7 @@ onMounted(() => {
     v-if="showImageViewer && viewerImages.length"
     :images="viewerImages"
     :initial-index="viewerInitialIndex"
-    @close="showImageViewer = false"
+    @close="closeImageViewer"
   />
   </div>
 </template>

@@ -310,7 +310,7 @@ onMounted(() => {
       <!-- 审核中的需求（独立区域，不占用订单语义） -->
       <div v-if="reviewingDemands.length > 0" class="reviewing-demands-section">
         <h2 class="section-title" style="margin-bottom: 12px;">📋 我发布的需求（审核中）</h2>
-        <article v-for="demand in reviewingDemands" :key="demand.id" class="list-card order-card reviewing-demand-card" @click="router.push(`/demands/${demand.id}`)">
+        <article v-for="demand in reviewingDemands" :key="demand.id" class="list-card order-card reviewing-demand-card" tabindex="0" role="link" :aria-label="`查看需求：${demand.title}`" @click="router.push(`/demands/${demand.id}`)" @keydown.enter="router.push(`/demands/${demand.id}`)">
           <div class="status-row">
             <span class="chip is-warning">{{ formatDemandStatus(demand.status) }}</span>
             <span class="chip">需求审核中</span>

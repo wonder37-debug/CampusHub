@@ -175,7 +175,7 @@ public class ApiViewMapper {
             && (currentUser.isAdmin() || order.isParticipant(currentUser.userId()));
 
         List<ArbitrationSubmissionView> arbitrationSubmissions = canSeeOrderPrivate
-            ? resolveArbitrationSubmissions(order) : List.of();
+            ? resolveArbitrationSubmissions(order, demand) : List.of();
 
         boolean canSubmitArbitrationResponse = canSeeOrderPrivate
             && order.getStatus() == OrderStatus.IN_ARBITRATION
@@ -419,7 +419,7 @@ public class ApiViewMapper {
             .orElse(null);
     }
 
-    private List<ArbitrationSubmissionView> resolveArbitrationSubmissions(Order order) {
+    private List<ArbitrationSubmissionView> resolveArbitrationSubmissions(Order order, Demand demand) {
         if (order == null || arbitrationSubmissionRepository == null) {
             return List.of();
         }
@@ -427,10 +427,18 @@ public class ApiViewMapper {
         if (submissions.isEmpty()) {
             submissions = resolveLegacyArbitrationSubmissions(order);
         }
+        boolean isAnonymous = demand != null && demand.isAnonymous();
+        Long publisherId = demand != null ? demand.getPublisherId() : null;
+        String anonymousCode = demand != null ? demand.getAnonymousCode() : null;
         return submissions.stream()
             .map(s -> {
-                User submitter = userRepository.findById(s.submitterId()).orElse(null);
-                String submitterName = submitter != null ? submitter.getNickname() : "用户" + s.submitterId();
+                String submitterName;
+                if (isAnonymous && publisherId != null && publisherId.equals(s.submitterId())) {
+                    submitterName = anonymousCode != null ? anonymousCode : "匿名校友";
+                } else {
+                    User submitter = userRepository.findById(s.submitterId()).orElse(null);
+                    submitterName = submitter != null ? submitter.getNickname() : "用户" + s.submitterId();
+                }
                 return new ArbitrationSubmissionView(
                     s.id(), s.submitterId(), submitterName, s.role(), s.reason(),
                     s.imageUrls(), s.imageCount(), s.submittedAt()

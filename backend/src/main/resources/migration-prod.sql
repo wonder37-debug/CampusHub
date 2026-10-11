@@ -124,12 +124,16 @@ PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
--- 9. 幂等补充 ord_demand_response 的 chk_response_status CHECK 约束
+-- 9. 幂等重建 ord_demand_response 的 chk_response_status CHECK 约束（先 DROP 再 ADD 保证定义一致）
 SET @constraint_exists = (SELECT COUNT(*) FROM information_schema.table_constraints
     WHERE table_schema = DATABASE() AND table_name = 'ord_demand_response'
     AND constraint_name = 'chk_response_status' AND constraint_type = 'CHECK');
-SET @sql = IF(@constraint_exists = 0,
-    'ALTER TABLE `ord_demand_response` ADD CONSTRAINT `chk_response_status` CHECK (`status` IN (''PENDING'',''SELECTED'',''REJECTED'',''WITHDRAWN''))', 'SELECT 1');
+SET @sql = IF(@constraint_exists > 0,
+    'ALTER TABLE `ord_demand_response` DROP CHECK `chk_response_status`', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql = 'ALTER TABLE `ord_demand_response` ADD CONSTRAINT `chk_response_status` CHECK (`status` IN (''PENDING'',''SELECTED'',''REJECTED'',''WITHDRAWN''))';
 PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
