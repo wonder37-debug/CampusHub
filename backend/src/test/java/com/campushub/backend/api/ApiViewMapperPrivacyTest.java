@@ -22,10 +22,14 @@ import com.campushub.backend.demand.domain.DemandCategory;
 import com.campushub.backend.demand.domain.DemandStatus;
 import com.campushub.backend.demand.domain.InteractionMode;
 import com.campushub.backend.demand.repository.DemandRepository;
+import com.campushub.backend.order.domain.ArbitrationSubmission;
 import com.campushub.backend.order.domain.Order;
 import com.campushub.backend.order.domain.OrderStatus;
 import com.campushub.backend.order.domain.OrderStatusHistoryEntry;
+import com.campushub.backend.order.repository.ArbitrationSubmissionRepository;
+import com.campushub.backend.order.repository.OrderRepository;
 import com.campushub.backend.review.dto.ReviewResponse;
+import com.campushub.backend.review.repository.ReviewRepository;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -267,5 +271,87 @@ class ApiViewMapperPrivacyTest {
 
         ReviewView adminView = m.toAnonymizedReviewView(review, new CurrentUser(99L, UserRole.ADMIN));
         assertEquals(1L, adminView.targetId(), "Admin 应可见真实 targetId");
+    }
+
+    @Test
+    void shouldAnonymizeArbitrationSubmitterNameForAnonymousDemand() {
+        User publisher = newUser(1L, "pub@edu.cn", "20260001", "发布者真名");
+        Demand demand = newDemand(10L, 1L, "匿名校友", true, "匿名校友ABCD", null);
+        Order order = new Order(100L, 10L, 1L, 2L, OrderStatus.IN_ARBITRATION, null,
+            false, 0, null, LocalDateTime.now(), LocalDateTime.now(), null, List.of());
+
+        DemandRepository demandRepo = mock(DemandRepository.class);
+        UserRepository userRepo = mock(UserRepository.class);
+        OrderRepository orderRepo = mock(OrderRepository.class);
+        ArbitrationSubmissionRepository arbRepo = mock(ArbitrationSubmissionRepository.class);
+        ReviewRepository reviewRepo = mock(ReviewRepository.class);
+        when(demandRepo.findById(10L)).thenReturn(Optional.of(demand));
+        when(userRepo.findById(1L)).thenReturn(Optional.of(publisher));
+        when(orderRepo.findByDemandId(10L)).thenReturn(Optional.empty());
+        when(arbRepo.findByOrderId(100L)).thenReturn(List.of(
+            new ArbitrationSubmission(1L, 100L, 1L, "INITIATOR", "仲裁理由", null, 0, LocalDateTime.now())
+        ));
+        when(reviewRepo.findByOrderIdAndAuthorId(100L, 2L)).thenReturn(Optional.empty());
+
+        ApiViewMapper m = new ApiViewMapper(demandRepo, userRepo, orderRepo, reviewRepo, null, arbRepo);
+        OrderView view = m.toOrderView(order, new CurrentUser(2L, UserRole.USER));
+
+        assertFalse(view.arbitrationSubmissions().isEmpty(), "参与者应可见仲裁举证");
+        assertEquals("匿名校友ABCD", view.arbitrationSubmissions().get(0).submitterName(),
+            "匿名订单的仲裁举证 submitterName 应为匿名代号");
+    }
+
+    @Test
+    void shouldRevealArbitrationSubmitterNameForNonAnonymousDemand() {
+        User publisher = newUser(1L, "pub@edu.cn", "20260001", "发布者");
+        Demand demand = newDemand(10L, 1L, "发布者", false, null, null);
+        Order order = new Order(100L, 10L, 1L, 2L, OrderStatus.IN_ARBITRATION, null,
+            false, 0, null, LocalDateTime.now(), LocalDateTime.now(), null, List.of());
+
+        DemandRepository demandRepo = mock(DemandRepository.class);
+        UserRepository userRepo = mock(UserRepository.class);
+        OrderRepository orderRepo = mock(OrderRepository.class);
+        ArbitrationSubmissionRepository arbRepo = mock(ArbitrationSubmissionRepository.class);
+        ReviewRepository reviewRepo = mock(ReviewRepository.class);
+        when(demandRepo.findById(10L)).thenReturn(Optional.of(demand));
+        when(userRepo.findById(1L)).thenReturn(Optional.of(publisher));
+        when(orderRepo.findByDemandId(10L)).thenReturn(Optional.empty());
+        when(arbRepo.findByOrderId(100L)).thenReturn(List.of(
+            new ArbitrationSubmission(1L, 100L, 1L, "INITIATOR", "仲裁理由", null, 0, LocalDateTime.now())
+        ));
+        when(reviewRepo.findByOrderIdAndAuthorId(100L, 2L)).thenReturn(Optional.empty());
+
+        ApiViewMapper m = new ApiViewMapper(demandRepo, userRepo, orderRepo, reviewRepo, null, arbRepo);
+        OrderView view = m.toOrderView(order, new CurrentUser(2L, UserRole.USER));
+
+        assertEquals("发布者", view.arbitrationSubmissions().get(0).submitterName(),
+            "非匿名订单的仲裁举证 submitterName 应为真实昵称");
+    }
+
+    @Test
+    void shouldHideArbitrationSubmissionsFromNonParticipant() {
+        User publisher = newUser(1L, "pub@edu.cn", "20260001", "发布者");
+        Demand demand = newDemand(10L, 1L, "发布者", false, null, null);
+        Order order = new Order(100L, 10L, 1L, 2L, OrderStatus.IN_ARBITRATION, null,
+            false, 0, null, LocalDateTime.now(), LocalDateTime.now(), null, List.of());
+
+        DemandRepository demandRepo = mock(DemandRepository.class);
+        UserRepository userRepo = mock(UserRepository.class);
+        OrderRepository orderRepo = mock(OrderRepository.class);
+        ArbitrationSubmissionRepository arbRepo = mock(ArbitrationSubmissionRepository.class);
+        ReviewRepository reviewRepo = mock(ReviewRepository.class);
+        when(demandRepo.findById(10L)).thenReturn(Optional.of(demand));
+        when(userRepo.findById(1L)).thenReturn(Optional.of(publisher));
+        when(orderRepo.findByDemandId(10L)).thenReturn(Optional.empty());
+        when(arbRepo.findByOrderId(100L)).thenReturn(List.of(
+            new ArbitrationSubmission(1L, 100L, 1L, "INITIATOR", "仲裁理由", null, 0, LocalDateTime.now())
+        ));
+        when(reviewRepo.findByOrderIdAndAuthorId(100L, 3L)).thenReturn(Optional.empty());
+
+        ApiViewMapper m = new ApiViewMapper(demandRepo, userRepo, orderRepo, reviewRepo, null, arbRepo);
+        OrderView view = m.toOrderView(order, new CurrentUser(3L, UserRole.USER));
+
+        assertTrue(view.arbitrationSubmissions().isEmpty(), "非参与者不应可见仲裁举证");
+        assertFalse(view.canSubmitArbitrationResponse(), "非参与者不应可提交补充说明");
     }
 }
