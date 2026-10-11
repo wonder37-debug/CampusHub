@@ -35,32 +35,11 @@ const proofImages = ref<string[]>([])
 // 关键操作（开始执行/提交完成/取消/评价/仲裁）防重复点击 loading
 const submitting = ref(false)
 
-const proofImageBlobUrls = ref<string[]>([])
-let proofVersion = 0
-
-watch(() => order.value?.proofImageUrls, async (urls) => {
-  proofVersion++
-  const expectedVersion = proofVersion
-  proofImageBlobUrls.value.forEach(u => {
-    if (u.startsWith('blob:')) URL.revokeObjectURL(u)
-  })
-  proofImageBlobUrls.value = []
-  if (!urls || urls.length === 0) return
-  const blobUrls = await Promise.all(
-    urls.map(url => store.fetchProofImageBlob(url).catch(() => url))
-  )
-  if (expectedVersion !== proofVersion) {
-    blobUrls.forEach(u => { if (u.startsWith('blob:')) URL.revokeObjectURL(u) })
-    return
-  }
-  proofImageBlobUrls.value = blobUrls
+watch(() => order.value?.proofImageUrls, () => {
+  // PrivateImage 组件自行管理 Blob URL 生命周期，无需在此预加载
 }, { immediate: true })
 
 onUnmounted(() => {
-  proofVersion++
-  proofImageBlobUrls.value.forEach(u => {
-    if (u.startsWith('blob:')) URL.revokeObjectURL(u)
-  })
   revokeViewerBlobs()
 })
 
@@ -583,20 +562,20 @@ onMounted(() => {
         <ImageUploader v-model="proofImages" :max-count="3" purpose="proof" />
       </div>
 
-      <!-- 完成凭证展示（已提交凭证后供发布者/管理员查看） -->
+      <!-- 完成凭证展示（已提交凭证后供发布者/管理员查看，通过认证 Blob 加载） -->
       <div v-if="order.proofImageUrls && order.proofImageUrls.length > 0" class="order-images">
         <p class="eyebrow">完成凭证 ({{ order.proofImageUrls.length }})</p>
         <div class="image-grid">
-          <a
-            v-for="(url, pIdx) in proofImageBlobUrls"
+          <PrivateImage
+            v-for="(url, pIdx) in order.proofImageUrls"
             :key="url"
-            :href="url"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="image-item"
-          >
-            <img :src="url" :alt="`凭证图片 ${pIdx + 1}`" loading="lazy" class="demand-img" />
-          </a>
+            :src="url"
+            :alt="'凭证图片 ' + (pIdx + 1)"
+            width="140px"
+            height="140px"
+            cursor="pointer"
+            @click="openPrivateImageViewer(order.proofImageUrls, pIdx)"
+          />
         </div>
       </div>
 

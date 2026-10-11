@@ -354,4 +354,121 @@ class ApiViewMapperPrivacyTest {
         assertTrue(view.arbitrationSubmissions().isEmpty(), "非参与者不应可见仲裁举证");
         assertFalse(view.canSubmitArbitrationResponse(), "非参与者不应可提交补充说明");
     }
+
+    // ===== 匿名仲裁身份映射：区分查看者权限 =====
+
+    @Test
+    void shouldRevealArbitrationSubmitterNameToAdminForAnonymousDemand() {
+        User publisher = newUser(1L, "pub@edu.cn", "20260001", "发布者真名");
+        Demand demand = newDemand(10L, 1L, "匿名校友", true, "匿名校友ABCD", null);
+        Order order = new Order(100L, 10L, 1L, 2L, OrderStatus.IN_ARBITRATION, null,
+            false, 0, null, LocalDateTime.now(), LocalDateTime.now(), null, List.of());
+
+        DemandRepository demandRepo = mock(DemandRepository.class);
+        UserRepository userRepo = mock(UserRepository.class);
+        OrderRepository orderRepo = mock(OrderRepository.class);
+        ArbitrationSubmissionRepository arbRepo = mock(ArbitrationSubmissionRepository.class);
+        ReviewRepository reviewRepo = mock(ReviewRepository.class);
+        when(demandRepo.findById(10L)).thenReturn(Optional.of(demand));
+        when(userRepo.findById(1L)).thenReturn(Optional.of(publisher));
+        when(orderRepo.findByDemandId(10L)).thenReturn(Optional.empty());
+        when(arbRepo.findByOrderId(100L)).thenReturn(List.of(
+            new ArbitrationSubmission(1L, 100L, 1L, "INITIATOR", "仲裁理由", null, 0, LocalDateTime.now())
+        ));
+        when(reviewRepo.findByOrderIdAndAuthorId(100L, 99L)).thenReturn(Optional.empty());
+
+        ApiViewMapper m = new ApiViewMapper(demandRepo, userRepo, orderRepo, reviewRepo, null, arbRepo);
+        OrderView view = m.toOrderView(order, new CurrentUser(99L, UserRole.ADMIN));
+
+        assertFalse(view.arbitrationSubmissions().isEmpty(), "管理员应可见仲裁举证");
+        assertEquals("发布者真名", view.arbitrationSubmissions().get(0).submitterName(),
+            "管理员应看到匿名需求发布方的真实昵称");
+    }
+
+    @Test
+    void shouldRevealArbitrationSubmitterNameToSelfForAnonymousDemand() {
+        User publisher = newUser(1L, "pub@edu.cn", "20260001", "发布者真名");
+        Demand demand = newDemand(10L, 1L, "匿名校友", true, "匿名校友ABCD", null);
+        Order order = new Order(100L, 10L, 1L, 2L, OrderStatus.IN_ARBITRATION, null,
+            false, 0, null, LocalDateTime.now(), LocalDateTime.now(), null, List.of());
+
+        DemandRepository demandRepo = mock(DemandRepository.class);
+        UserRepository userRepo = mock(UserRepository.class);
+        OrderRepository orderRepo = mock(OrderRepository.class);
+        ArbitrationSubmissionRepository arbRepo = mock(ArbitrationSubmissionRepository.class);
+        ReviewRepository reviewRepo = mock(ReviewRepository.class);
+        when(demandRepo.findById(10L)).thenReturn(Optional.of(demand));
+        when(userRepo.findById(1L)).thenReturn(Optional.of(publisher));
+        when(orderRepo.findByDemandId(10L)).thenReturn(Optional.empty());
+        when(arbRepo.findByOrderId(100L)).thenReturn(List.of(
+            new ArbitrationSubmission(1L, 100L, 1L, "INITIATOR", "仲裁理由", null, 0, LocalDateTime.now())
+        ));
+        when(reviewRepo.findByOrderIdAndAuthorId(100L, 1L)).thenReturn(Optional.empty());
+
+        ApiViewMapper m = new ApiViewMapper(demandRepo, userRepo, orderRepo, reviewRepo, null, arbRepo);
+        OrderView view = m.toOrderView(order, new CurrentUser(1L, UserRole.USER));
+
+        assertFalse(view.arbitrationSubmissions().isEmpty(), "发布者应可见仲裁举证");
+        assertEquals("发布者真名", view.arbitrationSubmissions().get(0).submitterName(),
+            "发布者本人应看到自己的真实昵称");
+    }
+
+    @Test
+    void shouldAnonymizeArbitrationSubmitterNameForAccepterOfAnonymousDemand() {
+        User publisher = newUser(1L, "pub@edu.cn", "20260001", "发布者真名");
+        Demand demand = newDemand(10L, 1L, "匿名校友", true, "匿名校友ABCD", null);
+        Order order = new Order(100L, 10L, 1L, 2L, OrderStatus.IN_ARBITRATION, null,
+            false, 0, null, LocalDateTime.now(), LocalDateTime.now(), null, List.of());
+
+        DemandRepository demandRepo = mock(DemandRepository.class);
+        UserRepository userRepo = mock(UserRepository.class);
+        OrderRepository orderRepo = mock(OrderRepository.class);
+        ArbitrationSubmissionRepository arbRepo = mock(ArbitrationSubmissionRepository.class);
+        ReviewRepository reviewRepo = mock(ReviewRepository.class);
+        when(demandRepo.findById(10L)).thenReturn(Optional.of(demand));
+        when(userRepo.findById(1L)).thenReturn(Optional.of(publisher));
+        when(orderRepo.findByDemandId(10L)).thenReturn(Optional.empty());
+        when(arbRepo.findByOrderId(100L)).thenReturn(List.of(
+            new ArbitrationSubmission(1L, 100L, 1L, "INITIATOR", "仲裁理由", null, 0, LocalDateTime.now())
+        ));
+        when(reviewRepo.findByOrderIdAndAuthorId(100L, 2L)).thenReturn(Optional.empty());
+
+        ApiViewMapper m = new ApiViewMapper(demandRepo, userRepo, orderRepo, reviewRepo, null, arbRepo);
+        OrderView view = m.toOrderView(order, new CurrentUser(2L, UserRole.USER));
+
+        assertFalse(view.arbitrationSubmissions().isEmpty(), "接单方应可见仲裁举证");
+        assertEquals("匿名校友ABCD", view.arbitrationSubmissions().get(0).submitterName(),
+            "接单方不应看到匿名需求发布方的真实昵称，应显示匿名代号");
+    }
+
+    @Test
+    void shouldRevealNonPublisherArbitrationSubmitterName() {
+        // 匿名需求下，非发布方提交者（RESPONDER）始终显示真实昵称
+        User publisher = newUser(1L, "pub@edu.cn", "20260001", "发布者真名");
+        User accepter = newUser(2L, "acc@edu.cn", "20260002", "接单者");
+        Demand demand = newDemand(10L, 1L, "匿名校友", true, "匿名校友ABCD", null);
+        Order order = new Order(100L, 10L, 1L, 2L, OrderStatus.IN_ARBITRATION, null,
+            false, 0, null, LocalDateTime.now(), LocalDateTime.now(), null, List.of());
+
+        DemandRepository demandRepo = mock(DemandRepository.class);
+        UserRepository userRepo = mock(UserRepository.class);
+        OrderRepository orderRepo = mock(OrderRepository.class);
+        ArbitrationSubmissionRepository arbRepo = mock(ArbitrationSubmissionRepository.class);
+        ReviewRepository reviewRepo = mock(ReviewRepository.class);
+        when(demandRepo.findById(10L)).thenReturn(Optional.of(demand));
+        when(userRepo.findById(2L)).thenReturn(Optional.of(accepter));
+        when(orderRepo.findByDemandId(10L)).thenReturn(Optional.empty());
+        when(arbRepo.findByOrderId(100L)).thenReturn(List.of(
+            new ArbitrationSubmission(1L, 100L, 2L, "RESPONDER", "补充说明", null, 0, LocalDateTime.now())
+        ));
+        when(reviewRepo.findByOrderIdAndAuthorId(100L, 1L)).thenReturn(Optional.empty());
+
+        ApiViewMapper m = new ApiViewMapper(demandRepo, userRepo, orderRepo, reviewRepo, null, arbRepo);
+        OrderView view = m.toOrderView(order, new CurrentUser(1L, UserRole.USER));
+
+        assertFalse(view.arbitrationSubmissions().isEmpty(), "发布方应可见仲裁举证");
+        assertEquals("接单者", view.arbitrationSubmissions().get(0).submitterName(),
+            "非发布方提交者应显示真实昵称，不受匿名需求影响");
+    }
 }
+

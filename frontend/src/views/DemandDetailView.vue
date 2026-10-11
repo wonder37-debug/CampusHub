@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch, onMounted } from 'vue'
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { handleError } from '@/utils/errorHandler'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -33,11 +33,42 @@ const reviewingResponseId = ref<string | null>(null)
 // Image viewer
 const showImageViewer = ref(false)
 const viewerInitialIndex = ref(0)
+const viewerImages = ref<string[]>([])
+let viewerVersion = 0
+
+function revokeViewerBlobs() {
+  viewerImages.value.forEach(u => {
+    if (u.startsWith('blob:')) URL.revokeObjectURL(u)
+  })
+}
 
 function openImageViewer(index: number) {
+  viewerImages.value = demand.value?.images ?? []
   viewerInitialIndex.value = index
   showImageViewer.value = true
 }
+
+async function openPrivateImageViewer(urls: string[], idx: number) {
+  viewerVersion++
+  revokeViewerBlobs()
+  viewerImages.value = urls
+  viewerInitialIndex.value = idx
+  showImageViewer.value = true
+  const expectedVersion = viewerVersion
+  const blobUrls = await Promise.all(
+    urls.map(url => store.fetchProofImageBlob(url).catch(() => url))
+  )
+  if (expectedVersion !== viewerVersion) {
+    blobUrls.forEach(u => { if (u.startsWith('blob:')) URL.revokeObjectURL(u) })
+    return
+  }
+  revokeViewerBlobs()
+  viewerImages.value = blobUrls
+}
+
+onUnmounted(() => {
+  revokeViewerBlobs()
+})
 
 async function refreshDemand(): Promise<void> {
   refreshing.value = true
@@ -1034,20 +1065,20 @@ onMounted(() => {
           </div>
           <p>接单留言：{{ relatedOrder.note || '暂无留言' }}</p>
 
-          <!-- 完成凭证展示（已提交凭证后供发布者/管理员查看） -->
+          <!-- 完成凭证展示（已提交凭证后供发布者/管理员查看，通过认证 Blob 加载） -->
           <div v-if="relatedOrder.proofImageUrls && relatedOrder.proofImageUrls.length > 0" style="margin-top: 8px;">
             <p class="meta"><strong>完成凭证 ({{ relatedOrder.proofImageUrls.length }})</strong></p>
             <div class="image-grid" style="margin-top: 6px;">
-              <a
+              <PrivateImage
                 v-for="(url, pIdx) in relatedOrder.proofImageUrls"
                 :key="url"
-                :href="url"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="image-item"
-              >
-                <img :src="url" :alt="`凭证图片 ${pIdx + 1}`" loading="lazy" class="demand-img" />
-              </a>
+                :src="url"
+                :alt="'凭证图片 ' + (pIdx + 1)"
+                width="140px"
+                height="140px"
+                cursor="pointer"
+                @click="openPrivateImageViewer(relatedOrder.proofImageUrls, pIdx)"
+              />
             </div>
           </div>
         </div>
@@ -1115,10 +1146,10 @@ onMounted(() => {
 
   <!-- 全屏图片预览 -->
   <ImageViewer
-    v-if="showImageViewer && demand?.images?.length"
-    :images="demand.images"
+    v-if="showImageViewer && viewerImages.length"
+    :images="viewerImages"
     :initial-index="viewerInitialIndex"
-    @close="showImageViewer = false"
+    @close="showImageViewer = false; revokeViewerBlobs()"
   />
 
   <!-- 仲裁对话框 -->

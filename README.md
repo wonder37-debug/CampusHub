@@ -281,15 +281,24 @@ npm run dev
 
 ### 本地数据库重建
 
-当需要从零重建本地开发数据库时（例如 schema 变更后清理旧数据），使用专用重建脚本：
+当需要从零重建本地开发数据库时（例如 schema 变更后清理旧数据），使用 PowerShell 重建脚本：
 
-```bash
-mysql -u root -p < backend/scripts/rebuild-local-db.sql
+```powershell
+.\backend\scripts\rebuild-local-db.ps1
+# 或指定密码
+.\backend\scripts\rebuild-local-db.ps1 -DbPassword "yourpassword"
 ```
 
-脚本内含安全校验：仅当连接来源为 `localhost` 或 `127.0.0.1` 时才执行 `DROP DATABASE`，非本地连接会报错中止。重建后重启应用，`init_schema.sql` 会自动完成建表和默认数据初始化。
+脚本执行流程：
+1. 固定连接 `127.0.0.1:3306`，测试 MySQL 连接并验证服务端是 MySQL
+2. 核对目标数据库名称（默认 `campushub`）
+3. 要求用户输入 `YES` 明确确认删除操作
+4. 执行 `DROP DATABASE` + `CREATE DATABASE`
+5. 验证重建结果
 
-> **警告**：此操作会删除 `campushub` 数据库中的所有数据，仅限本地开发使用。
+任一校验失败、连接异常或命令执行失败时立即终止，不执行删除。重建后重启 Spring Boot 应用，`init_schema.sql` 会自动完成建表和默认数据初始化。
+
+> **警告**：此操作会删除 `campushub` 数据库中的所有数据，仅限本地开发使用。脚本固定连接 `127.0.0.1`，不会连接远程或生产数据库。
 
 ### 邮箱验证码配置
 

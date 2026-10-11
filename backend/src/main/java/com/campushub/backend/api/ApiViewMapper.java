@@ -175,7 +175,7 @@ public class ApiViewMapper {
             && (currentUser.isAdmin() || order.isParticipant(currentUser.userId()));
 
         List<ArbitrationSubmissionView> arbitrationSubmissions = canSeeOrderPrivate
-            ? resolveArbitrationSubmissions(order, demand) : List.of();
+            ? resolveArbitrationSubmissions(order, demand, currentUser) : List.of();
 
         boolean canSubmitArbitrationResponse = canSeeOrderPrivate
             && order.getStatus() == OrderStatus.IN_ARBITRATION
@@ -419,7 +419,7 @@ public class ApiViewMapper {
             .orElse(null);
     }
 
-    private List<ArbitrationSubmissionView> resolveArbitrationSubmissions(Order order, Demand demand) {
+    private List<ArbitrationSubmissionView> resolveArbitrationSubmissions(Order order, Demand demand, CurrentUser currentUser) {
         if (order == null || arbitrationSubmissionRepository == null) {
             return List.of();
         }
@@ -427,10 +427,14 @@ public class ApiViewMapper {
         boolean isAnonymous = demand != null && demand.isAnonymous();
         Long publisherId = demand != null ? demand.getPublisherId() : null;
         String anonymousCode = demand != null ? demand.getAnonymousCode() : null;
+        // 匿名需求：发布方提交者对管理员和发布者本人显示真实昵称，对其他人显示匿名代号
+        boolean canSeePublisherIdentity = !isAnonymous
+            || (currentUser != null && (currentUser.isAdmin() || currentUser.userId().equals(publisherId)));
         return submissions.stream()
             .map(s -> {
                 String submitterName;
-                if (isAnonymous && publisherId != null && publisherId.equals(s.submitterId())) {
+                boolean isPublisherSubmission = isAnonymous && publisherId != null && publisherId.equals(s.submitterId());
+                if (isPublisherSubmission && !canSeePublisherIdentity) {
                     submitterName = anonymousCode != null ? anonymousCode : "匿名校友";
                 } else {
                     User submitter = userRepository.findById(s.submitterId()).orElse(null);
