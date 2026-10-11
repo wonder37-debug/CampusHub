@@ -1,5 +1,6 @@
 package com.campushub.backend.api;
 
+import com.campushub.backend.api.view.ArbitrationSubmissionView;
 import com.campushub.backend.api.view.DemandView;
 import com.campushub.backend.api.view.OrderTimelineView;
 import com.campushub.backend.api.view.OrderView;
@@ -13,9 +14,11 @@ import com.campushub.backend.demand.domain.DemandStatus;
 import com.campushub.backend.demand.domain.InteractionMode;
 import com.campushub.backend.demand.repository.DemandRepository;
 import com.campushub.backend.demand.repository.DemandResponseRepository;
+import com.campushub.backend.order.domain.ArbitrationSubmission;
 import com.campushub.backend.order.domain.Order;
 import com.campushub.backend.order.domain.OrderStatus;
 import com.campushub.backend.order.domain.OrderStatusHistoryEntry;
+import com.campushub.backend.order.repository.ArbitrationSubmissionRepository;
 import com.campushub.backend.order.repository.OrderRepository;
 import com.campushub.backend.review.domain.Review;
 import com.campushub.backend.review.dto.ReviewResponse;
@@ -34,19 +37,22 @@ public class ApiViewMapper {
     private final OrderRepository orderRepository;
     private final ReviewRepository reviewRepository;
     private final DemandResponseRepository demandResponseRepository;
+    private final ArbitrationSubmissionRepository arbitrationSubmissionRepository;
 
     public ApiViewMapper(
         DemandRepository demandRepository,
         UserRepository userRepository,
         OrderRepository orderRepository,
         ReviewRepository reviewRepository,
-        DemandResponseRepository demandResponseRepository
+        DemandResponseRepository demandResponseRepository,
+        ArbitrationSubmissionRepository arbitrationSubmissionRepository
     ) {
         this.demandRepository = demandRepository;
         this.userRepository = userRepository;
         this.orderRepository = orderRepository;
         this.reviewRepository = reviewRepository;
         this.demandResponseRepository = demandResponseRepository;
+        this.arbitrationSubmissionRepository = arbitrationSubmissionRepository;
     }
 
     public DemandView toDemandView(Demand demand, CurrentUser currentUser) {
@@ -168,6 +174,16 @@ public class ApiViewMapper {
         boolean canSeeOrderPrivate = currentUser != null
             && (currentUser.isAdmin() || order.isParticipant(currentUser.userId()));
 
+        List<ArbitrationSubmissionView> arbitrationSubmissions = canSeeOrderPrivate
+            ? resolveArbitrationSubmissions(order) : List.of();
+
+        boolean canSubmitArbitrationResponse = canSeeOrderPrivate
+            && order.getStatus() == OrderStatus.IN_ARBITRATION
+            && currentUser != null
+            && order.isParticipant(currentUser.userId())
+            && !arbitrationSubmissions.stream()
+                .anyMatch(s -> "INITIATOR".equals(s.role()) && currentUser.userId().equals(s.submitterId()));
+
         List<ReviewView> reviews = resolveReviews(order.getId(), reviewByOrderIdMap).stream()
             .map(review -> toReviewView(review, canSeePublisher, order.getPublisherId(), anonymousCode,
                 demand != null ? demand.getTitle() : null))
@@ -201,7 +217,9 @@ public class ApiViewMapper {
             resolveCompletionHint(order, currentUser),
             demand == null ? List.of() : demand.getImages(),
             resolveContactInfo(demand, order, currentUser),
-            canSeeOrderPrivate ? resolveArbitrationResult(order) : null
+            canSeeOrderPrivate ? resolveArbitrationResult(order) : null,
+            arbitrationSubmissions,
+            canSubmitArbitrationResponse
         );
     }
 
@@ -399,6 +417,44 @@ public class ApiViewMapper {
                 return "裁决结果：已" + outcome + "。说明：" + reason;
             })
             .orElse(null);
+    }
+
+    private List<ArbitrationSubmissionView> resolveArbitrationSubmissions(Order order) {
+        if (order == null || arbitrationSubmissionRepository == null) {
+            return List.of();
+        }
+        List<ArbitrationSubmission> submissions = arbitrationSubmissionRepository.findByOrderId(order.getId());
+        if (submissions.isEmpty()) {
+            submissions = resolveLegacyArbitrationSubmissions(order);
+        }
+        return submissions.stream()
+            .map(s -> {
+                User submitter = userRepository.findById(s.submitterId()).orElse(null);
+                String submitterName = submitter != null ? submitter.getNickname() : "用户" + s.submitterId();
+                return new ArbitrationSubmissionView(
+                    s.id(), s.submitterId(), submitterName, s.role(), s.reason(),
+                    s.imageUrls(), s.imageCount(), s.submittedAt()
+                );
+            })
+            .toList();
+    }
+
+    private List<ArbitrationSubmission> resolveLegacyArbitrationSubmissions(Order order) {
+        if (order.getStatusHistory().isEmpty()) {
+            return List.of();
+        }
+        List<ArbitrationSubmission> legacy = new java.util.ArrayList<>();
+        for (OrderStatusHistoryEntry entry : order.getStatusHistory()) {
+            if (entry.note() == null) continue;
+            if (entry.note().startsWith("ARBITRATION_REQUESTED:")) {
+                String reason = entry.note().substring("ARBITRATION_REQUESTED:".length()).trim();
+                legacy.add(new ArbitrationSubmission(
+                    null, order.getId(), entry.operatorId(), "INITIATOR", reason,
+                    null, 0, entry.changedAt()
+                ));
+            }
+        }
+        return legacy;
     }
 
     private boolean canAcceptDemand(Demand demand, Order relatedOrder, CurrentUser currentUser) {

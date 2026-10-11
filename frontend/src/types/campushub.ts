@@ -131,8 +131,21 @@ export interface OrderRecord {
   demandImages?: string[]
   demandContactInfo?: string | null
   arbitrationResult?: string | null
+  arbitrationSubmissions?: ArbitrationSubmissionRecord[]
+  canSubmitArbitrationResponse?: boolean
   // 需求是否匿名发布（映射自后端 demand.anonymous），用于订单详情脱敏判断
   anonymous?: boolean
+}
+
+export interface ArbitrationSubmissionRecord {
+  id: string | null
+  submitterId: string
+  submitterName: string
+  role: 'INITIATOR' | 'RESPONDER'
+  reason: string
+  imageUrls?: string[]
+  imageCount: number
+  submittedAt: string
 }
 
 export interface RecommendationRecord {

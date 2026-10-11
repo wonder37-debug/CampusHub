@@ -7,6 +7,7 @@ import { useCampusHubStore } from '@/stores/campusHub'
 import SkeletonCard from '@/components/SkeletonCard.vue'
 import ImageViewer from '@/components/ImageViewer.vue'
 import ImageUploader from '@/components/ImageUploader.vue'
+import PrivateImage from '@/components/PrivateImage.vue'
 import { formatOrderStatus, formatRelativeTime, formatScore, formatCampusZone, statusToneClass } from '@/utils/format'
 import { useConfirm, useAlert } from '@/composables/useDialog'
 
@@ -26,6 +27,10 @@ const loadingOrder = ref(false)
 const refreshing = ref(false)
 const arbitrationDialogOpen = ref(false)
 const arbitrationReason = ref('')
+const arbitrationImages = ref<string[]>([])
+const arbitrationResponseDialogOpen = ref(false)
+const arbitrationResponseReason = ref('')
+const arbitrationResponseImages = ref<string[]>([])
 const proofImages = ref<string[]>([])
 // 关键操作（开始执行/提交完成/取消/评价/仲裁）防重复点击 loading
 const submitting = ref(false)
@@ -53,9 +58,27 @@ onUnmounted(() => {
 // Image viewer
 const showImageViewer = ref(false)
 const viewerInitialIndex = ref(0)
+const viewerImages = ref<string[]>([])
 
-function openImageViewer(index: number) {
-  viewerInitialIndex.value = index
+function openImageViewer(imagesOrIndex: string[] | number, idx?: number) {
+  if (Array.isArray(imagesOrIndex)) {
+    const index = idx ?? 0
+    viewerImages.value = imagesOrIndex
+    viewerInitialIndex.value = index
+    showImageViewer.value = true
+  } else {
+    viewerImages.value = order.value?.demandImages ?? []
+    viewerInitialIndex.value = imagesOrIndex
+    showImageViewer.value = true
+  }
+}
+
+async function openPrivateImageViewer(urls: string[], idx: number) {
+  const blobUrls = await Promise.all(
+    urls.map(url => store.fetchProofImageBlob(url).catch(() => url))
+  )
+  viewerImages.value = blobUrls
+  viewerInitialIndex.value = idx
   showImageViewer.value = true
 }
 
@@ -307,12 +330,26 @@ async function cancelOrder(): Promise<void> {
 
 function openArbitrationDialog(): void {
   arbitrationReason.value = ''
+  arbitrationImages.value = []
   arbitrationDialogOpen.value = true
 }
 
 function closeArbitrationDialog(): void {
   arbitrationDialogOpen.value = false
   arbitrationReason.value = ''
+  arbitrationImages.value = []
+}
+
+function openArbitrationResponseDialog(): void {
+  arbitrationResponseReason.value = ''
+  arbitrationResponseImages.value = []
+  arbitrationResponseDialogOpen.value = true
+}
+
+function closeArbitrationResponseDialog(): void {
+  arbitrationResponseDialogOpen.value = false
+  arbitrationResponseReason.value = ''
+  arbitrationResponseImages.value = []
 }
 
 async function submitArbitration(): Promise<void> {
@@ -326,11 +363,32 @@ async function submitArbitration(): Promise<void> {
   error.value = ''
   submitting.value = true
   try {
-    await store.requestOrderArbitration(order.value.id, arbitrationReason.value)
+    await store.requestOrderArbitration(order.value.id, arbitrationReason.value, arbitrationImages.value)
     message.value = '已提交仲裁申请，等待管理员处理。'
     closeArbitrationDialog()
   } catch (arbitrationError) {
     error.value = handleError(arbitrationError, '发起仲裁失败')
+  } finally {
+    submitting.value = false
+  }
+}
+
+async function submitArbitrationResponse(): Promise<void> {
+  if (!order.value || submitting.value) return
+  if (!arbitrationResponseReason.value.trim()) {
+    error.value = '请填写补充说明'
+    return
+  }
+
+  message.value = ''
+  error.value = ''
+  submitting.value = true
+  try {
+    await store.submitArbitrationResponse(order.value.id, arbitrationResponseReason.value, arbitrationResponseImages.value)
+    message.value = '已提交补充说明，等待管理员处理。'
+    closeArbitrationResponseDialog()
+  } catch (arbitrationError) {
+    error.value = handleError(arbitrationError, '提交补充说明失败')
   } finally {
     submitting.value = false
   }
@@ -418,6 +476,31 @@ onMounted(() => {
       <div v-if="order.arbitrationResult" class="list-card" style="margin-top: 12px; border-color: rgba(180, 120, 40, 0.3);">
         <div class="meta"><strong>⚖️ 裁决结果</strong></div>
         <p style="margin-top: 4px; white-space: pre-wrap;">{{ order.arbitrationResult }}</p>
+      </div>
+
+      <!-- 仲裁双方举证材料 -->
+      <div v-if="order.arbitrationSubmissions && order.arbitrationSubmissions.length > 0" class="list-card" style="margin-top: 12px;">
+        <div class="meta"><strong>⚖️ 双方举证材料</strong></div>
+        <div v-for="sub in order.arbitrationSubmissions" :key="String(sub.id ?? sub.submitterId + sub.submittedAt)" style="margin-top: 12px; padding-bottom: 12px; border-bottom: 1px solid rgba(0,0,0,0.08);">
+          <div class="meta">
+            <span class="chip" :class="sub.role === 'INITIATOR' ? 'is-warning' : 'is-info'">
+              {{ sub.role === 'INITIATOR' ? '发起方' : '另一方' }}
+            </span>
+            <span style="margin-left: 8px;">{{ sub.submitterName }}</span>
+            <span style="margin-left: 8px;" class="meta">{{ formatRelativeTime(sub.submittedAt) }}</span>
+          </div>
+          <p style="margin-top: 6px; white-space: pre-wrap;">{{ sub.reason }}</p>
+          <div v-if="sub.imageUrls && sub.imageUrls.length > 0" style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px;">
+            <PrivateImage
+              v-for="(url, idx) in sub.imageUrls"
+              :key="url + idx"
+              :src="url"
+              :alt="'证据图片' + (idx + 1)"
+              cursor="pointer"
+              @click="openPrivateImageViewer(sub.imageUrls, idx)"
+            />
+          </div>
+        </div>
       </div>
 
       <!-- 需求描述（突出显示，置于时间信息之前） -->
@@ -524,6 +607,7 @@ onMounted(() => {
           >{{ completionHint || '等待接单方确认完成' }}</span>
           <button v-if="order.status === 'ACCEPTED' && isRequester" type="button" class="button danger" :disabled="submitting" @click="cancelOrder">{{ submitting ? '处理中...' : '取消订单' }}</button>
           <button v-if="canRequestArbitration" type="button" class="button secondary" :disabled="submitting" @click="openArbitrationDialog">发起仲裁</button>
+          <button v-if="order.canSubmitArbitrationResponse" type="button" class="button secondary" :disabled="submitting" @click="openArbitrationResponseDialog">补充说明</button>
         </div>
       </div>
     </section>
@@ -608,6 +692,11 @@ onMounted(() => {
           <textarea id="arbitration-reason" v-model="arbitrationReason" rows="5" placeholder="请简要说明争议点、当前情况和希望管理员关注的信息"></textarea>
         </div>
 
+        <div class="field">
+          <label>证据图片（可选，最多5张）</label>
+          <ImageUploader v-model="arbitrationImages" :max-count="5" purpose="proof" />
+        </div>
+
         <div class="card-actions" style="justify-content: flex-end;">
           <button type="button" class="button secondary" @click="closeArbitrationDialog">取消</button>
           <button type="button" class="button primary" :disabled="!arbitrationReason.trim() || submitting" @click="submitArbitration">{{ submitting ? '处理中...' : '提交仲裁' }}</button>
@@ -616,10 +705,34 @@ onMounted(() => {
     </div>
   </teleport>
 
+  <!-- 补充说明对话框 -->
+  <teleport to="body">
+    <div v-if="arbitrationResponseDialogOpen" class="dialog-overlay" @click.self="closeArbitrationResponseDialog">
+      <div class="dialog-panel">
+        <h2 class="dialog-title">补充说明</h2>
+        <p class="page-summary" style="margin-top: 0;">作为另一方，您可以提交补充说明和证据图片，管理员将根据双方材料做出裁决。</p>
+        <div class="field">
+          <label for="arbitration-response-reason">补充说明</label>
+          <textarea id="arbitration-response-reason" v-model="arbitrationResponseReason" rows="5" placeholder="请补充您的说明和理由"></textarea>
+        </div>
+
+        <div class="field">
+          <label>证据图片（可选，最多5张）</label>
+          <ImageUploader v-model="arbitrationResponseImages" :max-count="5" purpose="proof" />
+        </div>
+
+        <div class="card-actions" style="justify-content: flex-end;">
+          <button type="button" class="button secondary" @click="closeArbitrationResponseDialog">取消</button>
+          <button type="button" class="button primary" :disabled="!arbitrationResponseReason.trim() || submitting" @click="submitArbitrationResponse">{{ submitting ? '处理中...' : '提交说明' }}</button>
+        </div>
+      </div>
+    </div>
+  </teleport>
+
   <!-- 全屏图片预览 -->
   <ImageViewer
-    v-if="showImageViewer && order?.demandImages?.length"
-    :images="order.demandImages"
+    v-if="showImageViewer && viewerImages.length"
+    :images="viewerImages"
     :initial-index="viewerInitialIndex"
     @close="showImageViewer = false"
   />

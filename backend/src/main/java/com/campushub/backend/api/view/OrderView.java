@@ -27,6 +27,8 @@ public record OrderView(
     String completionHint,
     List<String> demandImages,
     String demandContactInfo,
-    String arbitrationResult
+    String arbitrationResult,
+    List<ArbitrationSubmissionView> arbitrationSubmissions,
+    boolean canSubmitArbitrationResponse
 ) {
 }

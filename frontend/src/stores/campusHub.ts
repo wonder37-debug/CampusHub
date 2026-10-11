@@ -4,6 +4,7 @@ import type {
   AdminDashboardSummary,
   AccountRecord,
   AiDemandDraft,
+  ArbitrationSubmissionRecord,
   AuthFormInput,
   CategoryStat,
   CampusZone,
@@ -225,10 +226,13 @@ function mapOrderTimelineLabel(entry: any): string {
   if (note === 'ORDER_COMPLETED' || note === 'SYSTEM_AUTO_COMPLETED') {
     return formatOrderStatus('COMPLETED' as OrderStatus)
   }
-  if (note.startsWith('ARBITRATION_REQUESTED:')) {
+  if (note.startsWith('ARBITRATION_REQUESTED')) {
     return '发起仲裁'
   }
-  if (note.startsWith('ARBITRATION_RESOLVED:')) {
+  if (note === 'ARBITRATION_RESPONSE_SUBMITTED') {
+    return '另一方提交补充说明'
+  }
+  if (note.startsWith('ARBITRATION_RESOLVED')) {
     return '仲裁已处理'
   }
   if (toStatus === 'ACCEPTED') {
@@ -282,6 +286,10 @@ function mapOrderRecord(raw: any): OrderRecord {
     demandContactInfo: raw.demandContactInfo == null ? undefined : String(raw.demandContactInfo),
     anonymous: Boolean(demand.anonymous ?? raw.anonymous ?? false),
     arbitrationResult: raw.arbitrationResult == null ? undefined : String(raw.arbitrationResult),
+    arbitrationSubmissions: Array.isArray(raw.arbitrationSubmissions)
+      ? raw.arbitrationSubmissions.map((s: any) => mapArbitrationSubmissionRecord(s))
+      : undefined,
+    canSubmitArbitrationResponse: raw.canSubmitArbitrationResponse == null ? undefined : Boolean(raw.canSubmitArbitrationResponse),
     timeline: Array.isArray(raw.statusHistory)
       ? raw.statusHistory.map((entry: any) => ({
           at: String(entry.changedAt ?? entry.createdAt ?? now()),
@@ -289,6 +297,19 @@ function mapOrderRecord(raw: any): OrderRecord {
           label: mapOrderTimelineLabel(entry)
         }))
       : []
+  }
+}
+
+function mapArbitrationSubmissionRecord(raw: any): ArbitrationSubmissionRecord {
+  return {
+    id: raw.id == null ? null : String(raw.id),
+    submitterId: String(raw.submitterId ?? ''),
+    submitterName: String(raw.submitterName ?? '匿名'),
+    role: String(raw.role ?? 'INITIATOR') as 'INITIATOR' | 'RESPONDER',
+    reason: String(raw.reason ?? ''),
+    imageUrls: Array.isArray(raw.imageUrls) ? raw.imageUrls.map((u: any) => String(u)) : undefined,
+    imageCount: Number(raw.imageCount ?? 0),
+    submittedAt: String(raw.submittedAt ?? now())
   }
 }
 
@@ -975,10 +996,23 @@ export const useCampusHubStore = defineStore('campusHub', {
       return mapped
     },
 
-    async requestOrderArbitration(orderId: string, reason: string): Promise<OrderRecord> {
+    async requestOrderArbitration(orderId: string, reason: string, imageUrls?: string[]): Promise<OrderRecord> {
       const order = await requestJson<any>(`/orders/${encodeURIComponent(orderId)}/arbitration`, {
         method: 'POST',
-        body: JSON.stringify({ reason: reason.trim() })
+        body: JSON.stringify({ reason: reason.trim(), imageUrls: imageUrls ?? null })
+      }, this.token)
+
+      const mapped = mapOrderRecord(order)
+      await this.fetchDemandDetail(String(mapped.demandId ?? ''))
+      await this.fetchOrders()
+      await this.fetchNotifications()
+      return mapped
+    },
+
+    async submitArbitrationResponse(orderId: string, reason: string, imageUrls?: string[]): Promise<OrderRecord> {
+      const order = await requestJson<any>(`/orders/${encodeURIComponent(orderId)}/arbitration/submission`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: reason.trim(), imageUrls: imageUrls ?? null })
       }, this.token)
 
       const mapped = mapOrderRecord(order)

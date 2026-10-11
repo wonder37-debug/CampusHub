@@ -330,6 +330,40 @@ CREATE TABLE IF NOT EXISTS`ord_order_status_log` (
 
 -- ==========================================================
 
+-- 4.1 仲裁举证表 (ord_arbitration_submission)
+
+-- ==========================================================
+
+CREATE TABLE IF NOT EXISTS `ord_arbitration_submission` (
+
+  `id` bigint NOT NULL AUTO_INCREMENT PRIMARY KEY,
+
+  `order_id` bigint NOT NULL COMMENT '关联订单ID',
+
+  `submitter_id` bigint NOT NULL COMMENT '提交者用户ID（发起方或另一方）',
+
+  `role` varchar(16) NOT NULL COMMENT '提交者角色: INITIATOR / RESPONDER',
+
+  `reason` varchar(2000) NOT NULL COMMENT '仲裁理由/补充说明',
+
+  `image_urls` json DEFAULT NULL COMMENT '证据图片URL列表(私密存储)',
+
+  `image_count` int NOT NULL DEFAULT 0 COMMENT '证据图片数量',
+
+  `submitted_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '提交时间',
+
+  KEY `idx_arbitration_order` (`order_id`),
+
+  KEY `idx_arbitration_submitter` (`submitter_id`),
+
+  CONSTRAINT `chk_arb_role` CHECK (`role` IN ('INITIATOR','RESPONDER'))
+
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='仲裁双方举证记录表';
+
+
+
+-- ==========================================================
+
 -- 5. 需求响应表 (ord_demand_response)
 
 -- ==========================================================

@@ -64,6 +64,9 @@ class OrderApplicationServiceImplTest {
     @Autowired
     private com.campushub.backend.upload.repository.UploadedAssetRepository uploadedAssetRepository;
 
+    @Autowired
+    private com.campushub.backend.order.repository.ArbitrationSubmissionRepository arbitrationSubmissionRepository;
+
     private Long publisherId;
     private Long accepterId;
 
@@ -354,6 +357,107 @@ class OrderApplicationServiceImplTest {
 
         assertEquals("IN_ARBITRATION", arbitration.status());
         assertTrue(arbitration.statusHistory().stream().anyMatch(item -> "IN_ARBITRATION".equals(item.toStatus())));
+    }
+
+    @Test
+    void shouldSaveArbitrationSubmissionToNewTable() {
+        DemandDetailResponse demand = createDemand();
+        OrderDetailResponse accepted = orderApplicationService.accept(accepterId, demand.id(), new AcceptOrderCommand("我来"));
+
+        orderApplicationService.requestArbitration(
+            publisherId,
+            accepted.orderId(),
+            new RequestOrderArbitrationCommand("对履约细节有争议", null)
+        );
+
+        List<com.campushub.backend.order.domain.ArbitrationSubmission> submissions =
+            arbitrationSubmissionRepository.findByOrderId(accepted.orderId());
+        assertEquals(1, submissions.size());
+        assertEquals("INITIATOR", submissions.get(0).role());
+        assertEquals("对履约细节有争议", submissions.get(0).reason());
+        assertEquals(publisherId, submissions.get(0).submitterId());
+    }
+
+    @Test
+    void shouldAllowCounterpartyToSubmitArbitrationResponse() {
+        DemandDetailResponse demand = createDemand();
+        OrderDetailResponse accepted = orderApplicationService.accept(accepterId, demand.id(), new AcceptOrderCommand("我来"));
+
+        orderApplicationService.requestArbitration(
+            publisherId,
+            accepted.orderId(),
+            new RequestOrderArbitrationCommand("发起方理由", null)
+        );
+
+        orderApplicationService.submitArbitrationResponse(
+            accepterId,
+            accepted.orderId(),
+            new com.campushub.backend.order.dto.ArbitrationSubmissionCommand("另一方补充说明", null)
+        );
+
+        List<com.campushub.backend.order.domain.ArbitrationSubmission> submissions =
+            arbitrationSubmissionRepository.findByOrderId(accepted.orderId());
+        assertEquals(2, submissions.size());
+        assertTrue(submissions.stream().anyMatch(s -> "RESPONDER".equals(s.role()) && "另一方补充说明".equals(s.reason())));
+    }
+
+    @Test
+    void shouldRejectArbitrationResponseFromInitiator() {
+        DemandDetailResponse demand = createDemand();
+        OrderDetailResponse accepted = orderApplicationService.accept(accepterId, demand.id(), new AcceptOrderCommand("我来"));
+
+        orderApplicationService.requestArbitration(
+            publisherId,
+            accepted.orderId(),
+            new RequestOrderArbitrationCommand("发起方理由", null)
+        );
+
+        BusinessException exception = assertThrows(
+            BusinessException.class,
+            () -> orderApplicationService.submitArbitrationResponse(
+                publisherId,
+                accepted.orderId(),
+                new com.campushub.backend.order.dto.ArbitrationSubmissionCommand("发起方试图补充", null)
+            )
+        );
+        assertEquals(ErrorCode.BUSINESS_CONFLICT, exception.getErrorCode());
+    }
+
+    @Autowired
+    private com.campushub.backend.admin.service.AdminApplicationService adminApplicationService;
+
+    @Test
+    void shouldRejectArbitrationSubmissionAfterResolved() {
+        DemandDetailResponse demand = createDemand();
+        OrderDetailResponse accepted = orderApplicationService.accept(accepterId, demand.id(), new AcceptOrderCommand("我来"));
+
+        orderApplicationService.requestArbitration(
+            publisherId,
+            accepted.orderId(),
+            new RequestOrderArbitrationCommand("发起方理由", null)
+        );
+
+        Long adminId = userRepository.save(new User(
+            null, "admin@example.edu.cn", "20260099", "hash", "管理员", null,
+            UserRole.ADMIN, UserStatus.ACTIVE, 100, BigDecimal.ZERO, BigDecimal.ZERO,
+            LocalDateTime.now(), LocalDateTime.now()
+        )).getId();
+
+        adminApplicationService.resolveOrderArbitration(
+            adminId,
+            accepted.orderId(),
+            new com.campushub.backend.admin.dto.AdminOrderArbitrationCommand("complete", "裁决完成")
+        );
+
+        BusinessException exception = assertThrows(
+            BusinessException.class,
+            () -> orderApplicationService.submitArbitrationResponse(
+                accepterId,
+                accepted.orderId(),
+                new com.campushub.backend.order.dto.ArbitrationSubmissionCommand("裁决后试图补充", null)
+            )
+        );
+        assertEquals(ErrorCode.BUSINESS_CONFLICT, exception.getErrorCode());
     }
 
     // ==================== accept ↔ update 并发边界 ====================

@@ -97,6 +97,21 @@ public class NotificationApplicationServiceImpl implements NotificationApplicati
     }
 
     @Override
+    public void notifyArbitrationResponseSubmitted(Long receiverId, Long orderId, Long submitterId, String reason) {
+        if (receiverId == null || orderId == null) {
+            return;
+        }
+        String role = resolveArbitrationRequesterRole(orderId, submitterId);
+        String summary = reason != null && reason.length() > 80 ? reason.substring(0, 80) + "…" : (reason != null ? reason : "");
+        createNotification(receiverId, new NotificationDraft(
+            NotificationType.STATUS_CHANGED,
+            "仲裁补充说明",
+            role + "提交了仲裁补充说明" + (summary.isEmpty() ? "" : "：" + summary),
+            orderId
+        ));
+    }
+
+    @Override
     public void notifyOrderArbitrationResolved(Long receiverId, Long orderId, String outcome, String reason) {
         createNotification(receiverId, buildOrderArbitrationResolved(orderId, outcome, reason));
     }

@@ -12,6 +12,7 @@ import com.campushub.backend.common.security.RequestUserExtractor;
 import com.campushub.backend.demand.domain.Demand;
 import com.campushub.backend.demand.repository.DemandRepository;
 import com.campushub.backend.order.domain.Order;
+import com.campushub.backend.order.dto.ArbitrationSubmissionCommand;
 import com.campushub.backend.order.dto.OrderHistoryQuery;
 import com.campushub.backend.order.dto.OrderSummaryResponse;
 import com.campushub.backend.order.dto.RequestOrderArbitrationCommand;
@@ -150,6 +151,21 @@ public class OrderController {
     ) {
         CurrentUser currentUser = requestUserExtractor.requireCurrentUser(request);
         orderApplicationService.requestArbitration(currentUser.userId(), orderId, command);
+        return ApiResponse.success(
+            orderRepository.findById(orderId)
+                .map(order -> apiViewMapper.toOrderView(order, currentUser))
+                .orElseThrow()
+        );
+    }
+
+    @PostMapping("/{orderId}/arbitration/submission")
+    public ApiResponse<OrderView> submitArbitrationResponse(
+        HttpServletRequest request,
+        @PathVariable Long orderId,
+        @RequestBody ArbitrationSubmissionCommand command
+    ) {
+        CurrentUser currentUser = requestUserExtractor.requireCurrentUser(request);
+        orderApplicationService.submitArbitrationResponse(currentUser.userId(), orderId, command);
         return ApiResponse.success(
             orderRepository.findById(orderId)
                 .map(order -> apiViewMapper.toOrderView(order, currentUser))

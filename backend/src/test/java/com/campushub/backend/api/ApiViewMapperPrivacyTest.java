@@ -42,7 +42,7 @@ import org.junit.jupiter.api.Test;
  */
 class ApiViewMapperPrivacyTest {
 
-    private final ApiViewMapper mapper = new ApiViewMapper(null, null, null, null, null);
+    private final ApiViewMapper mapper = new ApiViewMapper(null, null, null, null, null, null);
 
     private User newUser(Long id, String email, String studentId, String nickname) {
         return new User(id, email, studentId, "hash", nickname, "avatar.png",
@@ -221,7 +221,7 @@ class ApiViewMapperPrivacyTest {
         when(userRepo.findById(publisher.getId())).thenReturn(Optional.of(publisher));
         if (author != null) when(userRepo.findById(author.getId())).thenReturn(Optional.of(author));
         if (target != null) when(userRepo.findById(target.getId())).thenReturn(Optional.of(target));
-        return new ApiViewMapper(demandRepo, userRepo, null, null, null);
+        return new ApiViewMapper(demandRepo, userRepo, null, null, null, null);
     }
 
     @Test

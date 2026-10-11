@@ -79,3 +79,57 @@ DEALLOCATE PREPARE stmt;
 SELECT CONSTRAINT_NAME, CHECK_CLAUSE
 FROM information_schema.check_constraints
 WHERE CONSTRAINT_SCHEMA = DATABASE() AND CONSTRAINT_NAME = 'chk_notify_type';
+
+-- 5. 创建仲裁举证表 ord_arbitration_submission（双方举证流程）
+CREATE TABLE IF NOT EXISTS `ord_arbitration_submission` (
+  `id` bigint NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `order_id` bigint NOT NULL COMMENT '关联订单ID',
+  `submitter_id` bigint NOT NULL COMMENT '提交者用户ID（发起方或另一方）',
+  `role` varchar(16) NOT NULL COMMENT '提交者角色: INITIATOR / RESPONDER',
+  `reason` varchar(2000) NOT NULL COMMENT '仲裁理由/补充说明',
+  `image_urls` json DEFAULT NULL COMMENT '证据图片URL列表(私密存储)',
+  `image_count` int NOT NULL DEFAULT 0 COMMENT '证据图片数量',
+  `submitted_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '提交时间',
+  KEY `idx_arbitration_order` (`order_id`),
+  KEY `idx_arbitration_submitter` (`submitter_id`),
+  CONSTRAINT `chk_arb_role` CHECK (`role` IN ('INITIATOR','RESPONDER'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='仲裁双方举证记录表';
+
+-- 6. 幂等移除 ord_demand_response 表的唯一约束（HELP 模式允许多条 active Response）
+SET @has_unique_resp = (SELECT COUNT(*) FROM information_schema.statistics
+    WHERE table_schema = DATABASE() AND table_name = 'ord_demand_response'
+    AND index_name = 'uk_response_demand_author_active');
+SET @sql = IF(@has_unique_resp > 0,
+    'ALTER TABLE `ord_demand_response` DROP INDEX `uk_response_demand_author_active`', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- 7. 幂等补充 ord_demand_response 表的 active_flag 生成列
+SET @col_exists = (SELECT COUNT(*) FROM information_schema.columns
+    WHERE table_schema = DATABASE() AND table_name = 'ord_demand_response' AND column_name = 'active_flag');
+SET @sql = IF(@col_exists = 0,
+    'ALTER TABLE `ord_demand_response` ADD COLUMN `active_flag` int GENERATED ALWAYS AS (CASE WHEN `status` IN (''PENDING'',''SELECTED'') THEN 1 ELSE NULL END) VIRTUAL', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- 8. 幂等补充 ord_demand_response 的 idx_response_demand_author_active 普通索引
+SET @idx_exists = (SELECT COUNT(*) FROM information_schema.statistics
+    WHERE table_schema = DATABASE() AND table_name = 'ord_demand_response'
+    AND index_name = 'idx_response_demand_author_active');
+SET @sql = IF(@idx_exists = 0,
+    'CREATE INDEX idx_response_demand_author_active ON ord_demand_response(demand_id, author_id, active_flag)', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- 9. 幂等补充 ord_demand_response 的 chk_response_status CHECK 约束
+SET @constraint_exists = (SELECT COUNT(*) FROM information_schema.table_constraints
+    WHERE table_schema = DATABASE() AND table_name = 'ord_demand_response'
+    AND constraint_name = 'chk_response_status' AND constraint_type = 'CHECK');
+SET @sql = IF(@constraint_exists = 0,
+    'ALTER TABLE `ord_demand_response` ADD CONSTRAINT `chk_response_status` CHECK (`status` IN (''PENDING'',''SELECTED'',''REJECTED'',''WITHDRAWN''))', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
