@@ -307,8 +307,8 @@ onMounted(() => {
         <p>发布需求并等同学接单后，订单会出现在这里。</p>
       </div>
 
-      <!-- 审核中的需求（独立区域，不占用订单语义） -->
-      <div v-if="reviewingDemands.length > 0" class="reviewing-demands-section">
+      <!-- 审核中的需求（独立区域，仅在"我发布的订单"页签显示） -->
+      <div v-if="activeTab === 'published' && reviewingDemands.length > 0" class="reviewing-demands-section">
         <h2 class="section-title" style="margin-bottom: 12px;">📋 我发布的需求（审核中）</h2>
         <article v-for="demand in reviewingDemands" :key="demand.id" class="list-card order-card reviewing-demand-card" tabindex="0" role="link" :aria-label="`查看需求：${demand.title}`" @click="router.push(`/demands/${demand.id}`)" @keydown.enter="router.push(`/demands/${demand.id}`)">
           <div class="status-row">

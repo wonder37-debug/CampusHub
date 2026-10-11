@@ -424,9 +424,6 @@ public class ApiViewMapper {
             return List.of();
         }
         List<ArbitrationSubmission> submissions = arbitrationSubmissionRepository.findByOrderId(order.getId());
-        if (submissions.isEmpty()) {
-            submissions = resolveLegacyArbitrationSubmissions(order);
-        }
         boolean isAnonymous = demand != null && demand.isAnonymous();
         Long publisherId = demand != null ? demand.getPublisherId() : null;
         String anonymousCode = demand != null ? demand.getAnonymousCode() : null;
@@ -445,24 +442,6 @@ public class ApiViewMapper {
                 );
             })
             .toList();
-    }
-
-    private List<ArbitrationSubmission> resolveLegacyArbitrationSubmissions(Order order) {
-        if (order.getStatusHistory().isEmpty()) {
-            return List.of();
-        }
-        List<ArbitrationSubmission> legacy = new java.util.ArrayList<>();
-        for (OrderStatusHistoryEntry entry : order.getStatusHistory()) {
-            if (entry.note() == null) continue;
-            if (entry.note().startsWith("ARBITRATION_REQUESTED:")) {
-                String reason = entry.note().substring("ARBITRATION_REQUESTED:".length()).trim();
-                legacy.add(new ArbitrationSubmission(
-                    null, order.getId(), entry.operatorId(), "INITIATOR", reason,
-                    null, 0, entry.changedAt()
-                ));
-            }
-        }
-        return legacy;
     }
 
     private boolean canAcceptDemand(Demand demand, Order relatedOrder, CurrentUser currentUser) {

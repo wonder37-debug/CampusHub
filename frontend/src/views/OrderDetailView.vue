@@ -60,6 +60,7 @@ onUnmounted(() => {
 const showImageViewer = ref(false)
 const viewerInitialIndex = ref(0)
 const viewerImages = ref<string[]>([])
+let viewerVersion = 0
 
 function revokeViewerBlobs() {
   viewerImages.value.forEach(u => {
@@ -68,12 +69,14 @@ function revokeViewerBlobs() {
 }
 
 function closeImageViewer() {
+  viewerVersion++
   revokeViewerBlobs()
   viewerImages.value = []
   showImageViewer.value = false
 }
 
 function openImageViewer(imagesOrIndex: string[] | number, idx?: number) {
+  viewerVersion++
   revokeViewerBlobs()
   if (Array.isArray(imagesOrIndex)) {
     const index = idx ?? 0
@@ -88,13 +91,20 @@ function openImageViewer(imagesOrIndex: string[] | number, idx?: number) {
 }
 
 async function openPrivateImageViewer(urls: string[], idx: number) {
+  viewerVersion++
   revokeViewerBlobs()
   viewerImages.value = urls
   viewerInitialIndex.value = idx
   showImageViewer.value = true
+  const expectedVersion = viewerVersion
   const blobUrls = await Promise.all(
     urls.map(url => store.fetchProofImageBlob(url).catch(() => url))
   )
+  if (expectedVersion !== viewerVersion) {
+    blobUrls.forEach(u => { if (u.startsWith('blob:')) URL.revokeObjectURL(u) })
+    return
+  }
+  revokeViewerBlobs()
   viewerImages.value = blobUrls
 }
 

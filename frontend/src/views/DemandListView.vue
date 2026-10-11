@@ -58,9 +58,9 @@ function filteredDemandItems(source: DemandRecord[]): DemandRecord[] {
 
   return source
     .filter((demand) => {
-      // 审核中需求仅对发布者本人可见，不公开展示
+      // 审核中需求不在公开大厅展示，发布者可在个人订单页查看
       if (demand.status === 'REVIEWING') {
-        return demand.publisherId === store.currentUser?.id
+        return false
       }
       return !['EXPIRED', 'CANCELLED'].includes(demand.status)
     })
@@ -73,9 +73,7 @@ function filteredDemandItems(source: DemandRecord[]): DemandRecord[] {
         return demand.status === 'IN_PROGRESS'
       }
       if (selectedStatus === 'PENDING') {
-        if (demand.status === 'PENDING') return true
-        if (demand.status === 'REVIEWING' && demand.publisherId === store.currentUser?.id) return true
-        return false
+        return demand.status === 'PENDING'
       }
       return demand.status === selectedStatus
     })
