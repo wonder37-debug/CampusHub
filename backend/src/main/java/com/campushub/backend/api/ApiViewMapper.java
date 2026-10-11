@@ -589,7 +589,6 @@ public class ApiViewMapper {
                 && entry.fromStatus() == OrderStatus.IN_PROGRESS
                 && entry.toStatus() == OrderStatus.IN_PROGRESS
                 && ("PROVIDER_CONFIRMED_COMPLETION".equals(entry.note())
-                    || "REQUESTER_CONFIRMED_COMPLETION".equals(entry.note())
-                    || "已确认完成，等待对方确认。".equals(entry.note())));
+                    || "REQUESTER_CONFIRMED_COMPLETION".equals(entry.note())));
     }
 }

@@ -36,8 +36,11 @@ const proofImages = ref<string[]>([])
 const submitting = ref(false)
 
 const proofImageBlobUrls = ref<string[]>([])
+let proofVersion = 0
 
 watch(() => order.value?.proofImageUrls, async (urls) => {
+  proofVersion++
+  const expectedVersion = proofVersion
   proofImageBlobUrls.value.forEach(u => {
     if (u.startsWith('blob:')) URL.revokeObjectURL(u)
   })
@@ -46,10 +49,15 @@ watch(() => order.value?.proofImageUrls, async (urls) => {
   const blobUrls = await Promise.all(
     urls.map(url => store.fetchProofImageBlob(url).catch(() => url))
   )
+  if (expectedVersion !== proofVersion) {
+    blobUrls.forEach(u => { if (u.startsWith('blob:')) URL.revokeObjectURL(u) })
+    return
+  }
   proofImageBlobUrls.value = blobUrls
 }, { immediate: true })
 
 onUnmounted(() => {
+  proofVersion++
   proofImageBlobUrls.value.forEach(u => {
     if (u.startsWith('blob:')) URL.revokeObjectURL(u)
   })
@@ -167,15 +175,6 @@ function formatTimelineLabel(label: string, operatorId?: string): string {
     }
     if (operatorId === order.value.serviceProviderId) {
       return isProvider.value ? '你发起了争议仲裁' : '接单方发起了争议仲裁'
-    }
-  }
-  // 旧格式文本兼容：根据 operatorId 判断角色后个性化
-  if (label === '已确认完成，等待对方确认' && operatorId && order.value) {
-    const isProviderAction = operatorId === order.value.serviceProviderId
-    if (isProviderAction) {
-      return isProvider.value ? '你已确认完成，等待需求方确认' : '接单方已确认完成，等待你的确认'
-    } else {
-      return isRequester.value ? '你已确认完成，等待接单方确认' : '需求方已确认完成，等待你的确认'
     }
   }
   return label
@@ -605,7 +604,7 @@ onMounted(() => {
       <p v-if="error" class="hero-badge" style="background: rgba(181, 71, 71, 0.14); color: var(--danger)">{{ error }}</p>
 
       <!-- 订单操作 -->
-      <div v-if="hasAvailableActions || canRequestArbitration" class="order-actions-section">
+      <div v-if="hasAvailableActions || canRequestArbitration || order.canSubmitArbitrationResponse" class="order-actions-section">
         <p class="eyebrow">订单操作</p>
         <div class="card-actions">
           <button v-if="order.status === 'ACCEPTED' && isProvider" type="button" class="button primary" :disabled="submitting" @click="startOrder">{{ submitting ? '处理中...' : '开始执行' }}</button>

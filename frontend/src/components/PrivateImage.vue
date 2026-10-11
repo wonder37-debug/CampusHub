@@ -28,7 +28,10 @@ async function loadBlob(url: string, expectedVersion: number) {
     return
   }
   const fetched = await store.fetchProofImageBlob(url).catch(() => url)
-  if (expectedVersion !== version) return
+  if (expectedVersion !== version) {
+    if (fetched.startsWith('blob:')) URL.revokeObjectURL(fetched)
+    return
+  }
   revokeCurrent()
   blobUrl.value = fetched
 }

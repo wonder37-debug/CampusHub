@@ -321,7 +321,7 @@ class DemandApplicationServiceImplTest {
     }
 
     @Test
-    void shouldSupportErrandCategoryAndLegacyAlias() {
+    void shouldSupportErrandCategory() {
         DemandDetailResponse errandDemand = demandApplicationService.publish(
             publisherId,
             new PublishDemandCommand(
@@ -342,29 +342,8 @@ class DemandApplicationServiceImplTest {
                 null
             )
         );
-        DemandDetailResponse legacyAliasDemand = demandApplicationService.publish(
-            publisherId,
-            new PublishDemandCommand(
-                "顺路代办",
-                "走流程代办",
-                null,
-                "RUN_ERRAND",
-                "GULOU",
-                "行政楼",
-                null,
-                null,
-                BigDecimal.ZERO,
-                List.of(),
-                null,
-                null,
-                false,
-                null,
-                null
-            )
-        );
 
         assertEquals("ERRAND", errandDemand.category());
-        assertEquals("ERRAND", legacyAliasDemand.category());
     }
 
     @Test

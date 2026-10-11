@@ -1349,4 +1349,108 @@ class DemandResponseApplicationServiceImplTest {
             demandRepository.save(saved);
         });
     }
+
+    // ==================== 审核中状态拒绝响应 ====================
+
+    @Test
+    void shouldRejectResponseForReviewingDemand() {
+        Long demandId = demandApplicationService.publish(
+            publisherId,
+            new PublishDemandCommand(
+                "待审核需求", "描述", null, "SECOND_HAND", "XIANLIN", "宿舍",
+                LocalDateTime.now().plusHours(1), LocalDateTime.now().plusDays(3),
+                new BigDecimal("5.00"), List.of("教材"), null, null, false, null, null
+            )
+        ).id();
+        // 不调用 approveDemand，demand 仍处于 REVIEWING + isApproved=false
+
+        BusinessException ex = assertThrows(BusinessException.class, () ->
+            demandResponseApplicationService.createResponse(
+                responder1Id, demandId, new CreateDemandResponseCommand("审核中就报名"))
+        );
+        assertEquals(ErrorCode.BUSINESS_CONFLICT, ex.getErrorCode());
+    }
+
+    @Test
+    void shouldRejectResponseForCancelledDemand() {
+        Long demandId = createSecondHandDemand();
+        demandRepository.findById(demandId).ifPresent(saved -> {
+            saved.setStatus(DemandStatus.CANCELLED);
+            demandRepository.save(saved);
+        });
+
+        BusinessException ex = assertThrows(BusinessException.class, () ->
+            demandResponseApplicationService.createResponse(
+                responder1Id, demandId, new CreateDemandResponseCommand("已取消还报名"))
+        );
+        assertEquals(ErrorCode.BUSINESS_CONFLICT, ex.getErrorCode());
+    }
+
+    // ==================== 模式互斥约束 ====================
+
+    @Test
+    void interactionModeConstraintsAreMutuallyExclusive() {
+        // HELP 模式允许同一用户多次回答
+        Long helpDemandId = createHelpDemand(new BigDecimal("10.00"));
+        demandResponseApplicationService.createResponse(
+            responder1Id, helpDemandId, new CreateDemandResponseCommand("回答1"));
+        demandResponseApplicationService.createResponse(
+            responder1Id, helpDemandId, new CreateDemandResponseCommand("回答2"));
+        assertEquals(2, demandResponseRepository.findByDemandId(helpDemandId).size(),
+            "HELP 模式应允许同一用户提交多条回答");
+
+        // SELECT_ONE 模式不允许同一用户重复报名
+        Long selectOneDemandId = createSecondHandDemand();
+        demandResponseApplicationService.createResponse(
+            responder1Id, selectOneDemandId, new CreateDemandResponseCommand("报名"));
+        BusinessException selectOneEx = assertThrows(BusinessException.class, () ->
+            demandResponseApplicationService.createResponse(
+                responder1Id, selectOneDemandId, new CreateDemandResponseCommand("再次报名"))
+        );
+        assertEquals(ErrorCode.BUSINESS_CONFLICT, selectOneEx.getErrorCode());
+
+        // SELECT_MANY 模式不允许同一用户重复报名
+        Long selectManyDemandId = createTeamUpDemand(3);
+        demandResponseApplicationService.createResponse(
+            responder1Id, selectManyDemandId, new CreateDemandResponseCommand("组队报名"));
+        BusinessException selectManyEx = assertThrows(BusinessException.class, () ->
+            demandResponseApplicationService.createResponse(
+                responder1Id, selectManyDemandId, new CreateDemandResponseCommand("重复组队报名"))
+        );
+        assertEquals(ErrorCode.BUSINESS_CONFLICT, selectManyEx.getErrorCode());
+
+        // HELP 模式不能走 SELECT_ONE 的 selectResponse
+        BusinessException helpSelectEx = assertThrows(BusinessException.class, () ->
+            demandResponseApplicationService.selectResponse(publisherId, helpDemandId, 999L)
+        );
+        assertEquals(ErrorCode.BUSINESS_CONFLICT, helpSelectEx.getErrorCode());
+
+        // SELECT_ONE 不能走 SELECT_MANY 的 selectResponses
+        BusinessException selectOneManyEx = assertThrows(BusinessException.class, () ->
+            demandResponseApplicationService.selectResponses(
+                publisherId, selectOneDemandId, new SelectResponsesCommand(List.of(999L)))
+        );
+        assertEquals(ErrorCode.BUSINESS_CONFLICT, selectOneManyEx.getErrorCode());
+    }
+
+    @Test
+    void selectManyFirstRegistrationSucceeds() {
+        Long demandId = createTeamUpDemand(3);
+
+        DemandResponseDetail r1 = demandResponseApplicationService.createResponse(
+            responder1Id, demandId, new CreateDemandResponseCommand("首次报名"));
+        assertEquals("PENDING", r1.status(), "首次报名应成功");
+
+        // 不同用户也可以报名
+        DemandResponseDetail r2 = demandResponseApplicationService.createResponse(
+            responder2Id, demandId, new CreateDemandResponseCommand("第二人报名"));
+        assertEquals("PENDING", r2.status(), "不同用户应可报名");
+
+        // 选中后进度更新
+        demandResponseApplicationService.selectResponses(
+            publisherId, demandId, new SelectResponsesCommand(List.of(r1.id())));
+        assertEquals(1L, demandResponseRepository.countSelectedByDemandId(demandId));
+        assertEquals(DemandStatus.PENDING, demandRepository.findById(demandId).orElseThrow().getStatus(),
+            "未达 target 时 demand 仍为 PENDING");
+    }
 }

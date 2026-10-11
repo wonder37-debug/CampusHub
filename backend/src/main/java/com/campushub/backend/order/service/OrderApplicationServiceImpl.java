@@ -284,9 +284,18 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         }
 
         List<ArbitrationSubmission> existing = arbitrationSubmissionRepository.findByOrderId(orderId);
-        boolean isInitiator = existing.stream().anyMatch(s -> s.submitterId().equals(operatorId) && "INITIATOR".equals(s.role()));
-        if (isInitiator) {
-            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "arbitration initiator cannot submit response; only the other party can");
+        Long initiatorId = existing.stream()
+            .filter(s -> "INITIATOR".equals(s.role()))
+            .map(ArbitrationSubmission::submitterId)
+            .findFirst()
+            .orElse(null);
+        if (initiatorId == null) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT,
+                "no arbitration initiator submission found; cannot submit response without a valid initiated arbitration");
+        }
+        if (initiatorId.equals(operatorId)) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT,
+                "arbitration initiator cannot submit response; only the other party can");
         }
 
         if (command == null || command.reason() == null || command.reason().isBlank()) {
@@ -313,14 +322,7 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         arbitrationSubmissionRepository.save(submission);
         bindProofImagesAsPrivate(imageUrls, order.getId());
 
-        Long initiatorId = existing.stream()
-            .filter(s -> "INITIATOR".equals(s.role()))
-            .map(ArbitrationSubmission::submitterId)
-            .findFirst()
-            .orElse(null);
-        if (initiatorId != null) {
-            notificationApplicationService.notifyOrderStatusChanged(initiatorId, order.getId(), OrderStatus.IN_ARBITRATION, true);
-        }
+        notificationApplicationService.notifyArbitrationResponseSubmitted(initiatorId, order.getId(), operatorId, reason);
         for (User admin : userRepository.findByRole(UserRole.ADMIN)) {
             notificationApplicationService.notifyArbitrationResponseSubmitted(admin.getId(), order.getId(), operatorId, reason);
         }

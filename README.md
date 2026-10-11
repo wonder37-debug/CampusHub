@@ -279,6 +279,18 @@ npm run dev
 
 连接 URL 中已包含 `createDatabaseIfNotExist=true`，数据库会自动创建。
 
+### 本地数据库重建
+
+当需要从零重建本地开发数据库时（例如 schema 变更后清理旧数据），使用专用重建脚本：
+
+```bash
+mysql -u root -p < backend/scripts/rebuild-local-db.sql
+```
+
+脚本内含安全校验：仅当连接来源为 `localhost` 或 `127.0.0.1` 时才执行 `DROP DATABASE`，非本地连接会报错中止。重建后重启应用，`init_schema.sql` 会自动完成建表和默认数据初始化。
+
+> **警告**：此操作会删除 `campushub` 数据库中的所有数据，仅限本地开发使用。
+
 ### 邮箱验证码配置
 
 注册和密码重置流程需要邮箱验证码。未配置 SMTP 时系统自动退化为控制台日志输出，不会阻塞启动。
