@@ -9,6 +9,7 @@
 
     覆盖：
       * 各类校验失败（非 MySQL、连接失败、端口不符、无法确认本机、核对库失败）→ 立即终止且不删除
+        （服务端身份仅凭 hostname 等于本机计算机名确认；回环/通配监听地址不算本机依据）
       * 重建命令自身失败 → 立即终止
       * 确认未通过 → 不删除数据库
       * 目标数据库不可通过参数指定
@@ -79,6 +80,30 @@ function Assert-That {
 #   mysql.cmd  —— 原样记录命令行后转交 mysql.ps1（< NUL 避免抢占被测脚本的 stdin）
 #   mysql.ps1  —— 按 CAMPUSHUB_STUB_* 环境变量应答
 # ------------------------------------------------------------------
+function ConvertTo-WindowsArgument {
+    <#
+    .SYNOPSIS
+        按Windows 命令行规则转义单个参数。
+    .DESCRIPTION
+        Windows PowerShell 5.1 的 Start-Process 拼接 -ArgumentList 数组时只以空格连接、
+        不加引号，路径或密码含空格时命令行会断裂；PowerShell 7.4+ 对单字符串参数不再
+        二次加引号。统一在这里转义后拼成单个字符串传入，两种宿主行为一致。
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
+        [string]$Value
+    )
+
+    if ($Value -eq '') { return '""' }
+    if ($Value -notmatch '[\s"]') { return $Value }
+
+    # 引号前的连续反斜杠翻倍并把引号转义为 \"；结尾的连续反斜杠同样翻倍
+    $escaped = [regex]::Replace($Value, '(\\+)"', '$1$1\"')
+    $escaped = [regex]::Replace($escaped, '(\\+)$', '$1$1')
+    return '"' + $escaped + '"'
+}
+
 function New-MySqlStub {
     param([string]$Directory)
 
@@ -181,9 +206,13 @@ function Invoke-RebuildScript {
     if ($Password) { $argList += @('-DbPassword', $Password) }
     $argList += $Arguments
 
+    # 转义为单个命令行字符串：见 ConvertTo-WindowsArgument 的说明，
+    # 避免脚本路径或密码含空格时被 Start-Process 拼接断裂
+    $argumentLine = ($argList | ForEach-Object { ConvertTo-WindowsArgument -Value $_ }) -join ' '
+
     $exitCode = -1
     try {
-        $proc = Start-Process -FilePath $script:PowerShellHost -ArgumentList $argList `
+        $proc = Start-Process -FilePath $script:PowerShellHost -ArgumentList $argumentLine `
             -NoNewWindow -Wait -PassThru `
             -RedirectStandardInput $stdinFile `
             -RedirectStandardOutput $stdoutFile `
@@ -269,7 +298,10 @@ try {
     Write-TestHead '准备假 mysql 客户端'
     New-MySqlStub -Directory $script:StubDir
     $env:PATH = "$($script:StubDir);$env:PATH"
-    Assert-StubIsResolved | Out-Null
+    # 安全闸：若桩未被解析，立即终止整个测试，绝不继续执行可能触达真实 mysql 的破坏性用例
+    if (-not (Assert-StubIsResolved)) {
+        throw 'mysql 未解析到测试桩，为避免误连真实数据库立即终止测试'
+    }
 
     $env:CAMPUSHUB_STUB_RAW_LOG = Join-Path $script:StubDir 'raw.log'
     $env:CAMPUSHUB_STUB_LOG = Join-Path $script:StubDir 'parsed.log'
@@ -366,14 +398,30 @@ try {
     Assert-That -Name '输出包含 [ERROR]' -Condition ($r.Combined -match '\[ERROR\]')
 
     # ------------------------------------------------------------
-    Write-TestHead '边界：容器/端口映射场景（hostname 非本机名但监听回环）'
+    Write-TestHead '边界：容器/端口映射场景（hostname 非本机名）拒绝重建'
     Reset-StubLogs
     $r = Invoke-RebuildScript -ScriptPath $autoConfirm -StubEnv @{
         CAMPUSHUB_STUB_HOSTNAME     = 'a1b2c3d4e5f6'
         CAMPUSHUB_STUB_BIND_ADDRESS = '0.0.0.0'
     }
-    Assert-That -Name '本地容器 MySQL 允许重建（退出码为 0）' -Condition ($r.ExitCode -eq 0) -Detail "exit=$($r.ExitCode); out=$($r.StdOut)"
-    Assert-That -Name '已执行 DROP DATABASE' -Condition ((Get-StubRawLog) -match 'DROP DATABASE')
+    Assert-That -Name '容器场景（通配监听 + 非本机 hostname）拒绝重建' -Condition ($r.ExitCode -ne 0) -Detail "exit=$($r.ExitCode); out=$($r.StdOut)"
+    Assert-That -Name '未执行任何 DROP DATABASE' -Condition ((Get-StubRawLog) -notmatch 'DROP DATABASE')
+
+    Reset-StubLogs
+    $r = Invoke-RebuildScript -ScriptPath $autoConfirm -StubEnv @{
+        CAMPUSHUB_STUB_HOSTNAME     = 'remote-db-host'
+        CAMPUSHUB_STUB_BIND_ADDRESS = '*'
+    }
+    Assert-That -Name '隧道场景（通配监听 + 远程 hostname）拒绝重建' -Condition ($r.ExitCode -ne 0) -Detail "exit=$($r.ExitCode); out=$($r.StdOut)"
+    Assert-That -Name '未执行任何 DROP DATABASE' -Condition ((Get-StubRawLog) -notmatch 'DROP DATABASE')
+
+    Reset-StubLogs
+    $r = Invoke-RebuildScript -ScriptPath $autoConfirm -StubEnv @{
+        CAMPUSHUB_STUB_HOSTNAME     = 'remote-db-host'
+        CAMPUSHUB_STUB_BIND_ADDRESS = '127.0.0.1'
+    }
+    Assert-That -Name '隧道场景（回环监听 + 远程 hostname）拒绝重建' -Condition ($r.ExitCode -ne 0) -Detail "exit=$($r.ExitCode); out=$($r.StdOut)"
+    Assert-That -Name '未执行任何 DROP DATABASE' -Condition ((Get-StubRawLog) -notmatch 'DROP DATABASE')
 
     # ------------------------------------------------------------
     Write-TestHead '边界：目标数据库不存在时直接创建'

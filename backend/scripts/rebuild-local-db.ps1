@@ -12,7 +12,8 @@
       1. mysql 客户端可用（只接受 PATH 中的可执行文件）；
       2. 运行期复核硬编码目标仍为 127.0.0.1:3306/campushub；
       3. MySQL 连接成功，且服务端身份被确认为本机 MySQL
-         （端口一致 + MySQL/MariaDB 版本 + 主机名或监听地址落在本机）；
+         （端口一致 + MySQL/MariaDB 版本 + 服务端主机名等于本机计算机名；
+          回环/通配监听地址不作为本机依据）；
       4. 用户输入 YES 明确确认。
 
     mysql 客户端的进程退出码是唯一失败判据：连接失败、查询失败、
@@ -26,10 +27,12 @@
 
 .PARAMETER DbPassword
     本地 MySQL 密码。未显式传入时依次尝试环境变量 DB_PASSWORD、交互式输入。
+    通过命令行传入的密码可能进入 shell 历史记录，建议优先使用环境变量或交互式输入。
 
 .EXAMPLE
     .\rebuild-local-db.ps1
-    .\rebuild-local-db.ps1 -DbPassword "yourpassword"
+
+    优先通过环境变量 DB_PASSWORD 或交互式输入提供密码，避免密码进入命令行历史。
 
 .NOTES
     此脚本会删除 campushub 中的全部数据，仅限本地开发环境。
@@ -216,12 +219,12 @@ if (($serverVersion -notmatch 'mysql|mariadb') -and ($serverComment -notmatch 'm
     Write-Fail "服务端不是 MySQL（版本: $serverVersion，备注: $serverComment），终止"
 }
 
-# 3c. 服务端身份必须能确认为本机：监听地址落在回环/通配，或主机名就是本机名
-$loopbackBindAddresses = @('127.0.0.1', '::1', 'localhost', '*', '0.0.0.0', '::')
-$bindAddressIsLocal = $loopbackBindAddresses -contains $serverBindAddress.ToLowerInvariant()
-$hostnameIsLocal = [bool]$serverHostname -and ($serverHostname -ieq $env:COMPUTERNAME)
-if (-not $bindAddressIsLocal -and -not $hostnameIsLocal) {
-    Write-Fail "无法确认服务端运行在本机（hostname: $serverHostname，bind_address: $serverBindAddress），终止"
+# 3c. 服务端身份必须能确认为本机：@@hostname 必须等于本机计算机名。
+#     监听地址（回环或通配）不能作为本机依据：127.0.0.1:3306 可能是 SSH 隧道或
+#     容器端口映射的入口，其背后的 MySQL 报告的 bind_address 与真实本机实例无从
+#     区分，唯有主机名一致才足以确认目标在本机；无法确认时立即终止。
+if ($serverHostname -ine $env:COMPUTERNAME) {
+    Write-Fail "无法确认服务端运行在本机（服务端 hostname: $serverHostname，本机计算机名: $env:COMPUTERNAME，bind_address: $serverBindAddress），终止"
 }
 
 Write-Host "  服务端身份: MySQL $serverVersion / hostname=$serverHostname / bind_address=$serverBindAddress" -ForegroundColor Green

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, onMounted, watch, onUnmounted } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { handleError } from '@/utils/errorHandler'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -35,12 +35,9 @@ const proofImages = ref<string[]>([])
 // 关键操作（开始执行/提交完成/取消/评价/仲裁）防重复点击 loading
 const submitting = ref(false)
 
-watch(() => order.value?.proofImageUrls, () => {
-  // PrivateImage 组件自行管理 Blob URL 生命周期，无需在此预加载
-}, { immediate: true })
-
 onUnmounted(() => {
-  revokeViewerBlobs()
+  // 递增版本号让在途的 openPrivateImageViewer 结果作废，避免卸载后新 Blob URL 泄漏
+  resetViewer()
 })
 
 // Image viewer
@@ -129,13 +126,11 @@ const hasSubmittedReview = computed(() => {
 })
 
 const completionHint = computed(() => order.value?.completionHint ?? '')
-const pendingReviewTarget = computed(() => order.value?.pendingReviewTarget ?? '')
+// 后端在匿名需求下对接单方隐藏发布者真实 ID，因此不按 ID 匹配，改按视角相对展示待评价对象
 const pendingReviewTargetLabel = computed(() => {
-  const targetId = pendingReviewTarget.value
-  if (!targetId || !order.value) return ''
-  // Use order's own participant names rather than an unreliable user lookup
-  if (String(targetId) === String(order.value.serviceProviderId)) return order.value.serviceProviderName || '接单方'
-  if (String(targetId) === String(order.value.requesterId)) return order.value.requesterName || '需求方'
+  if (!order.value || order.value.status !== 'COMPLETED' || hasSubmittedReview.value) return ''
+  if (isProvider.value) return order.value.requesterName || '需求方'
+  if (isRequester.value) return order.value.serviceProviderName || '接单方'
   return ''
 })
 

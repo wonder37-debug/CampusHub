@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onUnmounted } from 'vue'
+import { computed, ref, watch, onUnmounted, useAttrs } from 'vue'
 import { useCampusHubStore } from '@/stores/campusHub'
 
 const props = defineProps<{
@@ -10,6 +10,20 @@ const props = defineProps<{
   borderRadius?: string
   cursor?: string
 }>()
+
+const attrs = useAttrs()
+// 父组件传入 @click 时（fallthrough 到 attrs.onClick），容器必须可聚焦且支持键盘触发，
+// 否则纯鼠标可用的预览入口对键盘用户不可达
+const isInteractive = computed(() => typeof attrs.onClick === 'function')
+
+function onKeydown(e: KeyboardEvent) {
+  if (!isInteractive.value) return
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault()
+    const clickHandler = attrs.onClick as ((event: MouseEvent) => void) | undefined
+    clickHandler?.(new MouseEvent('click'))
+  }
+}
 
 const store = useCampusHubStore()
 const objectUrl = ref('')
@@ -68,6 +82,10 @@ onUnmounted(() => {
   <!-- 单一根节点：保证父组件传入的 @click 等 fallthrough 属性能落到真实 DOM 上 -->
   <div
     class="private-image"
+    :tabindex="isInteractive ? 0 : undefined"
+    :role="isInteractive ? 'button' : undefined"
+    :aria-label="isInteractive ? (alt || '私密凭证图片') : undefined"
+    @keydown="onKeydown"
     :style="{
       width: width ?? '80px',
       height: height ?? '80px',
@@ -102,6 +120,11 @@ onUnmounted(() => {
   border: 1px solid rgba(0, 0, 0, 0.08);
   overflow: hidden;
   flex: 0 0 auto;
+}
+
+.private-image:focus-visible {
+  outline: 2px solid var(--muted);
+  outline-offset: 2px;
 }
 
 .private-image-img {

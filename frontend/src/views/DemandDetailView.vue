@@ -88,7 +88,8 @@ async function openPrivateImageViewer(urls: string[], idx: number) {
 }
 
 onUnmounted(() => {
-  revokeViewerBlobs()
+  // 递增版本号让在途的 openPrivateImageViewer 结果作废，避免卸载后新 Blob URL 泄漏
+  resetViewer()
 })
 
 async function refreshDemand(): Promise<void> {

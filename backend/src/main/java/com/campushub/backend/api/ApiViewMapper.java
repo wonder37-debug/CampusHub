@@ -198,7 +198,8 @@ public class ApiViewMapper {
             order.getId(),
             order.getStatus().name(),
             order.getDemandId(),
-            order.getPublisherId(),
+            // 匿名需求下无权识别发布者的查看者不得拿到真实 publisherId（可通过用户接口反查真实昵称）
+            canSeePublisher ? order.getPublisherId() : null,
             order.getAccepterId(),
             canSeeOrderPrivate ? order.getAcceptNote() : null,
             canSeeOrderPrivate && order.isProofSubmitted(),
@@ -210,10 +211,11 @@ public class ApiViewMapper {
             demand == null ? null : toDemandView(demand, currentUser, userMap, orderByDemandMap),
             requester == null ? null : anonymizePublicUserSummary(PublicUserSummaryView.from(requester), canSeePublisher, anonymousCode),
             provider == null ? null : PublicUserSummaryView.from(provider),
-            canSeeOrderPrivate ? order.getStatusHistory().stream().map(this::toTimelineView).toList() : List.of(),
+            canSeeOrderPrivate ? order.getStatusHistory().stream()
+                .map(entry -> toTimelineView(entry, order.getPublisherId(), canSeePublisher)).toList() : List.of(),
             reviews,
             currentUserReviewed,
-            resolvePendingReviewTarget(order, currentUser, currentUserReviewed),
+            resolvePendingReviewTarget(order, currentUser, currentUserReviewed, canSeePublisher),
             resolveCompletionHint(order, currentUser),
             demand == null ? List.of() : demand.getImages(),
             resolveContactInfo(demand, order, currentUser),
@@ -364,12 +366,15 @@ public class ApiViewMapper {
         );
     }
 
-    private OrderTimelineView toTimelineView(OrderStatusHistoryEntry entry) {
+    private OrderTimelineView toTimelineView(OrderStatusHistoryEntry entry, Long publisherId, boolean canSeePublisher) {
+        // 匿名需求下发布者操作的时间线条目不得携带其真实 operatorId
+        Long operatorId = !canSeePublisher && publisherId != null && publisherId.equals(entry.operatorId())
+            ? null : entry.operatorId();
         return new OrderTimelineView(
             entry.changedAt(),
             entry.fromStatus() == null ? null : entry.fromStatus().name(),
             entry.toStatus().name(),
-            entry.operatorId(),
+            operatorId,
             entry.note()
         );
     }
@@ -440,8 +445,10 @@ public class ApiViewMapper {
                     User submitter = userRepository.findById(s.submitterId()).orElse(null);
                     submitterName = submitter != null ? submitter.getNickname() : "用户" + s.submitterId();
                 }
+                // submitterId 与名称遵循同一规则：发布方举证的真实 ID 不得暴露给无权识别发布者的查看者
+                Long submitterId = isPublisherSubmission && !canSeePublisherIdentity ? null : s.submitterId();
                 return new ArbitrationSubmissionView(
-                    s.id(), s.submitterId(), submitterName, s.role(), s.reason(),
+                    s.id(), submitterId, submitterName, s.role(), s.reason(),
                     s.imageUrls(), s.imageCount(), s.submittedAt()
                 );
             })
@@ -535,7 +542,7 @@ public class ApiViewMapper {
         return studentId.substring(0, prefixLength) + "***" + studentId.substring(studentId.length() - suffixLength);
     }
 
-    private Long resolvePendingReviewTarget(Order order, CurrentUser currentUser, boolean currentUserReviewed) {
+    private Long resolvePendingReviewTarget(Order order, CurrentUser currentUser, boolean currentUserReviewed, boolean canSeePublisher) {
         if (order == null || currentUser == null || currentUserReviewed || order.getStatus() != OrderStatus.COMPLETED) {
             return null;
         }
@@ -543,7 +550,8 @@ public class ApiViewMapper {
             return order.getAccepterId();
         }
         if (currentUser.userId().equals(order.getAccepterId())) {
-            return order.getPublisherId();
+            // 匿名需求下接单方无权得知发布者真实 ID，待评价对象仅由前端按角色展示
+            return canSeePublisher ? order.getPublisherId() : null;
         }
         return null;
     }

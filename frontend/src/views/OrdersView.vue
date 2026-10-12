@@ -302,9 +302,10 @@ onMounted(() => {
         <SkeletonCard v-for="n in 4" :key="n" />
       </div>
 
-      <div v-else-if="!visibleOrders.length && reviewingDemands.length === 0" class="empty-state" style="--empty-icon:'📦'">
+      <div v-else-if="!visibleOrders.length && (activeTab !== 'published' || reviewingDemands.length === 0)" class="empty-state" style="--empty-icon:'📦'">
         <strong>暂无订单</strong>
-        <p>发布需求并等同学接单后，订单会出现在这里。</p>
+        <p v-if="activeTab === 'published'">发布需求并等同学接单后，订单会出现在这里。</p>
+        <p v-else>去<a href="/demands" @click.prevent="router.push('/demands')" style="text-decoration: underline; cursor: pointer; color: var(--primary);">需求列表</a>接下第一个需求，订单会出现在这里。</p>
       </div>
 
       <!-- 审核中的需求（独立区域，仅在"我发布的订单"页签显示） -->

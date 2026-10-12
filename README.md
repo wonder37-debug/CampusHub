@@ -285,13 +285,11 @@ npm run dev
 
 ```powershell
 .\backend\scripts\rebuild-local-db.ps1
-# 或指定密码
-.\backend\scripts\rebuild-local-db.ps1 -DbPassword "yourpassword"
 ```
 
 脚本执行流程：
 1. 固定连接 `127.0.0.1:3306`，目标数据库固定为 `campushub`，二者均硬编码、不接受参数覆盖；运行期会再次复核这三个值
-2. 通过 `mysql` 客户端连接，并核对服务端身份：端口必须为 `3306`、版本信息必须表明是 MySQL/MariaDB、主机名等于本机名或监听地址落在回环/通配地址
+2. 通过 `mysql` 客户端连接，并核对服务端身份：端口必须为 `3306`、版本信息必须表明是 MySQL/MariaDB、服务端主机名必须等于本机计算机名（回环/通配监听地址不作为本机依据，避免误删 SSH 隧道或容器端口映射背后的远程库）；密码建议通过 `DB_PASSWORD` 环境变量或交互式输入提供，避免进入命令行历史
 3. 核对目标数据库是否存在及其表数量
 4. 要求用户输入 `YES` 明确确认删除操作
 5. 执行 `DROP DATABASE` + `CREATE DATABASE`（utf8mb4 / utf8mb4_unicode_ci）
