@@ -34,6 +34,8 @@ const reviewingResponseId = ref<string | null>(null)
 const showImageViewer = ref(false)
 const viewerInitialIndex = ref(0)
 const viewerImages = ref<string[]>([])
+// 与 viewerImages 等长：空字符串表示加载中/可正常显示，非空表示该张凭证加载失败的原因
+const viewerFailures = ref<string[]>([])
 let viewerVersion = 0
 
 function revokeViewerBlobs() {
@@ -42,28 +44,47 @@ function revokeViewerBlobs() {
   })
 }
 
+/** 关闭/切换预览前的统一清理：自增版本号让在途请求作废，并释放已创建的 Blob URL */
+function resetViewer() {
+  viewerVersion++
+  revokeViewerBlobs()
+  viewerImages.value = []
+  viewerFailures.value = []
+}
+
+function closeImageViewer() {
+  resetViewer()
+  showImageViewer.value = false
+}
+
 function openImageViewer(index: number) {
+  resetViewer()
   viewerImages.value = demand.value?.images ?? []
   viewerInitialIndex.value = index
+  viewerFailures.value = viewerImages.value.map(() => '')
   showImageViewer.value = true
 }
 
 async function openPrivateImageViewer(urls: string[], idx: number) {
-  viewerVersion++
-  revokeViewerBlobs()
-  viewerImages.value = urls
+  resetViewer()
   viewerInitialIndex.value = idx
+  // 先用空占位打开预览：私密凭证必须等带鉴权的请求成功后才能显示，
+  // 不能先把原始 URL 交给 <img>，那会绕过服务端鉴权直接 401
+  viewerImages.value = urls.map(() => '')
+  viewerFailures.value = urls.map(() => '凭证加载中…')
   showImageViewer.value = true
   const expectedVersion = viewerVersion
-  const blobUrls = await Promise.all(
-    urls.map(url => store.fetchProofImageBlob(url).catch(() => url))
-  )
+  const results = await Promise.all(urls.map(url => store.fetchProofImageBlob(url)))
   if (expectedVersion !== viewerVersion) {
-    blobUrls.forEach(u => { if (u.startsWith('blob:')) URL.revokeObjectURL(u) })
+    // 预览已被切换/关闭：丢弃结果，同时释放本次新创建的 Blob URL，避免泄漏
+    results.forEach(r => {
+      if (r.ok) URL.revokeObjectURL(r.objectUrl)
+    })
     return
   }
   revokeViewerBlobs()
-  viewerImages.value = blobUrls
+  viewerImages.value = results.map(r => (r.ok ? r.objectUrl : ''))
+  viewerFailures.value = results.map(r => (r.ok ? '' : r.message))
 }
 
 onUnmounted(() => {
@@ -1149,7 +1170,8 @@ onMounted(() => {
     v-if="showImageViewer && viewerImages.length"
     :images="viewerImages"
     :initial-index="viewerInitialIndex"
-    @close="showImageViewer = false; revokeViewerBlobs()"
+    :failure-messages="viewerFailures"
+    @close="closeImageViewer"
   />
 
   <!-- 仲裁对话框 -->

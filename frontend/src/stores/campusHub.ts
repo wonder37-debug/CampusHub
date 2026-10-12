@@ -51,6 +51,46 @@ function cloneUser(account: AccountRecord): PublicUser {
 
 const API_BASE = import.meta.env.VITE_API_BASE || '/api/v1'
 
+/**
+ * 私密凭证（完成凭证、仲裁证据图）的加载结果。
+ *
+ * 私密图片必须始终通过携带 Authorization 的请求获取，成功后由调用方持有 objectUrl
+ * 并负责释放；任何失败都以 ok:false 表达，调用方只能展示失败态，
+ * 绝不能退回原始 URL 用普通 <img> 加载（那会绕过服务端鉴权直接 401）。
+ */
+export type ProofImageLoadResult =
+  | { ok: true; objectUrl: string }
+  | { ok: false; message: string }
+
+/** 私密凭证加载失败时展示给用户的明确提示，按失败原因区分 */
+export const PROOF_IMAGE_ERROR_MESSAGES: Record<string, string> = {
+  emptyUrl: '凭证地址为空，无法加载',
+  noToken: '登录状态已失效，请重新登录后查看凭证',
+  untrustedUrl: '凭证地址不受信任，已停止加载',
+  network: '凭证加载失败，请检查网络后重试',
+  unauthorized: '登录状态已失效，请重新登录后查看凭证',
+  forbidden: '没有权限查看该凭证',
+  http: '凭证加载失败，请稍后重试',
+  emptyBody: '凭证内容为空，无法显示'
+}
+
+/**
+ * 判断资源是否属于当前站点。
+ *
+ * 私密凭证请求会带上 Authorization 头，因此只允许访问同源地址，
+ * 防止后端返回的（或被篡改的）外部 URL 把 JWT 泄露到第三方域。
+ */
+function isSameOriginAssetUrl(url: string): boolean {
+  if (typeof window === 'undefined' || !window.location) return false
+  try {
+    const pageOrigin = window.location.origin
+    if (!pageOrigin || pageOrigin === 'null') return false
+    return new URL(url, window.location.href).origin === pageOrigin
+  } catch {
+    return false
+  }
+}
+
 function unwrapApiPayload<T>(payload: any): T {
   if (payload && typeof payload === 'object' && 'data' in payload) {
     return payload.data as T
@@ -1415,18 +1455,51 @@ export const useCampusHubStore = defineStore('campusHub', {
       }
     },
 
-    async fetchProofImageBlob(url: string): Promise<string> {
-      if (!url || !this.token) return url
-      try {
-        const response = await fetch(url, {
-          headers: { Authorization: `Bearer ${this.token}` }
-        })
-        if (!response.ok) return url
-        const blob = await response.blob()
-        return URL.createObjectURL(blob)
-      } catch {
-        return url
+    async fetchProofImageBlob(url: string): Promise<ProofImageLoadResult> {
+      // 捕获发起请求时的 token，避免 await 期间用户登出/重新登录导致鉴权头与预期不符
+      const triggeringToken = this.token
+      if (!url) {
+        return { ok: false, message: PROOF_IMAGE_ERROR_MESSAGES.emptyUrl }
       }
+      if (!triggeringToken) {
+        return { ok: false, message: PROOF_IMAGE_ERROR_MESSAGES.noToken }
+      }
+      if (!isSameOriginAssetUrl(url)) {
+        // 只从当前站点加载凭证，避免 Authorization 被带到第三方域
+        return { ok: false, message: PROOF_IMAGE_ERROR_MESSAGES.untrustedUrl }
+      }
+
+      let response: Response
+      try {
+        response = await fetch(url, {
+          headers: { Authorization: `Bearer ${triggeringToken}` }
+        })
+      } catch {
+        return { ok: false, message: PROOF_IMAGE_ERROR_MESSAGES.network }
+      }
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          clearExpiredSession(triggeringToken)
+          return { ok: false, message: PROOF_IMAGE_ERROR_MESSAGES.unauthorized }
+        }
+        if (response.status === 403) {
+          return { ok: false, message: PROOF_IMAGE_ERROR_MESSAGES.forbidden }
+        }
+        return { ok: false, message: PROOF_IMAGE_ERROR_MESSAGES.http }
+      }
+
+      let blob: Blob
+      try {
+        blob = await response.blob()
+      } catch {
+        return { ok: false, message: PROOF_IMAGE_ERROR_MESSAGES.network }
+      }
+      if (!blob || blob.size === 0) {
+        return { ok: false, message: PROOF_IMAGE_ERROR_MESSAGES.emptyBody }
+      }
+
+      return { ok: true, objectUrl: URL.createObjectURL(blob) }
     }
   }
 })

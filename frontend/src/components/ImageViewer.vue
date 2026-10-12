@@ -4,6 +4,8 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 const props = defineProps<{
   images: string[]
   initialIndex?: number
+  /** 与 images 等长的说明数组；对应位为空字符串表示加载中或正常，非空表示该张图片加载失败 */
+  failureMessages?: string[]
 }>()
 
 const emit = defineEmits<{
@@ -12,6 +14,7 @@ const emit = defineEmits<{
 
 const currentIndex = ref(props.initialIndex ?? 0)
 const currentImage = computed(() => props.images[currentIndex.value] ?? '')
+const currentFailure = computed(() => props.failureMessages?.[currentIndex.value] ?? '')
 
 function prev() {
   if (currentIndex.value > 0) {
@@ -57,7 +60,12 @@ onBeforeUnmount(() => {
       <button v-if="currentIndex > 0" class="viewer-nav viewer-prev" @click="prev" title="上一张">‹</button>
 
       <div class="viewer-image-wrap">
-        <img :src="currentImage" alt="预览图片" class="viewer-image" />
+        <img v-if="currentImage" :src="currentImage" alt="预览图片" class="viewer-image" />
+        <!-- 私密凭证鉴权失败/仍在加载时展示明确状态，绝不回退到需要鉴权的原始 URL -->
+        <div v-else class="viewer-image-error" data-testid="viewer-image-error">
+          <span class="viewer-image-error-icon" aria-hidden="true">⚠️</span>
+          <p class="viewer-image-error-text">{{ currentFailure || '图片加载中…' }}</p>
+        </div>
       </div>
 
       <button v-if="currentIndex < images.length - 1" class="viewer-nav viewer-next" @click="next" title="下一张">›</button>
@@ -124,6 +132,33 @@ onBeforeUnmount(() => {
   object-fit: contain;
   border-radius: 8px;
   user-select: none;
+}
+
+.viewer-image-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-width: 240px;
+  min-height: 180px;
+  padding: 24px;
+  border: 1px dashed rgba(255, 255, 255, 0.28);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.8);
+  text-align: center;
+}
+
+.viewer-image-error-icon {
+  font-size: 32px;
+  line-height: 1;
+}
+
+.viewer-image-error-text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  max-width: 320px;
 }
 
 .viewer-nav {

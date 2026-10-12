@@ -19,8 +19,12 @@ const maxCount = computed(() => props.maxCount ?? 6)
 const maxSizeBytes = computed(() => (props.maxSizeMB ?? 10) * 1024 * 1024)
 
 const previewUrls = ref<string[]>([])
+// 与 PrivateImage 一致：modelValue 连续变化时自增版本号，丢弃过期请求结果，避免 Blob 泄漏
+let previewVersion = 0
 
 watch(() => [props.modelValue, props.purpose] as const, async ([urls, purpose]) => {
+  previewVersion++
+  const expectedVersion = previewVersion
   previewUrls.value.forEach(u => {
     if (u.startsWith('blob:')) URL.revokeObjectURL(u)
   })
@@ -32,10 +36,21 @@ watch(() => [props.modelValue, props.purpose] as const, async ([urls, purpose]) 
     previewUrls.value = []
     return
   }
-  const blobUrls = await Promise.all(
-    urls.map(url => store.fetchProofImageBlob(url).catch(() => url))
+  const results = await Promise.all(
+    urls.map(url => store.fetchProofImageBlob(url))
   )
-  previewUrls.value = blobUrls
+  if (expectedVersion !== previewVersion) {
+    // 输入已变化：丢弃结果并释放本次新建的 Blob URL
+    results.forEach(r => {
+      if (r.ok) URL.revokeObjectURL(r.objectUrl)
+    })
+    return
+  }
+  previewUrls.value.forEach(u => {
+    if (u.startsWith('blob:')) URL.revokeObjectURL(u)
+  })
+  // 失败项以空字符串占位，模板渲染成失败态；绝不退回原始 URL 走普通 <img>
+  previewUrls.value = results.map(r => (r.ok ? r.objectUrl : ''))
 }, { immediate: true })
 
 onUnmounted(() => {
@@ -180,8 +195,9 @@ function removeImage(index: number) {
 
     <!-- Preview grid -->
     <div v-if="modelValue.length > 0" class="preview-grid">
-      <div v-for="(url, index) in previewUrls" :key="url" class="preview-item">
-        <img :src="url" alt="预览图片" class="preview-img" />
+      <div v-for="(url, index) in previewUrls" :key="index" class="preview-item">
+        <img v-if="url" :src="url" alt="预览图片" class="preview-img" />
+        <div v-else class="preview-fallback" data-testid="preview-fallback">加载失败</div>
         <button type="button" class="remove-btn" @click.stop="removeImage(index)" title="移除图片">×</button>
       </div>
     </div>
@@ -281,6 +297,19 @@ function removeImage(index: number) {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.preview-fallback {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  border: 1px dashed rgba(0, 0, 0, 0.18);
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--text-weak, #888);
+  font-size: 12px;
 }
 
 .remove-btn {
