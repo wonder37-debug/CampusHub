@@ -184,7 +184,9 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
         }
         validateReason(command.reason());
 
-        Demand demand = demandRepository.findById(demandId)
+        // 加 Demand 行锁，确保审核与 DemandExpirationScheduler 并发时不会用旧快照将 EXPIRED 覆盖回 PENDING/CANCELLED，
+        // 也不会因读到过期前状态导致冻结报酬重复解冻（持锁后在同一事务内完成状态/截止时间校验与资金操作）
+        Demand demand = demandRepository.findByIdForUpdate(demandId)
             .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "demand not found"));
         if (demand.getStatus() != DemandStatus.REVIEWING) {
             throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "only reviewing demands can be reviewed");

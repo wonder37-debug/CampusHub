@@ -85,7 +85,9 @@ export function translateApiError(payload: any): string {
     DEMAND_EXPIRED: '该需求已过期，无法接单',
     DEMAND_NOT_PENDING: '该需求当前不处于待接单状态',
     DEMAND_ALREADY_ACCEPTED: '该需求已被其他同学接单',
-    DEMAND_ORDER_CLOSED: '该需求关联订单已关闭，无法接单'
+    DEMAND_ORDER_CLOSED: '该需求关联订单已关闭，无法接单',
+    'accepter has not submitted completion proof yet; publisher cannot confirm completion first': '接单方尚未提交完成凭证，发布者暂不能确认完成',
+    'demand has expired and can no longer be reviewed': '该需求已过期，无法再审核'
   }
 
   const codeMap: Record<string, string> = {

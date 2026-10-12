@@ -90,6 +90,26 @@ describe('translateApiError - 通用错误码映射', () => {
     expect(translateApiError({ message: 'SELECT_MANY demand requires targetParticipantCount >= 1' }))
       .toBe('目标人数必须为不小于 1 的正整数。')
   })
+
+  it('accepter 未提交凭证时发布者确认完成 → 中文提示，不泄露英文', () => {
+    const msg = translateApiError({
+      code: 1005,
+      errorCode: 'BUSINESS_CONFLICT',
+      message: 'accepter has not submitted completion proof yet; publisher cannot confirm completion first'
+    })
+    expect(msg).toBe('接单方尚未提交完成凭证，发布者暂不能确认完成')
+    expect(msg).not.toMatch(/[a-z]/)
+  })
+
+  it('demand has expired and can no longer be reviewed → 中文提示，不泄露英文', () => {
+    const msg = translateApiError({
+      code: 1005,
+      errorCode: 'BUSINESS_CONFLICT',
+      message: 'demand has expired and can no longer be reviewed'
+    })
+    expect(msg).toBe('该需求已过期，无法再审核')
+    expect(msg).not.toMatch(/[a-z]/)
+  })
 })
 
 describe('translateApiError - RATE_LIMITED 场景', () => {
@@ -152,7 +172,7 @@ describe('handleError', () => {
     const msg = handleError({
       code: 1005,
       errorCode: 'BUSINESS_CONFLICT',
-      message: 'accepter has not submitted completion proof yet; publisher cannot confirm completion first'
+      message: 'some unmapped business conflict scenario'
     })
     expect(msg).not.toMatch(/[a-z]/)
     expect(msg).toContain('刷新')

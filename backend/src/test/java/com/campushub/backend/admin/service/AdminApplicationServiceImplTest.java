@@ -19,12 +19,17 @@ import com.campushub.backend.common.api.PageResponse;
 import com.campushub.backend.common.exception.BusinessException;
 import com.campushub.backend.common.exception.ErrorCode;
 import com.campushub.backend.common.model.PageQuery;
+import com.campushub.backend.demand.domain.CampusZone;
+import com.campushub.backend.demand.domain.Demand;
+import com.campushub.backend.demand.domain.DemandCategory;
 import com.campushub.backend.demand.domain.DemandStatus;
+import com.campushub.backend.demand.domain.InteractionMode;
 import com.campushub.backend.demand.dto.DemandDetailResponse;
 import com.campushub.backend.demand.dto.DemandSummaryResponse;
 import com.campushub.backend.demand.dto.PublishDemandCommand;
 import com.campushub.backend.demand.repository.DemandRepository;
 import com.campushub.backend.demand.service.DemandApplicationService;
+import com.campushub.backend.demand.service.DemandExpirationScheduler;
 import com.campushub.backend.notification.repository.NotificationRepository;
 import com.campushub.backend.order.dto.AcceptOrderCommand;
 import com.campushub.backend.order.dto.OrderDetailResponse;
@@ -72,6 +77,9 @@ class AdminApplicationServiceImplTest {
 
     @Autowired
     private com.campushub.backend.upload.repository.UploadedAssetRepository uploadedAssetRepository;
+
+    @Autowired
+    private DemandExpirationScheduler scheduler;
 
     private Long adminId;
     private Long publisherId;
@@ -356,6 +364,66 @@ class AdminApplicationServiceImplTest {
         assertEquals("IN_ARBITRATION", page.items().get(0).status());
     }
 
+    @Test
+    void shouldRejectReviewAndNotDoubleRefundWhenDemandAlreadyExpired() {
+        Long demandId = createExpiredReviewingDemand(new BigDecimal("10.00"), new BigDecimal("10.00"));
+        scheduler.expireOverdueDemands();
+        assertEquals(DemandStatus.EXPIRED, demandRepository.findById(demandId).orElseThrow().getStatus());
+        assertEquals(0, frozenBalance().compareTo(BigDecimal.ZERO));
+
+        BusinessException exception = assertThrows(BusinessException.class, () ->
+            adminApplicationService.reviewDemand(adminId, demandId, new AdminDemandReviewCommand("approve", "通过"))
+        );
+        assertEquals(ErrorCode.BUSINESS_CONFLICT, exception.getErrorCode());
+
+        assertEquals(DemandStatus.EXPIRED, demandRepository.findById(demandId).orElseThrow().getStatus(),
+            "审核不能把 EXPIRED 覆盖回 PENDING");
+        assertEquals(0, frozenBalance().compareTo(BigDecimal.ZERO), "冻结报酬不应被重复解冻");
+        assertEquals(0, balance().compareTo(new BigDecimal("100.00")), "不应重复退款");
+    }
+
+    @Test
+    void shouldNotCorruptStateWhenReviewRacesWithExpiration() throws Exception {
+        Long demandId = createExpiredReviewingDemand(new BigDecimal("10.00"), new BigDecimal("10.00"));
+
+        java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newFixedThreadPool(2);
+        java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(2);
+        java.util.concurrent.atomic.AtomicInteger failures = new java.util.concurrent.atomic.AtomicInteger(0);
+
+        executor.submit(() -> {
+            try {
+                start.await();
+                adminApplicationService.reviewDemand(adminId, demandId, new AdminDemandReviewCommand("approve", "通过"));
+            } catch (BusinessException ignored) {
+            } catch (Exception e) {
+                failures.incrementAndGet();
+            } finally {
+                done.countDown();
+            }
+        });
+        executor.submit(() -> {
+            try {
+                start.await();
+                scheduler.expireOverdueDemands();
+            } catch (Exception e) {
+                failures.incrementAndGet();
+            } finally {
+                done.countDown();
+            }
+        });
+        start.countDown();
+        assertTrue(done.await(30, java.util.concurrent.TimeUnit.SECONDS));
+        executor.shutdown();
+
+        Demand finalDemand = demandRepository.findById(demandId).orElseThrow();
+        assertEquals(DemandStatus.EXPIRED, finalDemand.getStatus(),
+            "并发下过期需求最终应为 EXPIRED，不会被审核覆盖为 PENDING");
+        assertEquals(0, frozenBalance().compareTo(BigDecimal.ZERO), "冻结报酬应只解冻一次");
+        assertEquals(0, balance().compareTo(new BigDecimal("100.00")), "退款应只发生一次");
+        assertEquals(0, failures.get(), "并发执行不应产生未捕获异常");
+    }
+
     private DemandDetailResponse createDemand(String title, String category) {
         return demandApplicationService.publish(
             publisherId,
@@ -377,5 +445,28 @@ class AdminApplicationServiceImplTest {
                 null
             )
         );
+    }
+
+    private Long createExpiredReviewingDemand(BigDecimal reward, BigDecimal frozenBalance) {
+        User user = userRepository.findById(publisherId).orElseThrow();
+        user.setFrozenBalance(frozenBalance);
+        userRepository.save(user);
+        Demand demand = new Demand(
+            null, publisherId, "发布者", "过期审核竞争测试", "描述", null,
+            DemandCategory.EXPRESS, CampusZone.XIANLIN, "仙林",
+            LocalDateTime.now().minusHours(2), LocalDateTime.now().minusHours(1), reward,
+            InteractionMode.DIRECT_ACCEPT, null, List.of(), List.of(), null,
+            DemandStatus.REVIEWING, true, false, null, null, null, null,
+            LocalDateTime.now(), LocalDateTime.now()
+        );
+        return demandRepository.save(demand).getId();
+    }
+
+    private BigDecimal frozenBalance() {
+        return userRepository.findById(publisherId).orElseThrow().getFrozenBalance();
+    }
+
+    private BigDecimal balance() {
+        return userRepository.findById(publisherId).orElseThrow().getBalance();
     }
 }
