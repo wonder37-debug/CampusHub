@@ -366,7 +366,7 @@ class AdminApplicationServiceImplTest {
 
     @Test
     void shouldRejectReviewAndNotDoubleRefundWhenDemandAlreadyExpired() {
-        Long demandId = createExpiredReviewingDemand(new BigDecimal("10.00"), new BigDecimal("10.00"));
+        Long demandId = createReviewingDemand(LocalDateTime.now().minusHours(1), new BigDecimal("10.00"), new BigDecimal("10.00"));
         scheduler.expireOverdueDemands();
         assertEquals(DemandStatus.EXPIRED, demandRepository.findById(demandId).orElseThrow().getStatus());
         assertEquals(0, frozenBalance().compareTo(BigDecimal.ZERO));
@@ -384,7 +384,10 @@ class AdminApplicationServiceImplTest {
 
     @Test
     void shouldNotCorruptStateWhenReviewRacesWithExpiration() throws Exception {
-        Long demandId = createExpiredReviewingDemand(new BigDecimal("10.00"), new BigDecimal("10.00"));
+        // endTime 略未来：reviewDemand 读取时尚未过期，会走到 approve 写入分支（PENDING）；
+        // 随后 endTime 过期，调度器将 PENDING 流转为 EXPIRED 并解冻一次。
+        // 覆盖审核与过期调度竞争的"审核先成功"分支，验证最终状态不回退为 PENDING、报酬只退还一次。
+        Long demandId = createReviewingDemand(LocalDateTime.now().plusSeconds(1), new BigDecimal("10.00"), new BigDecimal("10.00"));
 
         java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newFixedThreadPool(2);
         java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
@@ -405,6 +408,8 @@ class AdminApplicationServiceImplTest {
         executor.submit(() -> {
             try {
                 start.await();
+                // 等待 endTime 过期后再触发调度器，确保读到审核写入后的 PENDING 并流转为 EXPIRED
+                Thread.sleep(1500);
                 scheduler.expireOverdueDemands();
             } catch (Exception e) {
                 failures.incrementAndGet();
@@ -418,7 +423,7 @@ class AdminApplicationServiceImplTest {
 
         Demand finalDemand = demandRepository.findById(demandId).orElseThrow();
         assertEquals(DemandStatus.EXPIRED, finalDemand.getStatus(),
-            "并发下过期需求最终应为 EXPIRED，不会被审核覆盖为 PENDING");
+            "审核通过（PENDING）后 endTime 过期，调度器应流转为 EXPIRED，不回退为 PENDING");
         assertEquals(0, frozenBalance().compareTo(BigDecimal.ZERO), "冻结报酬应只解冻一次");
         assertEquals(0, balance().compareTo(new BigDecimal("100.00")), "退款应只发生一次");
         assertEquals(0, failures.get(), "并发执行不应产生未捕获异常");
@@ -447,14 +452,14 @@ class AdminApplicationServiceImplTest {
         );
     }
 
-    private Long createExpiredReviewingDemand(BigDecimal reward, BigDecimal frozenBalance) {
+    private Long createReviewingDemand(LocalDateTime endTime, BigDecimal reward, BigDecimal frozenBalance) {
         User user = userRepository.findById(publisherId).orElseThrow();
         user.setFrozenBalance(frozenBalance);
         userRepository.save(user);
         Demand demand = new Demand(
-            null, publisherId, "发布者", "过期审核竞争测试", "描述", null,
+            null, publisherId, "发布者", "审核竞争测试", "描述", null,
             DemandCategory.EXPRESS, CampusZone.XIANLIN, "仙林",
-            LocalDateTime.now().minusHours(2), LocalDateTime.now().minusHours(1), reward,
+            LocalDateTime.now().minusHours(2), endTime, reward,
             InteractionMode.DIRECT_ACCEPT, null, List.of(), List.of(), null,
             DemandStatus.REVIEWING, true, false, null, null, null, null,
             LocalDateTime.now(), LocalDateTime.now()
