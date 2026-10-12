@@ -230,6 +230,9 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         demand.setUpdatedAt(now);
         orderRepository.save(order);
         demandRepository.save(demand);
+        if (targetStatus == OrderStatus.CANCELLED) {
+            recordCancelAction(operatorId, demand);
+        }
 
         notificationApplicationService.notifyOrderStatusChanged(order.getPublisherId(), order.getId(), targetStatus, true);
         notificationApplicationService.notifyOrderStatusChanged(order.getAccepterId(), order.getId(), targetStatus, false);
@@ -678,6 +681,15 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         }
         userActionLogRepository.save(new UserActionLog(
             null, accepterId, ActionType.PROOF_SUBMIT, demand.getId(), demand.getCategory(), LocalDateTime.now()
+        ));
+    }
+
+    private void recordCancelAction(Long operatorId, Demand demand) {
+        if (operatorId == null || demand == null || demand.getId() == null || demand.getCategory() == null) {
+            return;
+        }
+        userActionLogRepository.save(new UserActionLog(
+            null, operatorId, ActionType.CANCEL, demand.getId(), demand.getCategory(), LocalDateTime.now()
         ));
     }
 

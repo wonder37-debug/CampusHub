@@ -115,13 +115,34 @@ router.beforeResolve(async (to) => {
   try {
     const { useCampusHubStore } = await import('@/stores/campusHub')
     const store = useCampusHubStore()
-    if (store.currentUser?.role === 'ADMIN') {
+  if (store.currentUser?.role === 'ADMIN') {
       return { path: '/admin' }
     }
   } catch {
     // ignore
   }
   return true
+})
+
+const pageTitle: Record<string, string> = {
+  Auth: '登录',
+  DemandList: '需求大厅',
+  DemandPublish: '发布需求',
+  DemandDetail: '需求详情',
+  Orders: '我的订单',
+  OrderDetail: '订单详情',
+  Notifications: '消息中心',
+  Profile: '个人中心',
+  ProfileEdit: '编辑资料',
+  Admin: '管理后台',
+  About: '关于',
+  HelpCenter: '帮助中心',
+  Legal: '法律信息',
+  NotFound: '页面未找到'
+}
+router.afterEach((to) => {
+  const title = pageTitle[String(to.name ?? '')]
+  document.title = title ? `${title} - CampusHub` : 'CampusHub - 南京大学校园互助平台'
 })
 
 export default router

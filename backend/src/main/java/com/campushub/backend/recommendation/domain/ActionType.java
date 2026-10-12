@@ -3,5 +3,6 @@ package com.campushub.backend.recommendation.domain;
 public enum ActionType {
     VIEW,
     ACCEPT,
-    PROOF_SUBMIT
+    PROOF_SUBMIT,
+    CANCEL
 }
