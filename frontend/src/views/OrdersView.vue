@@ -168,6 +168,10 @@ const reviewingDemands = computed(() => {
   )
 })
 
+function isDemandExpired(demand: DemandRecord): boolean {
+  return !!demand.endTime && new Date(demand.endTime).getTime() < Date.now()
+}
+
 const slicedOrders = computed(() => visibleOrders.value.slice(0, page.value * PAGE_SIZE))
 const hasMore = computed(() => slicedOrders.value.length < visibleOrders.value.length)
 const allLoaded = computed(() => !hasMore.value && visibleOrders.value.length > 0)
@@ -324,7 +328,8 @@ onMounted(() => {
             <span v-if="demand.reward">报酬：{{ formatMoney(demand.reward) }}</span>
             <span v-if="demand.reviewReason" style="display:block;margin-top:6px;color: var(--danger);">审核说明：{{ demand.reviewReason }}</span>
           </div>
-          <div class="meta">状态：等待管理员审核，此需求尚未生成订单。</div>
+          <div v-if="isDemandExpired(demand)" class="meta" style="color: var(--danger);">状态：已过期，等待审核将自动失效，冻结报酬将解冻。</div>
+          <div v-else class="meta">状态：等待管理员审核，此需求尚未生成订单。</div>
         </article>
       </div>
 

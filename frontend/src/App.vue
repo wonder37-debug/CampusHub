@@ -114,7 +114,7 @@ function onStatusClick(): void {
             <span class="login-link">请先登录 →</span>
           </template>
         </div>
-        <RouterLink class="nav-button ghost" to="/notifications">未读消息 {{ store.unreadNotificationCount }}</RouterLink>
+        <RouterLink v-if="store.currentUser" class="nav-button ghost" to="/notifications">未读消息 {{ store.unreadNotificationCount }}</RouterLink>
       </div>
     </header>
 

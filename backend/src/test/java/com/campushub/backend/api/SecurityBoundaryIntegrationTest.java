@@ -198,7 +198,13 @@ class SecurityBoundaryIntegrationTest {
 
         // publish demand whose endTime is already in the past
         Long demandId = publishDemandWithEndTime(publisher.token(), LocalDateTime.now().minusMinutes(10));
-        approveDemand(adminToken, demandId);
+        // 过期需求（REVIEWING）不应再被审核通过 → 409
+        mockMvc.perform(post("/api/v1/admin/demands/{demandId}/review", demandId)
+                .header("Authorization", bearer(adminToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json(Map.of("action", "approve", "reason", "ok"))))
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.code").value(1005));
 
         // accepter attempts to accept expired demand → 409
         mockMvc.perform(post("/api/v1/demands/{demandId}/accept", demandId)

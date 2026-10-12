@@ -230,6 +230,9 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         demand.setUpdatedAt(now);
         orderRepository.save(order);
         demandRepository.save(demand);
+        if (targetStatus == OrderStatus.CANCELLED) {
+            recordCancelAction(operatorId, demand);
+        }
 
         notificationApplicationService.notifyOrderStatusChanged(order.getPublisherId(), order.getId(), targetStatus, true);
         notificationApplicationService.notifyOrderStatusChanged(order.getAccepterId(), order.getId(), targetStatus, false);
@@ -410,6 +413,10 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         if (hasCompletionConfirmation(order, operatorId)) {
             throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "completion already confirmed by this user");
         }
+        if (operatorIsPublisher && !hasCompletionConfirmation(order, order.getAccepterId())) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT,
+                "accepter has not submitted completion proof yet; publisher cannot confirm completion first");
+        }
         if (operatorIsAccepter) {
             validateProviderProof(command.proofImageUrls(), order.getAccepterId());
         }
@@ -427,6 +434,9 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
             order.setUpdatedAt(now);
             orderRepository.save(order);
             bindProofImagesAsPrivate(order.getProofImageUrls(), order.getId());
+            if (operatorIsAccepter) {
+                recordProofSubmit(order.getAccepterId(), demand);
+            }
             notificationApplicationService.notifyOrderCompletionPending(counterpartId, order.getId());
             return OrderDetailResponse.from(order, DemandDetailResponse.from(demand));
         }
@@ -434,11 +444,15 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         order.setStatus(OrderStatus.COMPLETED);
         order.setCompletedAt(now);
         order.setUpdatedAt(now);
+        // 历史订单兼容路径：接单方作为第二确认方前未提交凭证，此处补提交；
+        // 用局部标记判断是否确实新提交凭证，避免与第一确认分支重复记录 PROOF_SUBMIT
+        boolean proofNewlySubmitted = false;
         if (operatorIsAccepter && !order.isProofSubmitted()) {
             List<String> proofImageUrls = command.proofImageUrls();
             order.setProofSubmitted(true);
             order.setProofImageUrls(proofImageUrls);
             order.setProofImageCount(proofImageUrls.size());
+            proofNewlySubmitted = true;
         }
         order.addHistory(OrderStatus.IN_PROGRESS, OrderStatus.COMPLETED, operatorId, COMPLETION_FINAL_NOTE, now);
         demand.setStatus(DemandStatus.COMPLETED);
@@ -446,6 +460,9 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         orderRepository.save(order);
         demandRepository.save(demand);
         bindProofImagesAsPrivate(order.getProofImageUrls(), order.getId());
+        if (proofNewlySubmitted) {
+            recordProofSubmit(order.getAccepterId(), demand);
+        }
         transferReward(demand, order);
 
         notificationApplicationService.notifyOrderStatusChanged(order.getPublisherId(), order.getId(), OrderStatus.COMPLETED, true);
@@ -662,6 +679,24 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         }
         userActionLogRepository.save(new UserActionLog(
             null, accepterId, ActionType.ACCEPT, demand.getId(), demand.getCategory(), LocalDateTime.now()
+        ));
+    }
+
+    private void recordProofSubmit(Long accepterId, Demand demand) {
+        if (accepterId == null || demand == null || demand.getId() == null || demand.getCategory() == null) {
+            return;
+        }
+        userActionLogRepository.save(new UserActionLog(
+            null, accepterId, ActionType.PROOF_SUBMIT, demand.getId(), demand.getCategory(), LocalDateTime.now()
+        ));
+    }
+
+    private void recordCancelAction(Long operatorId, Demand demand) {
+        if (operatorId == null || demand == null || demand.getId() == null || demand.getCategory() == null) {
+            return;
+        }
+        userActionLogRepository.save(new UserActionLog(
+            null, operatorId, ActionType.CANCEL, demand.getId(), demand.getCategory(), LocalDateTime.now()
         ));
     }
 

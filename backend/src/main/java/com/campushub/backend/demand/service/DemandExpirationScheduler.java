@@ -15,8 +15,14 @@ import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * 定时任务：每 5 分钟扫描一次所有 PENDING 状态的需求，
+ * 定时任务：每 5 分钟扫描一次所有 PENDING/REVIEWING 状态的需求，
  * 若 endTime 已过期则将状态自动更新为 EXPIRED，并释放尚未结算的冻结悬赏。
+ *
+ * <p>覆盖 REVIEWING（审核中）状态：避免需求在管理员审核前已到期却长期滞留审核队列、
+ * 占用冻结资金、状态不流转。</p>
+ *
+ * <p>部署提示：上线后首次运行会扫描并处理存量 REVIEWING 过期需求（流转为 EXPIRED 并解冻冻结报酬），
+ * 团队应预知这一批量资金解冻行为；每条独立事务隔离，单条失败不影响其他。</p>
  *
  * <p>每条需求的"加锁 → 状态确认 → EXPIRED → reward refund"在独立事务（REQUIRES_NEW）内完成，
  * 单条失败只回滚当前需求并记录错误，不影响其他需求的过期处理。</p>
@@ -44,7 +50,7 @@ public class DemandExpirationScheduler {
     @Scheduled(fixedRate = 300_000)
     public void expireOverdueDemands() {
         LocalDateTime now = LocalDateTime.now();
-        // 直接查询已过期且仍为 PENDING 的需求（endTime < now 下推 SQL），避免加载全部 PENDING 后再 Java 筛选
+        // 直接查询已过期且仍为 PENDING/REVIEWING 的需求（endTime < now 下推 SQL），避免加载全部候选后再 Java 筛选
         List<Demand> expiredDemands = demandRepository.findExpiredPending(now);
         for (Demand snapshot : expiredDemands) {
             try {
@@ -63,8 +69,8 @@ public class DemandExpirationScheduler {
         if (demand == null) {
             return;
         }
-        // 状态前置校验：仅当数据库当前状态仍为 PENDING 才执行过期，避免重复解冻
-        if (demand.getStatus() != DemandStatus.PENDING) {
+        // 状态前置校验：仅当数据库当前状态仍为 PENDING 或 REVIEWING 才执行过期，避免重复解冻
+        if (demand.getStatus() != DemandStatus.PENDING && demand.getStatus() != DemandStatus.REVIEWING) {
             return;
         }
         if (demand.getEndTime() == null || !demand.getEndTime().isBefore(now)) {

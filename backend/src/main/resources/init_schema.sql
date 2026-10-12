@@ -220,7 +220,7 @@ CREATE TABLE IF NOT EXISTS `sys_notification` (
 CREATE TABLE IF NOT EXISTS `rec_user_action_log` (
   `id` bigint NOT NULL AUTO_INCREMENT PRIMARY KEY,
   `user_id` bigint NOT NULL COMMENT '行为人ID',
-  `action_type` varchar(16) NOT NULL COMMENT '动作类型: VIEW / ACCEPT',
+  `action_type` varchar(16) NOT NULL COMMENT '动作类型: VIEW / ACCEPT / PROOF_SUBMIT / CANCEL',
   `demand_id` bigint NOT NULL COMMENT '被操作的需求ID',
   `category` varchar(32) NOT NULL COMMENT '需求的分类',
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '行为发生时间',

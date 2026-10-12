@@ -85,7 +85,9 @@ export function translateApiError(payload: any): string {
     DEMAND_EXPIRED: '该需求已过期，无法接单',
     DEMAND_NOT_PENDING: '该需求当前不处于待接单状态',
     DEMAND_ALREADY_ACCEPTED: '该需求已被其他同学接单',
-    DEMAND_ORDER_CLOSED: '该需求关联订单已关闭，无法接单'
+    DEMAND_ORDER_CLOSED: '该需求关联订单已关闭，无法接单',
+    'accepter has not submitted completion proof yet; publisher cannot confirm completion first': '接单方尚未提交完成凭证，发布者暂不能确认完成',
+    'demand has expired and can no longer be reviewed': '该需求已过期，无法再审核'
   }
 
   const codeMap: Record<string, string> = {
@@ -306,8 +308,15 @@ export function handleError(err: unknown, fallback = '操作失败'): string {
 
     // try parse structured payloads
     if (typeof err === 'object') {
-      // common pattern from fetch wrapper: { status, message }
       const anyErr = err as any
+      // 网络层故障（status===0）优先识别：即使 fetch wrapper 附带 code=0，也按网络异常提示，
+      // 避免网络故障被结构化错误分支误判为普通输入失败
+      if (anyErr?.status === 0) return '网络异常，请检查网络或后端服务'
+      // 结构化 API 错误（含 code/errorCode）经 translateApiError 做 errorCode 一级映射 +
+      // message 二级兜底，避免后端英文错误被一刀切为通用 fallback 而丢失语义
+      if (anyErr && (anyErr.code != null || anyErr.errorCode != null)) {
+        return translateApiError(anyErr)
+      }
       if (anyErr?.message) {
         const message = String(anyErr.message)
         return /[A-Za-z]/.test(message) ? fallback : message
@@ -316,7 +325,6 @@ export function handleError(err: unknown, fallback = '操作失败'): string {
         const message = String(anyErr.error)
         return /[A-Za-z]/.test(message) ? fallback : message
       }
-      if (anyErr?.status === 0) return '网络异常，请检查网络或后端服务'
     }
 
     return String(err) || fallback

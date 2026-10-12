@@ -103,9 +103,10 @@ public class MyBatisDemandRepository implements DemandRepository {
             return List.of();
         }
         // endTime < now 下推 SQL；SQL 中 NULL < now 为 false，自动排除无截止时间的需求
+        // 含 REVIEWING 状态：审核中需求到期后同样需流转为 EXPIRED 并解冻资金
         List<DemandEntity> entities = demandMapper.selectList(
             new LambdaQueryWrapper<DemandEntity>()
-                .eq(DemandEntity::getStatus, DemandStatus.PENDING.name())
+                .in(DemandEntity::getStatus, DemandStatus.PENDING.name(), DemandStatus.REVIEWING.name())
                 .lt(DemandEntity::getEndTime, now)
         );
         return entities.stream().map(DemandEntity::toDomain).toList();
@@ -216,6 +217,9 @@ public class MyBatisDemandRepository implements DemandRepository {
     private LambdaQueryWrapper<DemandEntity> buildReviewWrapper(DemandReviewQuery query) {
         LambdaQueryWrapper<DemandEntity> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(DemandEntity::getStatus, DemandStatus.REVIEWING.name());
+        // 排除 endTime 已过的需求：过期调度器有 5 分钟间隔，审核队列不应展示已失效的待审项
+        LocalDateTime now = LocalDateTime.now();
+        wrapper.and(w -> w.isNull(DemandEntity::getEndTime).or().ge(DemandEntity::getEndTime, now));
         String q = query.q();
         if (q != null && !q.isBlank()) {
             String keyword = q.trim();
@@ -294,8 +298,7 @@ public class MyBatisDemandRepository implements DemandRepository {
         List<DemandEntity> entities = demandMapper.selectList(
             new LambdaQueryWrapper<DemandEntity>()
                 .select(DemandEntity::getPublisherId)
-                .and(w -> w.ge(DemandEntity::getCreatedAt, start).lt(DemandEntity::getCreatedAt, end)
-                    .or().ge(DemandEntity::getUpdatedAt, start).lt(DemandEntity::getUpdatedAt, end)));
+                .ge(DemandEntity::getCreatedAt, start).lt(DemandEntity::getCreatedAt, end));
         return entities.stream().map(DemandEntity::getPublisherId).filter(Objects::nonNull).collect(Collectors.toSet());
     }
 

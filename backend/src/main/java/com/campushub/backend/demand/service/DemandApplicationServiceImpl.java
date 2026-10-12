@@ -24,6 +24,9 @@ import com.campushub.backend.order.domain.Order;
 import com.campushub.backend.order.domain.OrderStatus;
 import com.campushub.backend.order.repository.OrderRepository;
 import com.campushub.backend.order.service.OrderApplicationService;
+import com.campushub.backend.recommendation.domain.ActionType;
+import com.campushub.backend.recommendation.domain.UserActionLog;
+import com.campushub.backend.recommendation.repository.UserActionLogRepository;
 import com.campushub.backend.review.repository.ReviewRepository;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -47,6 +50,7 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
     private final ReviewRepository reviewRepository;
     private final OrderRepository orderRepository;
     private final DemandResponseRepository demandResponseRepository;
+    private final UserActionLogRepository userActionLogRepository;
 
     @Autowired
     public DemandApplicationServiceImpl(
@@ -57,7 +61,8 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
         OrderApplicationService orderApplicationService,
         ReviewRepository reviewRepository,
         OrderRepository orderRepository,
-        DemandResponseRepository demandResponseRepository
+        DemandResponseRepository demandResponseRepository,
+        UserActionLogRepository userActionLogRepository
     ) {
         this.demandRepository = demandRepository;
         this.userRepository = userRepository;
@@ -67,6 +72,7 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
         this.reviewRepository = reviewRepository;
         this.orderRepository = orderRepository;
         this.demandResponseRepository = demandResponseRepository;
+        this.userActionLogRepository = userActionLogRepository;
     }
 
     @Override
@@ -296,7 +302,17 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
         demand.setUpdatedAt(LocalDateTime.now());
         unfreezeBalanceForDemand(demand);
         demandRepository.save(demand);
+        recordCancelAction(operatorId, demand);
         return DemandDetailResponse.from(demand);
+    }
+
+    private void recordCancelAction(Long userId, Demand demand) {
+        if (userId == null || demand == null || demand.getId() == null || demand.getCategory() == null) {
+            return;
+        }
+        userActionLogRepository.save(new UserActionLog(
+            null, userId, ActionType.CANCEL, demand.getId(), demand.getCategory(), LocalDateTime.now()
+        ));
     }
 
     private void unfreezeBalanceForDemand(Demand demand) {

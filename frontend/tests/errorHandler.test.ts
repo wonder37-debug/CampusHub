@@ -90,6 +90,26 @@ describe('translateApiError - 通用错误码映射', () => {
     expect(translateApiError({ message: 'SELECT_MANY demand requires targetParticipantCount >= 1' }))
       .toBe('目标人数必须为不小于 1 的正整数。')
   })
+
+  it('accepter 未提交凭证时发布者确认完成 → 中文提示，不泄露英文', () => {
+    const msg = translateApiError({
+      code: 1005,
+      errorCode: 'BUSINESS_CONFLICT',
+      message: 'accepter has not submitted completion proof yet; publisher cannot confirm completion first'
+    })
+    expect(msg).toBe('接单方尚未提交完成凭证，发布者暂不能确认完成')
+    expect(msg).not.toMatch(/[a-z]/)
+  })
+
+  it('demand has expired and can no longer be reviewed → 中文提示，不泄露英文', () => {
+    const msg = translateApiError({
+      code: 1005,
+      errorCode: 'BUSINESS_CONFLICT',
+      message: 'demand has expired and can no longer be reviewed'
+    })
+    expect(msg).toBe('该需求已过期，无法再审核')
+    expect(msg).not.toMatch(/[a-z]/)
+  })
 })
 
 describe('translateApiError - RATE_LIMITED 场景', () => {
@@ -136,5 +156,44 @@ describe('handleError', () => {
 
   it('网络错误映射', () => {
     expect(handleError(new Error('Failed to fetch'))).toBe('网络异常，请检查网络或后端服务')
+  })
+
+  it('结构化 API 错误（含 errorCode）经 errorCode 一级映射为中文，不泄露英文', () => {
+    const msg = handleError({
+      code: 1005,
+      errorCode: 'BUSINESS_CONFLICT',
+      message: 'only in progress orders can be completed'
+    })
+    expect(msg).toBe('只有进行中的订单才能完成')
+    expect(msg).not.toContain('in progress')
+  })
+
+  it('未映射的结构化业务冲突返回中文兜底，不泄露英文原文', () => {
+    const msg = handleError({
+      code: 1005,
+      errorCode: 'BUSINESS_CONFLICT',
+      message: 'some unmapped business conflict scenario'
+    })
+    expect(msg).not.toMatch(/[a-z]/)
+    expect(msg).toContain('刷新')
+  })
+
+  it('未知 errorCode 的结构化错误也返回中文兜底', () => {
+    const msg = handleError({ code: 9999, errorCode: 'SOME_NEW_ERROR', message: 'totally unknown issue' })
+    expect(msg).not.toMatch(/[a-z]/)
+  })
+
+  it('同时含 status:0 和 code:0 的错误优先识别为网络异常，不误判为输入失败', () => {
+    expect(handleError({ status: 0, code: 0, message: 'Network Error' }))
+      .toBe('网络异常，请检查网络或后端服务')
+  })
+
+  it('含 status:0 与业务 errorCode 的对象仍优先按网络异常提示', () => {
+    expect(handleError({
+      status: 0,
+      code: 1005,
+      errorCode: 'BUSINESS_CONFLICT',
+      message: 'only in progress orders can be completed'
+    })).toBe('网络异常，请检查网络或后端服务')
   })
 })

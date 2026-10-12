@@ -219,7 +219,6 @@ public class MyBatisOrderRepository implements OrderRepository {
             new LambdaQueryWrapper<OrderEntity>()
                 .select(OrderEntity::getPublisherId, OrderEntity::getAccepterId)
                 .and(w -> w.ge(OrderEntity::getCreatedAt, start).lt(OrderEntity::getCreatedAt, end)
-                    .or().ge(OrderEntity::getUpdatedAt, start).lt(OrderEntity::getUpdatedAt, end)
                     .or().ge(OrderEntity::getCompletedAt, start).lt(OrderEntity::getCompletedAt, end)));
         Set<Long> result = new HashSet<>();
         for (OrderEntity e : entities) {
