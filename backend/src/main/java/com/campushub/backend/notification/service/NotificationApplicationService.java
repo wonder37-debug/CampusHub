@@ -33,6 +33,8 @@ public interface NotificationApplicationService {
 
     void notifyOrderArbitrationRequested(Long receiverId, Long orderId, Long requesterId, String reason);
 
+    void notifyArbitrationResponseSubmitted(Long receiverId, Long orderId, Long submitterId, String reason);
+
     void notifyOrderArbitrationResolved(Long receiverId, Long orderId, String outcome, String reason);
 
     /**

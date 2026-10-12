@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, onMounted, watch, onUnmounted } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { handleError } from '@/utils/errorHandler'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -7,6 +7,7 @@ import { useCampusHubStore } from '@/stores/campusHub'
 import SkeletonCard from '@/components/SkeletonCard.vue'
 import ImageViewer from '@/components/ImageViewer.vue'
 import ImageUploader from '@/components/ImageUploader.vue'
+import PrivateImage from '@/components/PrivateImage.vue'
 import { formatOrderStatus, formatRelativeTime, formatScore, formatCampusZone, statusToneClass } from '@/utils/format'
 import { useConfirm, useAlert } from '@/composables/useDialog'
 
@@ -26,37 +27,80 @@ const loadingOrder = ref(false)
 const refreshing = ref(false)
 const arbitrationDialogOpen = ref(false)
 const arbitrationReason = ref('')
+const arbitrationImages = ref<string[]>([])
+const arbitrationResponseDialogOpen = ref(false)
+const arbitrationResponseReason = ref('')
+const arbitrationResponseImages = ref<string[]>([])
 const proofImages = ref<string[]>([])
 // 关键操作（开始执行/提交完成/取消/评价/仲裁）防重复点击 loading
 const submitting = ref(false)
 
-const proofImageBlobUrls = ref<string[]>([])
-
-watch(() => order.value?.proofImageUrls, async (urls) => {
-  proofImageBlobUrls.value.forEach(u => {
-    if (u.startsWith('blob:')) URL.revokeObjectURL(u)
-  })
-  proofImageBlobUrls.value = []
-  if (!urls || urls.length === 0) return
-  const blobUrls = await Promise.all(
-    urls.map(url => store.fetchProofImageBlob(url).catch(() => url))
-  )
-  proofImageBlobUrls.value = blobUrls
-}, { immediate: true })
-
 onUnmounted(() => {
-  proofImageBlobUrls.value.forEach(u => {
-    if (u.startsWith('blob:')) URL.revokeObjectURL(u)
-  })
+  // 递增版本号让在途的 openPrivateImageViewer 结果作废，避免卸载后新 Blob URL 泄漏
+  resetViewer()
 })
 
 // Image viewer
 const showImageViewer = ref(false)
 const viewerInitialIndex = ref(0)
+const viewerImages = ref<string[]>([])
+// 与 viewerImages 等长：空字符串表示加载中/可正常显示，非空表示该张凭证加载失败的原因
+const viewerFailures = ref<string[]>([])
+let viewerVersion = 0
 
-function openImageViewer(index: number) {
-  viewerInitialIndex.value = index
+function revokeViewerBlobs() {
+  viewerImages.value.forEach(u => {
+    if (u.startsWith('blob:')) URL.revokeObjectURL(u)
+  })
+}
+
+/** 关闭/切换预览前的统一清理：自增版本号让在途请求作废，并释放已创建的 Blob URL */
+function resetViewer() {
+  viewerVersion++
+  revokeViewerBlobs()
+  viewerImages.value = []
+  viewerFailures.value = []
+}
+
+function closeImageViewer() {
+  resetViewer()
+  showImageViewer.value = false
+}
+
+function openImageViewer(imagesOrIndex: string[] | number, idx?: number) {
+  resetViewer()
+  if (Array.isArray(imagesOrIndex)) {
+    const index = idx ?? 0
+    viewerImages.value = imagesOrIndex
+    viewerInitialIndex.value = index
+  } else {
+    viewerImages.value = order.value?.demandImages ?? []
+    viewerInitialIndex.value = imagesOrIndex
+  }
+  viewerFailures.value = viewerImages.value.map(() => '')
   showImageViewer.value = true
+}
+
+async function openPrivateImageViewer(urls: string[], idx: number) {
+  resetViewer()
+  viewerInitialIndex.value = idx
+  // 先用空占位打开预览：私密凭证必须等带鉴权的请求成功后才能显示，
+  // 不能先把原始 URL 交给 <img>，那会绕过服务端鉴权直接 401
+  viewerImages.value = urls.map(() => '')
+  viewerFailures.value = urls.map(() => '凭证加载中…')
+  showImageViewer.value = true
+  const expectedVersion = viewerVersion
+  const results = await Promise.all(urls.map(url => store.fetchProofImageBlob(url)))
+  if (expectedVersion !== viewerVersion) {
+    // 预览已被切换/关闭：丢弃结果，同时释放本次新创建的 Blob URL，避免泄漏
+    results.forEach(r => {
+      if (r.ok) URL.revokeObjectURL(r.objectUrl)
+    })
+    return
+  }
+  revokeViewerBlobs()
+  viewerImages.value = results.map(r => (r.ok ? r.objectUrl : ''))
+  viewerFailures.value = results.map(r => (r.ok ? '' : r.message))
 }
 
 async function refreshOrder(): Promise<void> {
@@ -82,13 +126,11 @@ const hasSubmittedReview = computed(() => {
 })
 
 const completionHint = computed(() => order.value?.completionHint ?? '')
-const pendingReviewTarget = computed(() => order.value?.pendingReviewTarget ?? '')
+// 后端在匿名需求下对接单方隐藏发布者真实 ID，因此不按 ID 匹配，改按视角相对展示待评价对象
 const pendingReviewTargetLabel = computed(() => {
-  const targetId = pendingReviewTarget.value
-  if (!targetId || !order.value) return ''
-  // Use order's own participant names rather than an unreliable user lookup
-  if (String(targetId) === String(order.value.serviceProviderId)) return order.value.serviceProviderName || '接单方'
-  if (String(targetId) === String(order.value.requesterId)) return order.value.requesterName || '需求方'
+  if (!order.value || order.value.status !== 'COMPLETED' || hasSubmittedReview.value) return ''
+  if (isProvider.value) return order.value.requesterName || '需求方'
+  if (isRequester.value) return order.value.serviceProviderName || '接单方'
   return ''
 })
 
@@ -118,15 +160,6 @@ function formatTimelineLabel(label: string, operatorId?: string): string {
     }
     if (operatorId === order.value.serviceProviderId) {
       return isProvider.value ? '你发起了争议仲裁' : '接单方发起了争议仲裁'
-    }
-  }
-  // 旧格式文本兼容：根据 operatorId 判断角色后个性化
-  if (label === '已确认完成，等待对方确认' && operatorId && order.value) {
-    const isProviderAction = operatorId === order.value.serviceProviderId
-    if (isProviderAction) {
-      return isProvider.value ? '你已确认完成，等待需求方确认' : '接单方已确认完成，等待你的确认'
-    } else {
-      return isRequester.value ? '你已确认完成，等待接单方确认' : '需求方已确认完成，等待你的确认'
     }
   }
   return label
@@ -307,12 +340,26 @@ async function cancelOrder(): Promise<void> {
 
 function openArbitrationDialog(): void {
   arbitrationReason.value = ''
+  arbitrationImages.value = []
   arbitrationDialogOpen.value = true
 }
 
 function closeArbitrationDialog(): void {
   arbitrationDialogOpen.value = false
   arbitrationReason.value = ''
+  arbitrationImages.value = []
+}
+
+function openArbitrationResponseDialog(): void {
+  arbitrationResponseReason.value = ''
+  arbitrationResponseImages.value = []
+  arbitrationResponseDialogOpen.value = true
+}
+
+function closeArbitrationResponseDialog(): void {
+  arbitrationResponseDialogOpen.value = false
+  arbitrationResponseReason.value = ''
+  arbitrationResponseImages.value = []
 }
 
 async function submitArbitration(): Promise<void> {
@@ -326,11 +373,32 @@ async function submitArbitration(): Promise<void> {
   error.value = ''
   submitting.value = true
   try {
-    await store.requestOrderArbitration(order.value.id, arbitrationReason.value)
+    await store.requestOrderArbitration(order.value.id, arbitrationReason.value, arbitrationImages.value)
     message.value = '已提交仲裁申请，等待管理员处理。'
     closeArbitrationDialog()
   } catch (arbitrationError) {
     error.value = handleError(arbitrationError, '发起仲裁失败')
+  } finally {
+    submitting.value = false
+  }
+}
+
+async function submitArbitrationResponse(): Promise<void> {
+  if (!order.value || submitting.value) return
+  if (!arbitrationResponseReason.value.trim()) {
+    error.value = '请填写补充说明'
+    return
+  }
+
+  message.value = ''
+  error.value = ''
+  submitting.value = true
+  try {
+    await store.submitArbitrationResponse(order.value.id, arbitrationResponseReason.value, arbitrationResponseImages.value)
+    message.value = '已提交补充说明，等待管理员处理。'
+    closeArbitrationResponseDialog()
+  } catch (arbitrationError) {
+    error.value = handleError(arbitrationError, '提交补充说明失败')
   } finally {
     submitting.value = false
   }
@@ -420,6 +488,31 @@ onMounted(() => {
         <p style="margin-top: 4px; white-space: pre-wrap;">{{ order.arbitrationResult }}</p>
       </div>
 
+      <!-- 仲裁双方举证材料 -->
+      <div v-if="order.arbitrationSubmissions && order.arbitrationSubmissions.length > 0" class="list-card" style="margin-top: 12px;">
+        <div class="meta"><strong>⚖️ 双方举证材料</strong></div>
+        <div v-for="sub in order.arbitrationSubmissions" :key="String(sub.id ?? sub.submitterId + sub.submittedAt)" style="margin-top: 12px; padding-bottom: 12px; border-bottom: 1px solid rgba(0,0,0,0.08);">
+          <div class="meta">
+            <span class="chip" :class="sub.role === 'INITIATOR' ? 'is-warning' : 'is-info'">
+              {{ sub.role === 'INITIATOR' ? '发起方' : '另一方' }}
+            </span>
+            <span style="margin-left: 8px;">{{ sub.submitterName }}</span>
+            <span style="margin-left: 8px;" class="meta">{{ formatRelativeTime(sub.submittedAt) }}</span>
+          </div>
+          <p style="margin-top: 6px; white-space: pre-wrap;">{{ sub.reason }}</p>
+          <div v-if="sub.imageUrls && sub.imageUrls.length > 0" style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px;">
+            <PrivateImage
+              v-for="(url, idx) in sub.imageUrls"
+              :key="url + idx"
+              :src="url"
+              :alt="'证据图片' + (idx + 1)"
+              cursor="pointer"
+              @click="openPrivateImageViewer(sub.imageUrls, idx)"
+            />
+          </div>
+        </div>
+      </div>
+
       <!-- 需求描述（突出显示，置于时间信息之前） -->
       <div v-if="order.demandDescription" class="demand-description-highlight">
         <p class="eyebrow">需求描述</p>
@@ -475,20 +568,20 @@ onMounted(() => {
         <ImageUploader v-model="proofImages" :max-count="3" purpose="proof" />
       </div>
 
-      <!-- 完成凭证展示（已提交凭证后供发布者/管理员查看） -->
+      <!-- 完成凭证展示（已提交凭证后供发布者/管理员查看，通过认证 Blob 加载） -->
       <div v-if="order.proofImageUrls && order.proofImageUrls.length > 0" class="order-images">
         <p class="eyebrow">完成凭证 ({{ order.proofImageUrls.length }})</p>
         <div class="image-grid">
-          <a
-            v-for="(url, pIdx) in proofImageBlobUrls"
+          <PrivateImage
+            v-for="(url, pIdx) in order.proofImageUrls"
             :key="url"
-            :href="url"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="image-item"
-          >
-            <img :src="url" :alt="`凭证图片 ${pIdx + 1}`" loading="lazy" class="demand-img" />
-          </a>
+            :src="url"
+            :alt="'凭证图片 ' + (pIdx + 1)"
+            width="140px"
+            height="140px"
+            cursor="pointer"
+            @click="openPrivateImageViewer(order.proofImageUrls, pIdx)"
+          />
         </div>
       </div>
 
@@ -496,7 +589,7 @@ onMounted(() => {
       <p v-if="error" class="hero-badge" style="background: rgba(181, 71, 71, 0.14); color: var(--danger)">{{ error }}</p>
 
       <!-- 订单操作 -->
-      <div v-if="hasAvailableActions || canRequestArbitration" class="order-actions-section">
+      <div v-if="hasAvailableActions || canRequestArbitration || order.canSubmitArbitrationResponse" class="order-actions-section">
         <p class="eyebrow">订单操作</p>
         <div class="card-actions">
           <button v-if="order.status === 'ACCEPTED' && isProvider" type="button" class="button primary" :disabled="submitting" @click="startOrder">{{ submitting ? '处理中...' : '开始执行' }}</button>
@@ -524,6 +617,7 @@ onMounted(() => {
           >{{ completionHint || '等待接单方确认完成' }}</span>
           <button v-if="order.status === 'ACCEPTED' && isRequester" type="button" class="button danger" :disabled="submitting" @click="cancelOrder">{{ submitting ? '处理中...' : '取消订单' }}</button>
           <button v-if="canRequestArbitration" type="button" class="button secondary" :disabled="submitting" @click="openArbitrationDialog">发起仲裁</button>
+          <button v-if="order.canSubmitArbitrationResponse" type="button" class="button secondary" :disabled="submitting" @click="openArbitrationResponseDialog">补充说明</button>
         </div>
       </div>
     </section>
@@ -608,6 +702,11 @@ onMounted(() => {
           <textarea id="arbitration-reason" v-model="arbitrationReason" rows="5" placeholder="请简要说明争议点、当前情况和希望管理员关注的信息"></textarea>
         </div>
 
+        <div class="field">
+          <label>证据图片（可选，最多5张）</label>
+          <ImageUploader v-model="arbitrationImages" :max-count="5" purpose="proof" />
+        </div>
+
         <div class="card-actions" style="justify-content: flex-end;">
           <button type="button" class="button secondary" @click="closeArbitrationDialog">取消</button>
           <button type="button" class="button primary" :disabled="!arbitrationReason.trim() || submitting" @click="submitArbitration">{{ submitting ? '处理中...' : '提交仲裁' }}</button>
@@ -616,12 +715,44 @@ onMounted(() => {
     </div>
   </teleport>
 
+  <!-- 补充说明对话框 -->
+  <teleport to="body">
+    <div v-if="arbitrationResponseDialogOpen" class="modal-backdrop" @click.self="closeArbitrationResponseDialog">
+      <div class="modal-card panel">
+        <div class="modal-head">
+          <div>
+            <p class="eyebrow">仲裁补充说明</p>
+            <h3 class="section-title">提交补充说明</h3>
+          </div>
+          <button type="button" class="modal-close" @click="closeArbitrationResponseDialog" title="关闭" aria-label="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        </div>
+
+        <p class="page-summary" style="margin-top: 0;">作为另一方，您可以提交补充说明和证据图片，管理员将根据双方材料做出裁决。</p>
+        <div class="field">
+          <label for="arbitration-response-reason">补充说明</label>
+          <textarea id="arbitration-response-reason" v-model="arbitrationResponseReason" rows="5" placeholder="请补充您的说明和理由"></textarea>
+        </div>
+
+        <div class="field">
+          <label>证据图片（可选，最多5张）</label>
+          <ImageUploader v-model="arbitrationResponseImages" :max-count="5" purpose="proof" />
+        </div>
+
+        <div class="card-actions" style="justify-content: flex-end;">
+          <button type="button" class="button secondary" @click="closeArbitrationResponseDialog">取消</button>
+          <button type="button" class="button primary" :disabled="!arbitrationResponseReason.trim() || submitting" @click="submitArbitrationResponse">{{ submitting ? '处理中...' : '提交说明' }}</button>
+        </div>
+      </div>
+    </div>
+  </teleport>
+
   <!-- 全屏图片预览 -->
   <ImageViewer
-    v-if="showImageViewer && order?.demandImages?.length"
-    :images="order.demandImages"
+    v-if="showImageViewer && viewerImages.length"
+    :images="viewerImages"
     :initial-index="viewerInitialIndex"
-    @close="showImageViewer = false"
+    :failure-messages="viewerFailures"
+    @close="closeImageViewer"
   />
   </div>
 </template>

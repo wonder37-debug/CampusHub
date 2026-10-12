@@ -5,6 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useCampusHubStore } from '@/stores/campusHub'
 import { handleError } from '@/utils/errorHandler'
 import { useConfirm } from '@/composables/useDialog'
+import PrivateImage from '@/components/PrivateImage.vue'
 import { DEMAND_CATEGORY_OPTIONS, type DemandCategory } from '@/types/campushub'
 import { campusZoneOptions, formatCampusZone, formatDateTime, formatDemandCategory, formatDemandStatus, formatScore, formatUserRole, formatUserStatus, statusToneClass } from '@/utils/format'
 
@@ -433,6 +434,32 @@ async function submitDeleteOrder(): Promise<void> {
             </div>
             <p class="meta">需求方：{{ order.requesterName }} ｜ 接单方：{{ order.serviceProviderName }}</p>
             <p v-if="order.completionHint" class="meta" style="margin-top: 8px; white-space: pre-wrap;">{{ order.completionHint }}</p>
+
+            <!-- 双方举证材料 -->
+            <div v-if="order.arbitrationSubmissions && order.arbitrationSubmissions.length > 0" style="margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(0,0,0,0.08);">
+              <p class="meta"><strong>📋 举证材料</strong></p>
+              <div v-for="sub in order.arbitrationSubmissions" :key="String(sub.id ?? sub.submitterId + sub.submittedAt)" style="margin-top: 8px; padding-bottom: 8px; border-bottom: 1px solid rgba(0,0,0,0.04);">
+                <div class="meta">
+                  <span class="chip" :class="sub.role === 'INITIATOR' ? 'is-warning' : 'is-info'">
+                    {{ sub.role === 'INITIATOR' ? '发起方' : '另一方' }}
+                  </span>
+                  <span style="margin-left: 8px;">{{ sub.submitterName }}</span>
+                </div>
+                <p style="margin-top: 4px; white-space: pre-wrap; font-size: 13px;">{{ sub.reason }}</p>
+                <div v-if="sub.imageUrls && sub.imageUrls.length > 0" style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px;">
+                  <PrivateImage
+                    v-for="(url, idx) in sub.imageUrls"
+                    :key="url + idx"
+                    :src="url"
+                    :alt="'证据' + (idx + 1)"
+                    width="60px"
+                    height="60px"
+                    border-radius="6px"
+                  />
+                </div>
+              </div>
+            </div>
+
             <div class="card-actions">
               <button type="button" class="button primary" @click="openArbitrationDialog(order)">裁决订单</button>
               <button type="button" class="button secondary" @click="router.push(`/orders/${order.id}`)">查看详情</button>

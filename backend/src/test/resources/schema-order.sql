@@ -2,6 +2,7 @@
 -- 严格对照 init_schema.sql 中 ord_order / ord_order_status_log 的真实列设计；
 -- 移除了 H2 不支持的字符集与 MySQL 保留风格，保留 NOT NULL / 默认值 / 唯一索引等关键约束。
 
+DROP TABLE IF EXISTS ord_arbitration_submission;
 DROP TABLE IF EXISTS ord_order_status_log;
 DROP TABLE IF EXISTS ord_order;
 
@@ -36,3 +37,18 @@ CREATE TABLE ord_order_status_log (
 );
 
 CREATE INDEX idx_order_status_log_order ON ord_order_status_log(order_id);
+
+CREATE TABLE ord_arbitration_submission (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  order_id BIGINT NOT NULL,
+  submitter_id BIGINT NOT NULL,
+  role VARCHAR(16) NOT NULL,
+  reason VARCHAR(2000) NOT NULL,
+  image_urls CLOB DEFAULT NULL,
+  image_count INT NOT NULL DEFAULT 0,
+  submitted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT chk_arb_role CHECK (role IN ('INITIATOR','RESPONDER'))
+);
+
+CREATE INDEX idx_arbitration_order ON ord_arbitration_submission(order_id);
+CREATE INDEX idx_arbitration_submitter ON ord_arbitration_submission(submitter_id);

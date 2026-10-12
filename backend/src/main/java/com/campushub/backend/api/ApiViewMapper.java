@@ -1,5 +1,6 @@
 package com.campushub.backend.api;
 
+import com.campushub.backend.api.view.ArbitrationSubmissionView;
 import com.campushub.backend.api.view.DemandView;
 import com.campushub.backend.api.view.OrderTimelineView;
 import com.campushub.backend.api.view.OrderView;
@@ -13,9 +14,11 @@ import com.campushub.backend.demand.domain.DemandStatus;
 import com.campushub.backend.demand.domain.InteractionMode;
 import com.campushub.backend.demand.repository.DemandRepository;
 import com.campushub.backend.demand.repository.DemandResponseRepository;
+import com.campushub.backend.order.domain.ArbitrationSubmission;
 import com.campushub.backend.order.domain.Order;
 import com.campushub.backend.order.domain.OrderStatus;
 import com.campushub.backend.order.domain.OrderStatusHistoryEntry;
+import com.campushub.backend.order.repository.ArbitrationSubmissionRepository;
 import com.campushub.backend.order.repository.OrderRepository;
 import com.campushub.backend.review.domain.Review;
 import com.campushub.backend.review.dto.ReviewResponse;
@@ -34,19 +37,22 @@ public class ApiViewMapper {
     private final OrderRepository orderRepository;
     private final ReviewRepository reviewRepository;
     private final DemandResponseRepository demandResponseRepository;
+    private final ArbitrationSubmissionRepository arbitrationSubmissionRepository;
 
     public ApiViewMapper(
         DemandRepository demandRepository,
         UserRepository userRepository,
         OrderRepository orderRepository,
         ReviewRepository reviewRepository,
-        DemandResponseRepository demandResponseRepository
+        DemandResponseRepository demandResponseRepository,
+        ArbitrationSubmissionRepository arbitrationSubmissionRepository
     ) {
         this.demandRepository = demandRepository;
         this.userRepository = userRepository;
         this.orderRepository = orderRepository;
         this.reviewRepository = reviewRepository;
         this.demandResponseRepository = demandResponseRepository;
+        this.arbitrationSubmissionRepository = arbitrationSubmissionRepository;
     }
 
     public DemandView toDemandView(Demand demand, CurrentUser currentUser) {
@@ -69,7 +75,8 @@ public class ApiViewMapper {
                 : new PublicUserSummaryView(
                     null,
                     demand.getAnonymousCode() != null ? demand.getAnonymousCode() : "匿名校友",
-                    publisherUser.getAvatarUrl(),
+                    // 真实头像同样是身份线索：无权识别发布者的查看者不返回（前端回退到匿名代号生成的通用头像）
+                    null,
                     publisherUser.getRole().name(),
                     publisherUser.getStatus().name(),
                     publisherUser.getCreditScore()
@@ -78,9 +85,13 @@ public class ApiViewMapper {
         boolean publisherIdentityVisible = publisherUser != null
             && (!demand.isAnonymous()
             || currentUser != null && (currentUser.isAdmin() || demand.getPublisherId().equals(currentUser.userId())));
-        String publisherStudentIdMasked = publisherUser == null
+        // 匿名需求下无权识别发布者时，部分学号同样是身份线索，返回 null；
+        // 非匿名与本人/管理员维持既有规则（identityVisible 为 true 时输出完整学号）
+        String publisherStudentIdMasked = publisherUser == null || publisherUser.getStudentId() == null
             ? null
-            : resolvePublisherStudentIdMasked(publisherUser, publisherIdentityVisible);
+            : demand.isAnonymous() && !publisherIdentityVisible
+                ? null
+                : publisherUser.getStudentId();
 
         Order relatedOrder = demand.getId() == null ? null : resolveOrder(demand.getId(), orderMap);
         boolean canAccept = canAcceptDemand(demand, relatedOrder, currentUser);
@@ -168,6 +179,16 @@ public class ApiViewMapper {
         boolean canSeeOrderPrivate = currentUser != null
             && (currentUser.isAdmin() || order.isParticipant(currentUser.userId()));
 
+        List<ArbitrationSubmissionView> arbitrationSubmissions = canSeeOrderPrivate
+            ? resolveArbitrationSubmissions(order, demand, currentUser) : List.of();
+
+        boolean canSubmitArbitrationResponse = canSeeOrderPrivate
+            && order.getStatus() == OrderStatus.IN_ARBITRATION
+            && currentUser != null
+            && order.isParticipant(currentUser.userId())
+            && !arbitrationSubmissions.stream()
+                .anyMatch(s -> "INITIATOR".equals(s.role()) && currentUser.userId().equals(s.submitterId()));
+
         List<ReviewView> reviews = resolveReviews(order.getId(), reviewByOrderIdMap).stream()
             .map(review -> toReviewView(review, canSeePublisher, order.getPublisherId(), anonymousCode,
                 demand != null ? demand.getTitle() : null))
@@ -182,7 +203,8 @@ public class ApiViewMapper {
             order.getId(),
             order.getStatus().name(),
             order.getDemandId(),
-            order.getPublisherId(),
+            // 匿名需求下无权识别发布者的查看者不得拿到真实 publisherId（可通过用户接口反查真实昵称）
+            canSeePublisher ? order.getPublisherId() : null,
             order.getAccepterId(),
             canSeeOrderPrivate ? order.getAcceptNote() : null,
             canSeeOrderPrivate && order.isProofSubmitted(),
@@ -194,14 +216,17 @@ public class ApiViewMapper {
             demand == null ? null : toDemandView(demand, currentUser, userMap, orderByDemandMap),
             requester == null ? null : anonymizePublicUserSummary(PublicUserSummaryView.from(requester), canSeePublisher, anonymousCode),
             provider == null ? null : PublicUserSummaryView.from(provider),
-            canSeeOrderPrivate ? order.getStatusHistory().stream().map(this::toTimelineView).toList() : List.of(),
+            canSeeOrderPrivate ? order.getStatusHistory().stream()
+                .map(entry -> toTimelineView(entry, order.getPublisherId(), canSeePublisher)).toList() : List.of(),
             reviews,
             currentUserReviewed,
-            resolvePendingReviewTarget(order, currentUser, currentUserReviewed),
+            resolvePendingReviewTarget(order, currentUser, currentUserReviewed, canSeePublisher),
             resolveCompletionHint(order, currentUser),
             demand == null ? List.of() : demand.getImages(),
             resolveContactInfo(demand, order, currentUser),
-            canSeeOrderPrivate ? resolveArbitrationResult(order) : null
+            canSeeOrderPrivate ? resolveArbitrationResult(order) : null,
+            arbitrationSubmissions,
+            canSubmitArbitrationResponse
         );
     }
 
@@ -339,19 +364,23 @@ public class ApiViewMapper {
         return new PublicUserSummaryView(
             null,
             anonymousCode != null ? anonymousCode : "匿名校友",
-            original.avatarUrl(),
+            // 匿名摘要不携带真实头像（订单 requester / 评价 author 同规则），前端回退到通用头像
+            null,
             original.role(),
             original.status(),
             original.creditScore()
         );
     }
 
-    private OrderTimelineView toTimelineView(OrderStatusHistoryEntry entry) {
+    private OrderTimelineView toTimelineView(OrderStatusHistoryEntry entry, Long publisherId, boolean canSeePublisher) {
+        // 匿名需求下发布者操作的时间线条目不得携带其真实 operatorId
+        Long operatorId = !canSeePublisher && publisherId != null && publisherId.equals(entry.operatorId())
+            ? null : entry.operatorId();
         return new OrderTimelineView(
             entry.changedAt(),
             entry.fromStatus() == null ? null : entry.fromStatus().name(),
             entry.toStatus().name(),
-            entry.operatorId(),
+            operatorId,
             entry.note()
         );
     }
@@ -399,6 +428,37 @@ public class ApiViewMapper {
                 return "裁决结果：已" + outcome + "。说明：" + reason;
             })
             .orElse(null);
+    }
+
+    private List<ArbitrationSubmissionView> resolveArbitrationSubmissions(Order order, Demand demand, CurrentUser currentUser) {
+        if (order == null || arbitrationSubmissionRepository == null) {
+            return List.of();
+        }
+        List<ArbitrationSubmission> submissions = arbitrationSubmissionRepository.findByOrderId(order.getId());
+        boolean isAnonymous = demand != null && demand.isAnonymous();
+        Long publisherId = demand != null ? demand.getPublisherId() : null;
+        String anonymousCode = demand != null ? demand.getAnonymousCode() : null;
+        // 匿名需求：发布方提交者对管理员和发布者本人显示真实昵称，对其他人显示匿名代号
+        boolean canSeePublisherIdentity = !isAnonymous
+            || (currentUser != null && (currentUser.isAdmin() || currentUser.userId().equals(publisherId)));
+        return submissions.stream()
+            .map(s -> {
+                String submitterName;
+                boolean isPublisherSubmission = isAnonymous && publisherId != null && publisherId.equals(s.submitterId());
+                if (isPublisherSubmission && !canSeePublisherIdentity) {
+                    submitterName = anonymousCode != null ? anonymousCode : "匿名校友";
+                } else {
+                    User submitter = userRepository.findById(s.submitterId()).orElse(null);
+                    submitterName = submitter != null ? submitter.getNickname() : "用户" + s.submitterId();
+                }
+                // submitterId 与名称遵循同一规则：发布方举证的真实 ID 不得暴露给无权识别发布者的查看者
+                Long submitterId = isPublisherSubmission && !canSeePublisherIdentity ? null : s.submitterId();
+                return new ArbitrationSubmissionView(
+                    s.id(), submitterId, submitterName, s.role(), s.reason(),
+                    s.imageUrls(), s.imageCount(), s.submittedAt()
+                );
+            })
+            .toList();
     }
 
     private boolean canAcceptDemand(Demand demand, Order relatedOrder, CurrentUser currentUser) {
@@ -472,23 +532,7 @@ public class ApiViewMapper {
             && order.getStatus() == OrderStatus.ACCEPTED;
     }
 
-    private String resolvePublisherStudentIdMasked(User publisherUser, boolean identityVisible) {
-        if (publisherUser == null || publisherUser.getStudentId() == null) {
-            return null;
-        }
-        return identityVisible ? publisherUser.getStudentId() : maskStudentId(publisherUser.getStudentId());
-    }
-
-    private String maskStudentId(String studentId) {
-        if (studentId == null || studentId.length() < 3) {
-            return studentId;
-        }
-        int prefixLength = Math.min(3, studentId.length());
-        int suffixLength = studentId.length() > 5 ? 2 : 1;
-        return studentId.substring(0, prefixLength) + "***" + studentId.substring(studentId.length() - suffixLength);
-    }
-
-    private Long resolvePendingReviewTarget(Order order, CurrentUser currentUser, boolean currentUserReviewed) {
+    private Long resolvePendingReviewTarget(Order order, CurrentUser currentUser, boolean currentUserReviewed, boolean canSeePublisher) {
         if (order == null || currentUser == null || currentUserReviewed || order.getStatus() != OrderStatus.COMPLETED) {
             return null;
         }
@@ -496,7 +540,8 @@ public class ApiViewMapper {
             return order.getAccepterId();
         }
         if (currentUser.userId().equals(order.getAccepterId())) {
-            return order.getPublisherId();
+            // 匿名需求下接单方无权得知发布者真实 ID，待评价对象仅由前端按角色展示
+            return canSeePublisher ? order.getPublisherId() : null;
         }
         return null;
     }
@@ -546,7 +591,6 @@ public class ApiViewMapper {
                 && entry.fromStatus() == OrderStatus.IN_PROGRESS
                 && entry.toStatus() == OrderStatus.IN_PROGRESS
                 && ("PROVIDER_CONFIRMED_COMPLETION".equals(entry.note())
-                    || "REQUESTER_CONFIRMED_COMPLETION".equals(entry.note())
-                    || "已确认完成，等待对方确认。".equals(entry.note())));
+                    || "REQUESTER_CONFIRMED_COMPLETION".equals(entry.note())));
     }
 }

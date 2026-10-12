@@ -13,10 +13,12 @@ import com.campushub.backend.demand.domain.InteractionMode;
 import com.campushub.backend.demand.dto.DemandDetailResponse;
 import com.campushub.backend.demand.repository.DemandRepository;
 import com.campushub.backend.notification.service.NotificationApplicationService;
+import com.campushub.backend.order.domain.ArbitrationSubmission;
 import com.campushub.backend.order.domain.Order;
 import com.campushub.backend.order.domain.OrderStatus;
 import com.campushub.backend.order.domain.OrderStatusHistoryEntry;
 import com.campushub.backend.order.dto.AcceptOrderCommand;
+import com.campushub.backend.order.dto.ArbitrationSubmissionCommand;
 import com.campushub.backend.order.dto.OrderDetailResponse;
 import com.campushub.backend.upload.repository.UploadedAssetRepository;
 import com.campushub.backend.upload.repository.entity.UploadedAssetEntity;
@@ -24,6 +26,7 @@ import com.campushub.backend.order.dto.OrderHistoryQuery;
 import com.campushub.backend.order.dto.OrderSummaryResponse;
 import com.campushub.backend.order.dto.RequestOrderArbitrationCommand;
 import com.campushub.backend.order.dto.UpdateOrderStatusCommand;
+import com.campushub.backend.order.repository.ArbitrationSubmissionRepository;
 import com.campushub.backend.order.repository.OrderRepository;
 import com.campushub.backend.recommendation.domain.ActionType;
 import com.campushub.backend.recommendation.domain.UserActionLog;
@@ -43,8 +46,9 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
     private static final String PROVIDER_CONFIRMED_NOTE = "PROVIDER_CONFIRMED_COMPLETION";
     private static final String REQUESTER_CONFIRMED_NOTE = "REQUESTER_CONFIRMED_COMPLETION";
     private static final String COMPLETION_FINAL_NOTE = "ORDER_COMPLETED";
-    private static final int MAX_ARBITRATION_REASON_LENGTH = 500;
+    private static final int MAX_ARBITRATION_REASON_LENGTH = 2000;
     private static final int MAX_PROOF_URL_LENGTH = 512;
+    private static final int MAX_ARBITRATION_IMAGES = 5;
     private static final java.util.regex.Pattern PROOF_URL_PATTERN =
         java.util.regex.Pattern.compile("/api/v1/uploads/\\d{4}/\\d{2}/[a-zA-Z0-9][a-zA-Z0-9._-]*");
 
@@ -55,6 +59,7 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
     private final RewardSettlementService rewardSettlementService;
     private final UserActionLogRepository userActionLogRepository;
     private final UploadedAssetRepository uploadedAssetRepository;
+    private final ArbitrationSubmissionRepository arbitrationSubmissionRepository;
 
     public OrderApplicationServiceImpl(
         OrderRepository orderRepository,
@@ -63,7 +68,8 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         NotificationApplicationService notificationApplicationService,
         RewardSettlementService rewardSettlementService,
         UserActionLogRepository userActionLogRepository,
-        UploadedAssetRepository uploadedAssetRepository
+        UploadedAssetRepository uploadedAssetRepository,
+        ArbitrationSubmissionRepository arbitrationSubmissionRepository
     ) {
         this.orderRepository = orderRepository;
         this.demandRepository = demandRepository;
@@ -72,6 +78,7 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         this.rewardSettlementService = rewardSettlementService;
         this.userActionLogRepository = userActionLogRepository;
         this.uploadedAssetRepository = uploadedAssetRepository;
+        this.arbitrationSubmissionRepository = arbitrationSubmissionRepository;
     }
 
     @Override
@@ -240,18 +247,84 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         }
 
         String reason = normalizeArbitrationReason(command == null ? null : command.reason());
+        List<String> imageUrls = command == null ? null : command.imageUrls();
+        validateArbitrationImages(imageUrls, operatorId);
+
         Demand demand = findDemand(order.getDemandId());
         LocalDateTime now = LocalDateTime.now();
         OrderStatus fromStatus = order.getStatus();
         order.setStatus(OrderStatus.IN_ARBITRATION);
         order.setUpdatedAt(now);
-        order.addHistory(fromStatus, OrderStatus.IN_ARBITRATION, operatorId, "ARBITRATION_REQUESTED: " + reason, now);
+        order.addHistory(fromStatus, OrderStatus.IN_ARBITRATION, operatorId, "ARBITRATION_REQUESTED", now);
         orderRepository.save(order);
+
+        ArbitrationSubmission submission = new ArbitrationSubmission(
+            null, orderId, operatorId, "INITIATOR", reason, imageUrls,
+            imageUrls == null ? 0 : imageUrls.size(), now
+        );
+        arbitrationSubmissionRepository.save(submission);
+        bindProofImagesAsPrivate(imageUrls, order.getId());
 
         notificationApplicationService.notifyOrderStatusChanged(order.getPublisherId(), order.getId(), OrderStatus.IN_ARBITRATION, true);
         notificationApplicationService.notifyOrderStatusChanged(order.getAccepterId(), order.getId(), OrderStatus.IN_ARBITRATION, false);
         for (User admin : userRepository.findByRole(UserRole.ADMIN)) {
             notificationApplicationService.notifyOrderArbitrationRequested(admin.getId(), order.getId(), operatorId, reason);
+        }
+        return OrderDetailResponse.from(order, DemandDetailResponse.from(demand));
+    }
+
+    @Override
+    public OrderDetailResponse submitArbitrationResponse(Long operatorId, Long orderId, ArbitrationSubmissionCommand command) {
+        Order order = findOrderForUpdate(orderId);
+        if (!order.isParticipant(operatorId)) {
+            throw new BusinessException(ErrorCode.PERMISSION_DENIED, "only order participants can submit arbitration response");
+        }
+        if (order.getStatus() != OrderStatus.IN_ARBITRATION) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "order is not in arbitration");
+        }
+
+        List<ArbitrationSubmission> existing = arbitrationSubmissionRepository.findByOrderId(orderId);
+        Long initiatorId = existing.stream()
+            .filter(s -> "INITIATOR".equals(s.role()))
+            .map(ArbitrationSubmission::submitterId)
+            .findFirst()
+            .orElse(null);
+        if (initiatorId == null) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT,
+                "no arbitration initiator submission found; cannot submit response without a valid initiated arbitration");
+        }
+        if (initiatorId.equals(operatorId)) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT,
+                "arbitration initiator cannot submit response; only the other party can");
+        }
+
+        if (command == null || command.reason() == null || command.reason().isBlank()) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "arbitration response reason must not be blank");
+        }
+        String reason = command.reason().trim();
+        if (reason.length() > MAX_ARBITRATION_REASON_LENGTH) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED,
+                "arbitration reason length must not exceed " + MAX_ARBITRATION_REASON_LENGTH);
+        }
+        List<String> imageUrls = command.imageUrls();
+        validateArbitrationImages(imageUrls, operatorId);
+
+        Demand demand = findDemand(order.getDemandId());
+        LocalDateTime now = LocalDateTime.now();
+        order.setUpdatedAt(now);
+        order.addHistory(OrderStatus.IN_ARBITRATION, OrderStatus.IN_ARBITRATION, operatorId, "ARBITRATION_RESPONSE_SUBMITTED", now);
+        orderRepository.save(order);
+
+        ArbitrationSubmission submission = new ArbitrationSubmission(
+            null, orderId, operatorId, "RESPONDER", reason, imageUrls,
+            imageUrls == null ? 0 : imageUrls.size(), now
+        );
+        arbitrationSubmissionRepository.save(submission);
+        bindProofImagesAsPrivate(imageUrls, order.getId());
+
+        notificationApplicationService.notifyArbitrationResponseSubmitted(initiatorId, order.getId(), operatorId, reason);
+        for (User admin : userRepository.findByRole(UserRole.ADMIN)) {
+            notificationApplicationService.notifyArbitrationResponseSubmitted(admin.getId(), order.getId(), operatorId, reason);
         }
         return OrderDetailResponse.from(order, DemandDetailResponse.from(demand));
     }
@@ -412,6 +485,50 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
             }
             if (!asset.getUploaderId().equals(accepterId)) {
                 throw new BusinessException(ErrorCode.VALIDATION_FAILED, "proofImageUrls[" + i + "] does not belong to the current user");
+            }
+        }
+    }
+
+    private void validateArbitrationImages(List<String> imageUrls, Long submitterId) {
+        if (imageUrls == null || imageUrls.isEmpty()) {
+            return;
+        }
+        if (imageUrls.size() > MAX_ARBITRATION_IMAGES) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED,
+                "arbitration images must not exceed " + MAX_ARBITRATION_IMAGES);
+        }
+        for (int i = 0; i < imageUrls.size(); i++) {
+            String url = imageUrls.get(i);
+            if (url == null || url.isBlank()) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED,
+                    "arbitration imageUrls[" + i + "] must not be blank");
+            }
+            String trimmed = url.trim();
+            if (trimmed.length() > MAX_PROOF_URL_LENGTH) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED,
+                    "arbitration imageUrls[" + i + "] length must not exceed " + MAX_PROOF_URL_LENGTH);
+            }
+            String lower = trimmed.toLowerCase(Locale.ROOT);
+            if (lower.startsWith("http://") || lower.startsWith("https://")) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED,
+                    "arbitration imageUrls[" + i + "] must be an internal upload URL");
+            }
+            if (!PROOF_URL_PATTERN.matcher(trimmed).matches()) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED,
+                    "arbitration imageUrls[" + i + "] must match /api/v1/uploads/YYYY/MM/filename format");
+            }
+            UploadedAssetEntity asset = uploadedAssetRepository.findByUrlPath(trimmed);
+            if (asset == null) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED,
+                    "arbitration imageUrls[" + i + "] is not from a valid upload");
+            }
+            if (!Boolean.TRUE.equals(asset.getIsPrivate())) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED,
+                    "arbitration imageUrls[" + i + "] must be a private upload (purpose=proof)");
+            }
+            if (!asset.getUploaderId().equals(submitterId)) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED,
+                    "arbitration imageUrls[" + i + "] does not belong to the current user");
             }
         }
     }

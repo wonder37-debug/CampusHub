@@ -2,6 +2,7 @@ package com.campushub.backend.order.service;
 
 import com.campushub.backend.common.api.PageResponse;
 import com.campushub.backend.order.dto.AcceptOrderCommand;
+import com.campushub.backend.order.dto.ArbitrationSubmissionCommand;
 import com.campushub.backend.order.dto.OrderDetailResponse;
 import com.campushub.backend.order.dto.OrderHistoryQuery;
 import com.campushub.backend.order.dto.OrderSummaryResponse;
@@ -27,4 +28,6 @@ public interface OrderApplicationService {
     void autoCompleteOverdueOrders(Long userId);
 
     OrderDetailResponse requestArbitration(Long operatorId, Long orderId, RequestOrderArbitrationCommand command);
+
+    OrderDetailResponse submitArbitrationResponse(Long operatorId, Long orderId, ArbitrationSubmissionCommand command);
 }

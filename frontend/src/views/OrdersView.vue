@@ -148,14 +148,24 @@ const visibleOrders = computed<OrderListItem[]>(() => {
 
   // published: include actual orders where current user is requester,
   // plus published demands by current user that have no order yet (as placeholders)
+  // REVIEWING 状态的需求不作为订单占位符混入，单独在"我发布的需求"区域展示
   const publishedOrders = store.orders.filter((order) => order.requesterId === currentUserId) as PublishedOrderItem[]
   const orderedDemandIds = new Set(publishedOrders.map((order) => order.demandId))
 
   const userDemands = store.demands.filter((demand) => demand.publisherId === currentUserId)
   const demandsWithoutOrder = userDemands.filter((demand) => !orderedDemandIds.has(demand.id))
+    .filter((demand) => demand.status !== 'REVIEWING')
   const placeholders = demandsWithoutOrder.map(createDemandPlaceholder)
 
   return [...publishedOrders, ...placeholders].sort(compareOrderItems)
+})
+
+const reviewingDemands = computed(() => {
+  const currentUserId = store.currentUser?.id
+  if (!currentUserId) return []
+  return store.demands.filter((demand) =>
+    demand.publisherId === currentUserId && demand.status === 'REVIEWING'
+  )
 })
 
 const slicedOrders = computed(() => visibleOrders.value.slice(0, page.value * PAGE_SIZE))
@@ -292,9 +302,30 @@ onMounted(() => {
         <SkeletonCard v-for="n in 4" :key="n" />
       </div>
 
-      <div v-else-if="!visibleOrders.length" class="empty-state" style="--empty-icon:'📦'">
+      <div v-else-if="!visibleOrders.length && (activeTab !== 'published' || reviewingDemands.length === 0)" class="empty-state" style="--empty-icon:'📦'">
         <strong>暂无订单</strong>
-        <p>发布需求并等同学接单后，订单会出现在这里。</p>
+        <p v-if="activeTab === 'published'">发布需求并等同学接单后，订单会出现在这里。</p>
+        <p v-else>去<a href="/demands" @click.prevent="router.push('/demands')" style="text-decoration: underline; cursor: pointer; color: var(--primary);">需求列表</a>接下第一个需求，订单会出现在这里。</p>
+      </div>
+
+      <!-- 审核中的需求（独立区域，仅在"我发布的订单"页签显示） -->
+      <div v-if="activeTab === 'published' && reviewingDemands.length > 0" class="reviewing-demands-section">
+        <h2 class="section-title" style="margin-bottom: 12px;">📋 我发布的需求（审核中）</h2>
+        <article v-for="demand in reviewingDemands" :key="demand.id" class="list-card order-card reviewing-demand-card" tabindex="0" role="link" :aria-label="`查看需求：${demand.title}`" @click="router.push(`/demands/${demand.id}`)" @keydown.enter="router.push(`/demands/${demand.id}`)">
+          <div class="status-row">
+            <span class="chip is-warning">{{ formatDemandStatus(demand.status) }}</span>
+            <span class="chip">需求审核中</span>
+          </div>
+          <div class="card-head">
+            <h3>{{ demand.title }}</h3>
+            <span class="meta">{{ formatRelativeTime(demand.createdAt) }}</span>
+          </div>
+          <div class="meta">
+            <span v-if="demand.reward">报酬：{{ formatMoney(demand.reward) }}</span>
+            <span v-if="demand.reviewReason" style="display:block;margin-top:6px;color: var(--danger);">审核说明：{{ demand.reviewReason }}</span>
+          </div>
+          <div class="meta">状态：等待管理员审核，此需求尚未生成订单。</div>
+        </article>
       </div>
 
       <article v-for="order in slicedOrders" :key="order.id" class="list-card order-card" @click="openOrder(order)">
