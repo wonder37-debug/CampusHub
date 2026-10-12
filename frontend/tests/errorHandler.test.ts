@@ -182,4 +182,18 @@ describe('handleError', () => {
     const msg = handleError({ code: 9999, errorCode: 'SOME_NEW_ERROR', message: 'totally unknown issue' })
     expect(msg).not.toMatch(/[a-z]/)
   })
+
+  it('同时含 status:0 和 code:0 的错误优先识别为网络异常，不误判为输入失败', () => {
+    expect(handleError({ status: 0, code: 0, message: 'Network Error' }))
+      .toBe('网络异常，请检查网络或后端服务')
+  })
+
+  it('含 status:0 与业务 errorCode 的对象仍优先按网络异常提示', () => {
+    expect(handleError({
+      status: 0,
+      code: 1005,
+      errorCode: 'BUSINESS_CONFLICT',
+      message: 'only in progress orders can be completed'
+    })).toBe('网络异常，请检查网络或后端服务')
+  })
 })

@@ -444,11 +444,15 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         order.setStatus(OrderStatus.COMPLETED);
         order.setCompletedAt(now);
         order.setUpdatedAt(now);
+        // 历史订单兼容路径：接单方作为第二确认方前未提交凭证，此处补提交；
+        // 用局部标记判断是否确实新提交凭证，避免与第一确认分支重复记录 PROOF_SUBMIT
+        boolean proofNewlySubmitted = false;
         if (operatorIsAccepter && !order.isProofSubmitted()) {
             List<String> proofImageUrls = command.proofImageUrls();
             order.setProofSubmitted(true);
             order.setProofImageUrls(proofImageUrls);
             order.setProofImageCount(proofImageUrls.size());
+            proofNewlySubmitted = true;
         }
         order.addHistory(OrderStatus.IN_PROGRESS, OrderStatus.COMPLETED, operatorId, COMPLETION_FINAL_NOTE, now);
         demand.setStatus(DemandStatus.COMPLETED);
@@ -456,6 +460,9 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         orderRepository.save(order);
         demandRepository.save(demand);
         bindProofImagesAsPrivate(order.getProofImageUrls(), order.getId());
+        if (proofNewlySubmitted) {
+            recordProofSubmit(order.getAccepterId(), demand);
+        }
         transferReward(demand, order);
 
         notificationApplicationService.notifyOrderStatusChanged(order.getPublisherId(), order.getId(), OrderStatus.COMPLETED, true);
