@@ -431,6 +431,9 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
             order.setUpdatedAt(now);
             orderRepository.save(order);
             bindProofImagesAsPrivate(order.getProofImageUrls(), order.getId());
+            if (operatorIsAccepter) {
+                recordProofSubmit(order.getAccepterId(), demand);
+            }
             notificationApplicationService.notifyOrderCompletionPending(counterpartId, order.getId());
             return OrderDetailResponse.from(order, DemandDetailResponse.from(demand));
         }
@@ -666,6 +669,15 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         }
         userActionLogRepository.save(new UserActionLog(
             null, accepterId, ActionType.ACCEPT, demand.getId(), demand.getCategory(), LocalDateTime.now()
+        ));
+    }
+
+    private void recordProofSubmit(Long accepterId, Demand demand) {
+        if (accepterId == null || demand == null || demand.getId() == null || demand.getCategory() == null) {
+            return;
+        }
+        userActionLogRepository.save(new UserActionLog(
+            null, accepterId, ActionType.PROOF_SUBMIT, demand.getId(), demand.getCategory(), LocalDateTime.now()
         ));
     }
 

@@ -21,6 +21,9 @@ import org.springframework.transaction.support.TransactionTemplate;
  * <p>覆盖 REVIEWING（审核中）状态：避免需求在管理员审核前已到期却长期滞留审核队列、
  * 占用冻结资金、状态不流转。</p>
  *
+ * <p>部署提示：上线后首次运行会扫描并处理存量 REVIEWING 过期需求（流转为 EXPIRED 并解冻冻结报酬），
+ * 团队应预知这一批量资金解冻行为；每条独立事务隔离，单条失败不影响其他。</p>
+ *
  * <p>每条需求的"加锁 → 状态确认 → EXPIRED → reward refund"在独立事务（REQUIRES_NEW）内完成，
  * 单条失败只回滚当前需求并记录错误，不影响其他需求的过期处理。</p>
  */
