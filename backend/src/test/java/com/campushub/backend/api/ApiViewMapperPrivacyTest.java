@@ -74,6 +74,8 @@ class ApiViewMapperPrivacyTest {
 
         assertEquals(1L, view.publisher().id(), "非匿名需求对普通用户应可见 publisherId");
         assertEquals("发布者", view.publisher().nickname());
+        assertEquals("avatar.png", view.publisher().avatarUrl(), "非匿名需求保留真实头像");
+        assertEquals("20260001", view.publisherStudentIdMasked(), "非匿名需求保持既有学号展示");
     }
 
     @Test
@@ -87,6 +89,9 @@ class ApiViewMapperPrivacyTest {
         // 匿名需求对普通用户：publisher.id 脱敏为 null，nickname 为 anonymousCode
         assertNull(view.publisher().id(), "匿名需求对普通用户应隐藏 publisherId");
         assertEquals("匿名校友ABCD", view.publisher().nickname(), "应展示 anonymousCode 而非真实昵称");
+        assertNull(view.publisher().avatarUrl(), "匿名需求对普通用户应隐藏真实头像");
+        assertNull(view.publisherStudentIdMasked(), "匿名需求对普通用户不应输出部分学号");
+        assertEquals(100, view.publisher().creditScore(), "匿名代号下保留公开信用分");
     }
 
     @Test
@@ -100,6 +105,8 @@ class ApiViewMapperPrivacyTest {
         // 本人视角：匿名需求也对自己可见
         assertEquals(1L, view.publisher().id(), "匿名需求对发布者本人应可见 publisherId");
         assertEquals("发布者真名", view.publisher().nickname());
+        assertEquals("avatar.png", view.publisher().avatarUrl(), "发布者本人应可见真实头像");
+        assertEquals("20260001", view.publisherStudentIdMasked(), "发布者本人应可见完整学号");
     }
 
     @Test
@@ -113,6 +120,8 @@ class ApiViewMapperPrivacyTest {
         // 管理员视角：匿名需求对管理员可见
         assertEquals(1L, view.publisher().id(), "匿名需求对管理员应可见 publisherId");
         assertEquals("发布者真名", view.publisher().nickname());
+        assertEquals("avatar.png", view.publisher().avatarUrl(), "管理员应可见真实头像");
+        assertEquals("20260001", view.publisherStudentIdMasked(), "管理员应可见完整学号");
     }
 
     @Test
@@ -256,6 +265,28 @@ class ApiViewMapperPrivacyTest {
 
         assertEquals(1L, view.targetId(), "非匿名 Demand 的 Review targetId 保持真实值");
         assertEquals("发布者", view.targetName());
+    }
+
+    @Test
+    void shouldHidePublisherAvatarInReviewAuthorForAnonymousDemand() {
+        User publisher = newUser(1L, "pub@edu.cn", "20260001", "发布者真名");
+        User accepter = newUser(2L, "acc@edu.cn", "20260002", "接单者");
+        Demand demand = newDemand(10L, 1L, "匿名校友", true, "匿名校友ABCD", null);
+        // 作者为匿名发布者本人，评价对象为接单者
+        ApiViewMapper m = reviewMapper(demand, publisher, publisher, accepter);
+        ReviewResponse review = new ReviewResponse(1L, 100L, null, 10L, 1L, 2L, 5, "好评", LocalDateTime.now());
+
+        ReviewView view = m.toAnonymizedReviewView(review, new CurrentUser(3L, UserRole.USER));
+        assertNull(view.author().id(), "匿名需求发布者撰写的评价不暴露作者 ID");
+        assertEquals("匿名校友ABCD", view.author().nickname(), "评价作者应展示匿名代号");
+        assertNull(view.author().avatarUrl(), "匿名评价作者不暴露真实头像");
+        assertEquals(100, view.author().creditScore(), "匿名评价作者保留公开信用分");
+
+        ReviewView selfView = m.toAnonymizedReviewView(review, new CurrentUser(1L, UserRole.USER));
+        assertEquals("avatar.png", selfView.author().avatarUrl(), "评价作者本人应可见真实头像");
+
+        ReviewView adminView = m.toAnonymizedReviewView(review, new CurrentUser(99L, UserRole.ADMIN));
+        assertEquals("avatar.png", adminView.author().avatarUrl(), "管理员应可见匿名评价作者真实头像");
     }
 
     @Test
@@ -515,6 +546,9 @@ class ApiViewMapperPrivacyTest {
             true, OrderStatus.IN_ARBITRATION);
 
         assertNull(arbitrationView.publisherId(), "匿名订单对接单方不得暴露真实 publisherId");
+        assertNull(arbitrationView.requester().avatarUrl(), "匿名订单对接单方应隐藏发布者真实头像");
+        assertNull(arbitrationView.demand().publisher().avatarUrl(), "订单内嵌需求视图同规则隐藏真实头像");
+        assertNull(arbitrationView.demand().publisherStudentIdMasked(), "订单内嵌需求视图不应输出部分学号");
         assertNull(arbitrationView.arbitrationSubmissions().get(0).submitterId(),
             "发布方举证的 submitterId 应与昵称同规则脱敏");
         assertEquals("匿名校友ABCD", arbitrationView.arbitrationSubmissions().get(0).submitterName());
@@ -536,6 +570,9 @@ class ApiViewMapperPrivacyTest {
             true, OrderStatus.IN_ARBITRATION);
 
         assertEquals(1L, arbitrationView.publisherId(), "发布者本人应可见真实 publisherId");
+        assertEquals("avatar.png", arbitrationView.requester().avatarUrl(), "发布者本人应可见真实头像");
+        assertEquals("avatar.png", arbitrationView.demand().publisher().avatarUrl(), "发布者本人应可见内嵌需求真实头像");
+        assertEquals("20260001", arbitrationView.demand().publisherStudentIdMasked(), "发布者本人应可见完整学号");
         assertEquals(1L, arbitrationView.arbitrationSubmissions().get(0).submitterId(),
             "发布者本人应可见自己举证的 submitterId");
         assertEquals("发布者真名", arbitrationView.arbitrationSubmissions().get(0).submitterName());
@@ -557,6 +594,9 @@ class ApiViewMapperPrivacyTest {
             true, OrderStatus.IN_ARBITRATION);
 
         assertEquals(1L, view.publisherId(), "管理员应可见真实 publisherId");
+        assertEquals("avatar.png", view.requester().avatarUrl(), "管理员应可见发布者真实头像");
+        assertEquals("avatar.png", view.demand().publisher().avatarUrl(), "管理员应可见内嵌需求真实头像");
+        assertEquals("20260001", view.demand().publisherStudentIdMasked(), "管理员应可见完整学号");
         assertEquals(1L, view.arbitrationSubmissions().get(0).submitterId(),
             "管理员应可见发布方举证的 submitterId");
         assertEquals(Arrays.asList(1L, 2L),

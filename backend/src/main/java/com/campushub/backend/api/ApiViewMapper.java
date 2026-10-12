@@ -75,7 +75,8 @@ public class ApiViewMapper {
                 : new PublicUserSummaryView(
                     null,
                     demand.getAnonymousCode() != null ? demand.getAnonymousCode() : "匿名校友",
-                    publisherUser.getAvatarUrl(),
+                    // 真实头像同样是身份线索：无权识别发布者的查看者不返回（前端回退到匿名代号生成的通用头像）
+                    null,
                     publisherUser.getRole().name(),
                     publisherUser.getStatus().name(),
                     publisherUser.getCreditScore()
@@ -84,9 +85,13 @@ public class ApiViewMapper {
         boolean publisherIdentityVisible = publisherUser != null
             && (!demand.isAnonymous()
             || currentUser != null && (currentUser.isAdmin() || demand.getPublisherId().equals(currentUser.userId())));
-        String publisherStudentIdMasked = publisherUser == null
+        // 匿名需求下无权识别发布者时，部分学号同样是身份线索，返回 null；
+        // 非匿名与本人/管理员维持既有规则（identityVisible 为 true 时输出完整学号）
+        String publisherStudentIdMasked = publisherUser == null || publisherUser.getStudentId() == null
             ? null
-            : resolvePublisherStudentIdMasked(publisherUser, publisherIdentityVisible);
+            : demand.isAnonymous() && !publisherIdentityVisible
+                ? null
+                : publisherUser.getStudentId();
 
         Order relatedOrder = demand.getId() == null ? null : resolveOrder(demand.getId(), orderMap);
         boolean canAccept = canAcceptDemand(demand, relatedOrder, currentUser);
@@ -359,7 +364,8 @@ public class ApiViewMapper {
         return new PublicUserSummaryView(
             null,
             anonymousCode != null ? anonymousCode : "匿名校友",
-            original.avatarUrl(),
+            // 匿名摘要不携带真实头像（订单 requester / 评价 author 同规则），前端回退到通用头像
+            null,
             original.role(),
             original.status(),
             original.creditScore()
@@ -524,22 +530,6 @@ public class ApiViewMapper {
             && currentUser != null
             && currentUser.userId().equals(order.getAccepterId())
             && order.getStatus() == OrderStatus.ACCEPTED;
-    }
-
-    private String resolvePublisherStudentIdMasked(User publisherUser, boolean identityVisible) {
-        if (publisherUser == null || publisherUser.getStudentId() == null) {
-            return null;
-        }
-        return identityVisible ? publisherUser.getStudentId() : maskStudentId(publisherUser.getStudentId());
-    }
-
-    private String maskStudentId(String studentId) {
-        if (studentId == null || studentId.length() < 3) {
-            return studentId;
-        }
-        int prefixLength = Math.min(3, studentId.length());
-        int suffixLength = studentId.length() > 5 ? 2 : 1;
-        return studentId.substring(0, prefixLength) + "***" + studentId.substring(studentId.length() - suffixLength);
     }
 
     private Long resolvePendingReviewTarget(Order order, CurrentUser currentUser, boolean currentUserReviewed, boolean canSeePublisher) {
