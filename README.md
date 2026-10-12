@@ -398,15 +398,16 @@ cd backend
 
 ## 测试账号
 
-启动后自动初始化以下账号：
+以下账号在数据库初始化时由 `init_schema.sql` 预置，启动后即可登录：
 
-| 来源 | 学号 | 邮箱 | 密码 | 角色 |
-|------|------|------|------|------|
-| 演示数据 | admin | admin@campushub.local | Admin1234 | 管理员 |
-| 建表脚本 | ADMIN001 | admin@edu.cn | Admin123! | 管理员 |
-| 建表脚本 | TEST001 | test1@edu.cn | Admin123! | 普通用户 |
-| 建表脚本 | TEST002 | test2@edu.cn | Admin123! | 普通用户 |
+| 学号 | 邮箱 | 密码 | 角色 |
+|------|------|------|------|
+| ADMIN001 | admin@edu.cn | Admin123! | 管理员 |
+| TEST001 | test1@edu.cn | Admin123! | 普通用户 |
+| TEST002 | test2@edu.cn | Admin123! | 普通用户 |
 
+> 另有演示数据账号 `admin / admin@campushub.local / Admin1234`（管理员），仅在配置 `app.demo-data.enabled=true` 时由 `DemoDataInitializer` 创建，默认关闭。本地演示如需该账号，请在 `application.properties` 中设置 `app.demo-data.enabled=true` 后启动。
+>
 > 新用户注册后初始信用分为 100，初始余额为 100.00。
 
 ---

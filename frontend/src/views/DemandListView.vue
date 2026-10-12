@@ -262,7 +262,7 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="field" style="flex: 0 1 160px;">
-          <label for="demand-category">订单分类</label>
+          <label for="demand-category">需求分类</label>
           <select id="demand-category" v-model="filters.category">
             <option value="">全部分类</option>
             <option v-for="category in DEMAND_CATEGORY_OPTIONS" :key="category" :value="category">
@@ -272,7 +272,7 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="field" style="flex: 0 1 140px;">
-          <label for="demand-status">订单状态</label>
+          <label for="demand-status">需求状态</label>
           <select id="demand-status" v-model="filters.status">
             <option value="">全部状态</option>
             <option value="PENDING">开放中</option>
@@ -294,7 +294,7 @@ onBeforeUnmount(() => {
         <div class="sort-controls">
           <div class="sort-section sort-left">
             <div class="field sort-field">
-              <label for="demand-sort">订单排序</label>
+              <label for="demand-sort">需求排序</label>
               <select
                 id="demand-sort"
                 class="sort-select"

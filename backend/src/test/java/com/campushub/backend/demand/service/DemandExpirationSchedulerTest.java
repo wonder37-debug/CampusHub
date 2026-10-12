@@ -101,6 +101,21 @@ class DemandExpirationSchedulerTest {
     }
 
     @Test
+    void shouldExpireReviewingDemandAndRefundFrozenReward() {
+        Long demandId = createPendingDemand(LocalDateTime.now().minusHours(1), new BigDecimal("10.00"), new BigDecimal("10.00"));
+        // 需求处于审核中（REVIEWING）但 endTime 已过：定时任务应同样流转为 EXPIRED 并解冻，避免滞留审核队列
+        Demand reviewing = reload(demandId);
+        reviewing.setStatus(DemandStatus.REVIEWING);
+        demandRepository.save(reviewing);
+
+        scheduler.expireOverdueDemands();
+
+        assertEquals(DemandStatus.EXPIRED, reload(demandId).getStatus(), "审核中过期需求应流转为 EXPIRED");
+        assertEquals(0, frozenBalance().compareTo(BigDecimal.ZERO), "审核中过期需求冻结报酬应解冻");
+        assertEquals(0, balance().compareTo(new BigDecimal("100.00")));
+    }
+
+    @Test
     void shouldNotDoubleRefundWhenExpiredDemandProcessedTwice() {
         Long demandId = createPendingDemand(LocalDateTime.now().minusHours(1), new BigDecimal("10.00"), new BigDecimal("10.00"));
 

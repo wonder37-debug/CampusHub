@@ -410,6 +410,10 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         if (hasCompletionConfirmation(order, operatorId)) {
             throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "completion already confirmed by this user");
         }
+        if (operatorIsPublisher && !hasCompletionConfirmation(order, order.getAccepterId())) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT,
+                "accepter has not submitted completion proof yet; publisher cannot confirm completion first");
+        }
         if (operatorIsAccepter) {
             validateProviderProof(command.proofImageUrls(), order.getAccepterId());
         }

@@ -137,4 +137,29 @@ describe('handleError', () => {
   it('网络错误映射', () => {
     expect(handleError(new Error('Failed to fetch'))).toBe('网络异常，请检查网络或后端服务')
   })
+
+  it('结构化 API 错误（含 errorCode）经 errorCode 一级映射为中文，不泄露英文', () => {
+    const msg = handleError({
+      code: 1005,
+      errorCode: 'BUSINESS_CONFLICT',
+      message: 'only in progress orders can be completed'
+    })
+    expect(msg).toBe('只有进行中的订单才能完成')
+    expect(msg).not.toContain('in progress')
+  })
+
+  it('未映射的结构化业务冲突返回中文兜底，不泄露英文原文', () => {
+    const msg = handleError({
+      code: 1005,
+      errorCode: 'BUSINESS_CONFLICT',
+      message: 'accepter has not submitted completion proof yet; publisher cannot confirm completion first'
+    })
+    expect(msg).not.toMatch(/[a-z]/)
+    expect(msg).toContain('刷新')
+  })
+
+  it('未知 errorCode 的结构化错误也返回中文兜底', () => {
+    const msg = handleError({ code: 9999, errorCode: 'SOME_NEW_ERROR', message: 'totally unknown issue' })
+    expect(msg).not.toMatch(/[a-z]/)
+  })
 })

@@ -196,7 +196,7 @@ class OrderApplicationServiceImplTest {
     }
 
     @Test
-    void shouldAllowRequesterToConfirmCompletionBeforeProvider() {
+    void shouldRejectPublisherConfirmingCompletionBeforeProvider() {
         DemandDetailResponse demand = createDemand();
         OrderDetailResponse accepted = orderApplicationService.accept(accepterId, demand.id(), new AcceptOrderCommand("我来"));
 
@@ -206,18 +206,44 @@ class OrderApplicationServiceImplTest {
             new UpdateOrderStatusCommand("IN_PROGRESS", "开始处理", null)
         );
 
-        OrderDetailResponse requesterPending = orderApplicationService.updateStatus(
-            publisherId,
-            accepted.orderId(),
-            new UpdateOrderStatusCommand("COMPLETED", "先确认完成", null)
-        );
-        OrderDetailResponse finalCompleted = orderApplicationService.updateStatus(
-            accepterId,
-            accepted.orderId(),
-            new UpdateOrderStatusCommand("COMPLETED", "补交凭证并完成", 2, List.of("/api/v1/uploads/2026/10/proof1.png", "/api/v1/uploads/2026/10/proof2.png"))
+        BusinessException exception = assertThrows(
+            BusinessException.class,
+            () -> orderApplicationService.updateStatus(
+                publisherId,
+                accepted.orderId(),
+                new UpdateOrderStatusCommand("COMPLETED", "抢先确认完成", null)
+            )
         );
 
-        assertEquals("IN_PROGRESS", requesterPending.status());
+        assertEquals(ErrorCode.BUSINESS_CONFLICT, exception.getErrorCode());
+
+        OrderDetailResponse orderAfter = orderApplicationService.getDetail(publisherId, accepted.orderId());
+        assertEquals("IN_PROGRESS", orderAfter.status(), "订单应仍处于进行中，发布者抢先确认不应改变状态");
+        assertFalse(orderAfter.proofSubmitted(), "接单方未提交凭证，proofSubmitted 应为 false");
+    }
+
+    @Test
+    void shouldAllowPublisherToConfirmAfterProviderWithoutProof() {
+        DemandDetailResponse demand = createDemand();
+        OrderDetailResponse accepted = orderApplicationService.accept(accepterId, demand.id(), new AcceptOrderCommand("我来"));
+
+        orderApplicationService.updateStatus(
+            accepterId,
+            accepted.orderId(),
+            new UpdateOrderStatusCommand("IN_PROGRESS", "开始处理", null)
+        );
+        orderApplicationService.updateStatus(
+            accepterId,
+            accepted.orderId(),
+            new UpdateOrderStatusCommand("COMPLETED", "接单方提交凭证", 2, List.of("/api/v1/uploads/2026/10/proof1.png", "/api/v1/uploads/2026/10/proof2.png"))
+        );
+
+        OrderDetailResponse finalCompleted = orderApplicationService.updateStatus(
+            publisherId,
+            accepted.orderId(),
+            new UpdateOrderStatusCommand("COMPLETED", "确认完成", null)
+        );
+
         assertEquals("COMPLETED", finalCompleted.status());
         assertTrue(finalCompleted.proofSubmitted());
         assertEquals(2, finalCompleted.proofImageCount());
@@ -252,7 +278,7 @@ class OrderApplicationServiceImplTest {
     }
 
     @Test
-    void shouldRequireProofWhenProviderConfirmsCompletionSecond() {
+    void shouldRecoverAfterPublisherPrematureConfirmRejection() {
         DemandDetailResponse demand = createDemand();
         OrderDetailResponse accepted = orderApplicationService.accept(accepterId, demand.id(), new AcceptOrderCommand("我来"));
 
@@ -261,22 +287,30 @@ class OrderApplicationServiceImplTest {
             accepted.orderId(),
             new UpdateOrderStatusCommand("IN_PROGRESS", "开始处理", null)
         );
-        orderApplicationService.updateStatus(
-            publisherId,
-            accepted.orderId(),
-            new UpdateOrderStatusCommand("COMPLETED", "先确认完成", null)
-        );
 
-        BusinessException exception = assertThrows(
+        BusinessException premature = assertThrows(
             BusinessException.class,
             () -> orderApplicationService.updateStatus(
-                accepterId,
+                publisherId,
                 accepted.orderId(),
-                new UpdateOrderStatusCommand("COMPLETED", "未上传凭证", null)
+                new UpdateOrderStatusCommand("COMPLETED", "抢先确认", null)
             )
         );
+        assertEquals(ErrorCode.BUSINESS_CONFLICT, premature.getErrorCode());
 
-        assertEquals(ErrorCode.VALIDATION_FAILED, exception.getErrorCode());
+        orderApplicationService.updateStatus(
+            accepterId,
+            accepted.orderId(),
+            new UpdateOrderStatusCommand("COMPLETED", "提交凭证", 2, List.of("/api/v1/uploads/2026/10/proof1.png", "/api/v1/uploads/2026/10/proof2.png"))
+        );
+
+        OrderDetailResponse finalCompleted = orderApplicationService.updateStatus(
+            publisherId,
+            accepted.orderId(),
+            new UpdateOrderStatusCommand("COMPLETED", "确认完成", null)
+        );
+        assertEquals("COMPLETED", finalCompleted.status());
+        assertTrue(finalCompleted.proofSubmitted());
     }
 
     @Test

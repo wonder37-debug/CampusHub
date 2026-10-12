@@ -306,8 +306,14 @@ export function handleError(err: unknown, fallback = '操作失败'): string {
 
     // try parse structured payloads
     if (typeof err === 'object') {
-      // common pattern from fetch wrapper: { status, message }
       const anyErr = err as any
+      // 结构化 API 错误（含 code/errorCode）优先经 translateApiError 做 errorCode 一级映射 +
+      // message 二级兜底，避免后端英文错误被一刀切为通用 fallback 而丢失语义
+      if (anyErr && (anyErr.code != null || anyErr.errorCode != null)) {
+        return translateApiError(anyErr)
+      }
+      // common pattern from fetch wrapper: { status, message }
+      if (anyErr?.status === 0) return '网络异常，请检查网络或后端服务'
       if (anyErr?.message) {
         const message = String(anyErr.message)
         return /[A-Za-z]/.test(message) ? fallback : message
@@ -316,7 +322,6 @@ export function handleError(err: unknown, fallback = '操作失败'): string {
         const message = String(anyErr.error)
         return /[A-Za-z]/.test(message) ? fallback : message
       }
-      if (anyErr?.status === 0) return '网络异常，请检查网络或后端服务'
     }
 
     return String(err) || fallback

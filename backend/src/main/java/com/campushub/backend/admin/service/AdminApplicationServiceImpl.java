@@ -189,6 +189,9 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
         if (demand.getStatus() != DemandStatus.REVIEWING) {
             throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "only reviewing demands can be reviewed");
         }
+        if (demand.getEndTime() != null && demand.getEndTime().isBefore(LocalDateTime.now())) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "demand has expired and can no longer be reviewed");
+        }
 
         String action = command.action().trim().toLowerCase(Locale.ROOT);
         LocalDateTime now = LocalDateTime.now();
