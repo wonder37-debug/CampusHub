@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, watch, onUnmounted } from 'vue'
 import { handleError } from '@/utils/errorHandler'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -8,8 +8,10 @@ import SkeletonCard from '@/components/SkeletonCard.vue'
 import ImageViewer from '@/components/ImageViewer.vue'
 import ImageUploader from '@/components/ImageUploader.vue'
 import PrivateImage from '@/components/PrivateImage.vue'
+import ErrorState from '@/components/ErrorState.vue'
 import { formatOrderStatus, formatRelativeTime, formatScore, formatCampusZone, statusToneClass } from '@/utils/format'
 import { useConfirm, useAlert } from '@/composables/useDialog'
+import { canCancelOrder, getOrderFlowKind } from '@/utils/detailRules'
 
 const route = useRoute()
 const router = useRouter()
@@ -18,13 +20,16 @@ const store = useCampusHubStore()
 const order = computed(() => store.getOrderById(String(route.params.id)))
 const isRequester = computed(() => order.value && store.currentUser?.id === order.value.requesterId)
 const isProvider = computed(() => order.value && store.currentUser?.id === order.value.serviceProviderId)
+const orderFlowKind = computed(() => getOrderFlowKind(order.value?.demandInteractionMode))
 const message = ref('')
 const error = ref('')
-const completionSubmitted = ref(false)
 const reviewRating = ref('5')
 const reviewComment = ref('')
 const loadingOrder = ref(false)
 const refreshing = ref(false)
+const loadState = ref<'loading' | 'ready' | 'not-found' | 'forbidden' | 'error'>('loading')
+const loadFailure = ref('')
+let latestOrderLoad = 0
 const arbitrationDialogOpen = ref(false)
 const arbitrationReason = ref('')
 const arbitrationImages = ref<string[]>([])
@@ -105,12 +110,32 @@ async function openPrivateImageViewer(urls: string[], idx: number) {
 
 async function refreshOrder(): Promise<void> {
   refreshing.value = true
+  loadingOrder.value = true
+  loadState.value = 'loading'
+  loadFailure.value = ''
+  const orderId = String(route.params.id ?? '')
+  const requestVersion = ++latestOrderLoad
   try {
-    await store.fetchOrderDetail(String(route.params.id))
+    const result = await store.fetchOrderDetail(orderId)
+    if (requestVersion !== latestOrderLoad) return
+    loadState.value = result ? 'ready' : 'not-found'
+  } catch (requestError) {
+    if (requestVersion !== latestOrderLoad) return
+    loadFailure.value = handleError(requestError, '订单详情暂时无法加载')
+    const status = Number((requestError as { status?: unknown })?.status)
+    const code = String((requestError as { code?: unknown })?.code ?? '')
+    loadState.value = status === 403 || code === 'PERMISSION_DENIED'
+      ? 'forbidden'
+      : status === 404 || code === 'RESOURCE_NOT_FOUND' ? 'not-found' : 'error'
   } finally {
-    refreshing.value = false
+    if (requestVersion === latestOrderLoad) {
+      loadingOrder.value = false
+      refreshing.value = false
+    }
   }
 }
+
+watch(() => String(route.params.id ?? ''), () => { void refreshOrder() }, { immediate: true })
 
 const relatedReviews = computed(() => {
   if (!order.value) return []
@@ -126,6 +151,34 @@ const hasSubmittedReview = computed(() => {
 })
 
 const completionHint = computed(() => order.value?.completionHint ?? '')
+const orderProgressCopy = computed(() => {
+  const currentOrder = order.value
+  if (!currentOrder) return ''
+  if (store.currentUser?.role === 'ADMIN') return '当前账号查看订单记录；订单双方履约操作不在此账号开放。'
+  if (currentOrder.status === 'ACCEPTED') {
+    return isProvider.value ? '订单已建立，可以开始执行。' : '等待接单方开始执行；后续进度在此订单中更新。'
+  }
+  if (currentOrder.status === 'IN_PROGRESS') {
+    if (completionHint.value) return ''
+    if (isProvider.value && currentUserConfirmedCompletion.value) {
+      return '你已提交完成确认，正在等待需求方查看凭证并确认。'
+    }
+    if (providerConfirmed.value && isRequester.value) {
+      return '接单方已提交完成凭证，请查看凭证并确认。'
+    }
+    return isProvider.value
+      ? '完成任务后提交 1–3 张凭证，需求方查看凭证并确认。'
+      : '接单方正在执行；收到完成确认后，请查看凭证并确认。'
+  }
+  if (currentOrder.status === 'COMPLETED') {
+    const automaticallyCompleted = currentOrder.timeline.some((entry) => entry.note === 'SYSTEM_AUTO_COMPLETED')
+    return automaticallyCompleted
+      ? '接单方提交完成凭证后 48 小时内未收到需求方确认，订单已按规则自动完成。'
+      : '双方已确认完成，订单奖励已按规则结算。'
+  }
+  if (currentOrder.status === 'CANCELLED') return '订单已取消，原需求保持关闭，历史记录仍可查看。'
+  return ''
+})
 // 后端在匿名需求下对接单方隐藏发布者真实 ID，因此不按 ID 匹配，改按视角相对展示待评价对象
 const pendingReviewTargetLabel = computed(() => {
   if (!order.value || order.value.status !== 'COMPLETED' || hasSubmittedReview.value) return ''
@@ -189,10 +242,16 @@ const enhancedTimeline = computed(() => {
 
 const hasAvailableActions = computed(() => {
   if (!order.value) return false
-  if (order.value.status === 'ACCEPTED' && (isProvider.value || isRequester.value)) return true
-  if (order.value.status === 'IN_PROGRESS') return true
+  if (order.value.status === 'ACCEPTED' && isProvider.value) return true
+  if (order.value.status === 'IN_PROGRESS' && (isProvider.value || isRequester.value)) return true
   return false
 })
+
+const canCancelCurrentOrder = computed(() => order.value && canCancelOrder(
+  order.value,
+  store.currentUser?.id,
+  store.currentUser?.role
+))
 
 const canRequestArbitration = computed(() => {
   if (!order.value) return false
@@ -204,12 +263,7 @@ const currentUserConfirmedCompletion = computed(() => {
   if (!order.value || !store.currentUser) return false
   return order.value.timeline.some(
     (t) => t.operatorId === store.currentUser!.id
-      && (
-        t.label.includes('接单方确认完成')
-        || t.label.includes('需求方确认完成')
-        || t.label.includes('已确认完成，等待需求方确认')
-        || t.label.includes('已确认完成，等待接单方确认')
-      )
+      && (t.note === 'PROVIDER_CONFIRMED_COMPLETION' || t.note === 'REQUESTER_CONFIRMED_COMPLETION')
   )
 })
 
@@ -217,7 +271,7 @@ const providerConfirmed = computed(() => {
   if (!order.value) return false
   return order.value.timeline.some(
     (t) => t.operatorId === order.value!.serviceProviderId
-      && (t.label.includes('接单方确认完成') || t.label.includes('已确认完成，等待需求方确认'))
+      && t.note === 'PROVIDER_CONFIRMED_COMPLETION'
   )
 })
 
@@ -226,7 +280,7 @@ const isDemandAnonymous = computed(() => order.value?.anonymous === true)
 /** 从时间线中查找仲裁发起人 ID */
 const arbitrationInitiatorId = computed(() => {
   if (!order.value) return undefined
-  const entry = order.value.timeline.find((t) => t.label === '发起仲裁')
+  const entry = order.value.timeline.find((t) => t.note?.startsWith('ARBITRATION_REQUESTED'))
   return entry?.operatorId
 })
 
@@ -308,7 +362,6 @@ async function completeOrder(): Promise<void> {
 
     const proofImageUrls = isProvider.value ? proofImages.value : null
     const updatedOrder = await store.completeOrder(order.value.id, proofImageUrls)
-    completionSubmitted.value = updatedOrder.status !== 'COMPLETED'
     message.value = updatedOrder.status === 'COMPLETED'
       ? '双方都已确认完成，订单已完成。'
       : '已提交完成确认，等待对方确认。'
@@ -420,24 +473,6 @@ async function submitReview(): Promise<void> {
   }
 }
 
-// (no automatic demand enrichment) keep original simple behavior
-
-onMounted(() => {
-  loadingOrder.value = true
-  void (async () => {
-    try {
-      await store.fetchOrderDetail(String(route.params.id))
-    } catch {
-      try {
-        await store.fetchOrders()
-      } catch {
-        // keep current view state; the empty-state branch will explain the failure
-      }
-    } finally {
-      loadingOrder.value = false
-    }
-  })()
-})
 </script>
 
 <template>
@@ -451,7 +486,11 @@ onMounted(() => {
     </section>
   </div>
 
-  <div v-else-if="order" class="page-grid order-detail-layout">
+  <ErrorState v-else-if="loadState === 'error'" title="订单详情加载失败" :description="loadFailure" :retry="true" retry-label="重试" @retry="refreshOrder" />
+  <ErrorState v-else-if="loadState === 'forbidden'" title="无权查看此订单" description="订单履约信息仅向订单双方和有权管理员开放。" />
+  <div v-else-if="loadState === 'not-found'" class="empty-state"><strong>订单不存在</strong><p>请检查订单链接，或从原始需求重新进入。</p></div>
+
+  <div v-else-if="order && loadState === 'ready'" class="page-grid order-detail-layout">
     <!-- 左栏：订单主体信息 -->
     <section class="panel order-main">
       <div class="page-head">
@@ -470,7 +509,17 @@ onMounted(() => {
 
       <div class="status-row">
         <span class="chip" :class="statusToneClass(order.status)">{{ formatOrderStatus(order.status) }}</span>
-        <span v-if="completionHint" class="chip is-warning">{{ completionHint }}</span>
+        <span v-if="order.status === 'IN_PROGRESS' && completionHint" class="chip is-warning">{{ completionHint }}</span>
+        <span class="chip">{{ orderFlowKind === 'selected-response' ? '响应选定后建立' : '直接接单' }}</span>
+      </div>
+      <p v-if="orderProgressCopy" class="order-progress-copy">{{ orderProgressCopy }}</p>
+
+      <div class="order-source-note">
+        <div>
+          <strong>{{ orderFlowKind === 'selected-response' ? '由需求响应进入履约' : '直接接单委托' }}</strong>
+          <p>{{ orderFlowKind === 'selected-response' ? '双方已在需求中完成选择，当前页面只处理正式订单履约。' : '接单方承接了发布者的直接委托。' }}</p>
+        </div>
+        <button type="button" class="button secondary" @click="router.push({ name: 'DemandDetail', params: { id: order.demandId } })">查看原始需求</button>
       </div>
 
       <!-- 仲裁状态横幅 -->
@@ -525,7 +574,7 @@ onMounted(() => {
         <div class="mini-stat"><span class="subtle">地点</span><strong>{{ order.demandLocation || '未填写' }}</strong></div>
         <div class="mini-stat"><span class="subtle">开始时间</span><strong>{{ order.demandStartTime ? new Date(order.demandStartTime).toLocaleString() : '—' }}</strong></div>
         <div class="mini-stat"><span class="subtle">结束时间</span><strong>{{ order.demandEndTime ? new Date(order.demandEndTime).toLocaleString() : '—' }}</strong></div>
-        <div class="mini-stat"><span class="subtle">报酬</span><strong>{{ order.demandReward ? order.demandReward + ' 元' : '无' }}</strong></div>
+        <div class="mini-stat"><span class="subtle">奖励</span><strong>{{ order.demandReward ? order.demandReward + ' 校邻币' : '无奖励' }}</strong></div>
       </div>
 
       <!-- 参与方信息 -->
@@ -557,7 +606,7 @@ onMounted(() => {
 
       <!-- 接单人留言 -->
       <div class="list-card" style="margin-top: 12px;">
-        <div class="meta"><strong>💬 接单人留言</strong></div>
+        <div class="meta"><strong>{{ orderFlowKind === 'selected-response' ? '已选响应' : '接单备注' }}</strong></div>
         <p style="margin-top: 4px; white-space: pre-wrap;">{{ order.note || '暂无留言' }}</p>
       </div>
 
@@ -612,10 +661,10 @@ onMounted(() => {
             {{ submitting ? '处理中...' : '确认完成' }}
           </button>
           <span
-            v-if="order.status === 'IN_PROGRESS' && ((isProvider && currentUserConfirmedCompletion) || (isRequester && !providerConfirmed) || (!isProvider && !isRequester) || (isRequester && currentUserConfirmedCompletion))"
+            v-if="order.status === 'IN_PROGRESS' && completionHint && (isProvider || isRequester)"
             class="chip is-warning"
-          >{{ completionHint || '等待接单方确认完成' }}</span>
-          <button v-if="order.status === 'ACCEPTED' && isRequester" type="button" class="button danger" :disabled="submitting" @click="cancelOrder">{{ submitting ? '处理中...' : '取消订单' }}</button>
+          >{{ completionHint }}</span>
+          <button v-if="canCancelCurrentOrder" type="button" class="button danger" :disabled="submitting" @click="cancelOrder">{{ submitting ? '处理中...' : '取消订单' }}</button>
           <button v-if="canRequestArbitration" type="button" class="button secondary" :disabled="submitting" @click="openArbitrationDialog">发起仲裁</button>
           <button v-if="order.canSubmitArbitrationResponse" type="button" class="button secondary" :disabled="submitting" @click="openArbitrationResponseDialog">补充说明</button>
         </div>
@@ -775,6 +824,38 @@ onMounted(() => {
   top: 20px;
   max-height: calc(100vh - 40px);
   overflow-y: auto;
+}
+
+.order-source-note {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-top: 14px;
+  padding: 16px 18px;
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  background: #f8faf8;
+}
+
+.order-source-note strong {
+  color: var(--text-strong);
+}
+
+.order-source-note p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.order-progress-copy {
+  margin: 12px 0 0;
+  padding: 12px 14px;
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+  color: var(--text-strong);
+  line-height: 1.55;
 }
 
 /* ========== 仲裁横幅 ========== */

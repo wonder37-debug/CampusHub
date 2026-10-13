@@ -176,4 +176,17 @@ public class MyBatisDemandResponseRepository implements DemandResponseRepository
             .map(DemandResponseEntity::toDomain)
             .toList();
     }
+
+    @Override
+    public List<DemandResponse> findByAuthorId(Long authorId) {
+        if (authorId == null) {
+            return List.of();
+        }
+        return demandResponseMapper.selectList(new LambdaQueryWrapper<DemandResponseEntity>()
+                .eq(DemandResponseEntity::getAuthorId, authorId)
+                .orderByDesc(DemandResponseEntity::getCreatedAt))
+            .stream()
+            .map(DemandResponseEntity::toDomain)
+            .toList();
+    }
 }

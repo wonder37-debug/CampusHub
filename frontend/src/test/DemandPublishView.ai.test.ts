@@ -1,634 +1,203 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
-import DemandPublishView from '@/views/DemandPublishView.vue'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import type { AiDemandDraft } from '@/types/campushub'
+import DemandPublishView from '@/views/DemandPublishView.vue'
 
-const { mockStore, mockGenerate, mockCreateDemand } = vi.hoisted(() => {
-  const mockStore: any = {
-    currentUser: { role: 'USER', balance: 100, frozenBalance: 0 }
+const { mockStore, mockGenerate, mockCreate, mockPush, mockConfirm } = vi.hoisted(() => {
+  const generate = vi.fn()
+  const create = vi.fn()
+  const push = vi.fn()
+  const confirm = vi.fn()
+  return {
+    mockStore: { currentUser: { role: 'USER', balance: 100, frozenBalance: 0 }, generateDemandDraft: generate, createDemand: create },
+    mockGenerate: generate,
+    mockCreate: create,
+    mockPush: push,
+    mockConfirm: confirm
   }
-  const mockGenerate = vi.fn()
-  const mockCreateDemand = vi.fn()
-  mockStore.generateDemandDraft = mockGenerate
-  mockStore.createDemand = mockCreateDemand
-  mockStore.fetchProfile = vi.fn().mockResolvedValue(undefined)
-  return { mockStore, mockGenerate, mockCreateDemand }
 })
 
-vi.mock('@/stores/campusHub', () => ({
-  useCampusHubStore: () => mockStore
-}))
-
-vi.mock('@/composables/useDialog', () => ({
-  useConfirm: vi.fn().mockResolvedValue(false)
-}))
-
-vi.mock('@/components/ImageUploader.vue', () => ({
-  default: { name: 'ImageUploader', template: '<div class="image-uploader-stub" />' }
-}))
-
+vi.mock('@/stores/campusHub', () => ({ useCampusHubStore: () => mockStore }))
+vi.mock('@/composables/useDialog', () => ({ useConfirm: (...args: unknown[]) => mockConfirm(...args), useAlert: vi.fn() }))
+vi.mock('@/components/ImageUploader.vue', () => ({ default: { name: 'ImageUploader', template: '<div />' } }))
 vi.mock('vue-router', () => ({
-  useRouter: () => ({ push: vi.fn(), back: vi.fn() }),
+  useRouter: () => ({ push: mockPush, back: vi.fn() }),
   onBeforeRouteLeave: vi.fn()
 }))
 
 function buildDraft(overrides: Partial<AiDemandDraft> = {}): AiDemandDraft {
   return {
-    title: '代取快递并送到南区宿舍',
-    description: '明天下午三点帮我从菜鸟驿站取快递送到南区宿舍',
-    category: 'EXPRESS',
-    campusZone: 'XIANLIN',
-    location: '南区宿舍',
-    startTime: '2026-10-08T15:00:00',
-    endTime: '2026-10-08T17:00:00',
-    reward: 10,
-    tags: ['快递', '跑腿'],
-    interactionMode: 'DIRECT_ACCEPT',
-    targetParticipantCount: null,
-    contactInfo: null,
-    anonymous: null,
-    missingFields: [],
-    ...overrides
+    title: '代取快递并送到南区宿舍', description: '下午帮我取快递', category: 'EXPRESS',
+    campusZone: 'XIANLIN', location: '南区宿舍', startTime: '2026-10-08T15:00:00',
+    endTime: '2026-10-08T17:00:00', reward: 10, tags: ['快递'], interactionMode: 'DIRECT_ACCEPT',
+    targetParticipantCount: null, contactInfo: null, anonymous: null, missingFields: [], ...overrides
   }
 }
 
-describe('DemandPublishView - AI 帮我发布', () => {
+async function openAi(wrapper: VueWrapper, prompt = '明天下午帮我取快递'): Promise<void> {
+  await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
+  await wrapper.find('[data-testid="ai-prompt-input"]').setValue(prompt)
+}
+
+async function generate(wrapper: VueWrapper): Promise<void> {
+  await wrapper.find('[data-testid="ai-generate-button"]').trigger('click')
+  await flushPromises()
+}
+
+async function acceptAiType(wrapper: VueWrapper): Promise<void> {
+  await wrapper.find('[data-testid="ai-type-confirm"]').trigger('click')
+  await flushPromises()
+}
+
+describe('DemandPublishView - 发布入口与 AI 草稿', () => {
   let wrapper: VueWrapper
 
   beforeEach(() => {
     vi.clearAllMocks()
-    mockStore.currentUser = { role: 'USER', balance: 100, frozenBalance: 0 }
     localStorage.clear()
-    wrapper = mount(DemandPublishView, {
-      global: {
-        stubs: { ImageUploader: true }
-      }
-    })
+    mockStore.currentUser = { role: 'USER', balance: 100, frozenBalance: 0 }
+    mockConfirm.mockResolvedValue(true)
+    mockCreate.mockResolvedValue({ id: 'd-42' })
+    wrapper = mount(DemandPublishView)
   })
 
-  afterEach(() => {
-    wrapper?.unmount()
+  afterEach(() => { wrapper.unmount(); vi.useRealTimers() })
+
+  it('先展示清晰的类型选择入口，人工选择后使用预设参与模式', async () => {
+    expect(wrapper.find('#demand-title').exists()).toBe(false)
+    for (const [category, mode] of [['EXPRESS', 'DIRECT_ACCEPT'], ['ERRAND', 'DIRECT_ACCEPT'], ['SECOND_HAND', 'SELECT_ONE'], ['STUDY_TUTORING', 'SELECT_ONE'], ['TEAM_UP', 'SELECT_MANY'], ['HELP', 'HELP']] as const) {
+      if (wrapper.find('#demand-title').exists()) await wrapper.find('[data-testid="change-type"]').trigger('click')
+      await wrapper.find(`[data-testid="category-card-${category}"]`).trigger('click')
+      expect((wrapper.find('#demand-category').element as HTMLSelectElement).value).toBe(category)
+      if (category === 'TEAM_UP') expect(wrapper.find('#demand-target-count').exists()).toBe(true)
+      else expect(wrapper.find('#demand-target-count').exists()).toBe(false)
+      expect(mode).toBeTruthy()
+    }
+    await wrapper.find('[data-testid="change-type"]').trigger('click')
+    await wrapper.find('[data-testid="category-card-OTHER"]').trigger('click')
+    expect(wrapper.find('#demand-interaction-mode').exists()).toBe(true)
+    expect(wrapper.find('#demand-interaction-mode').findAll('option').map((option) => option.element.value)).not.toContain('HELP')
   })
 
-  it('渲染 AI 帮我发布入口按钮', () => {
-    expect(wrapper.find('[data-testid="ai-publish-entry"]').exists()).toBe(true)
-  })
-
-  it('点击入口按钮打开 AI Dialog', async () => {
-    expect(wrapper.find('[data-testid="ai-modal"]').exists()).toBe(false)
-
-    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
-
-    expect(wrapper.find('[data-testid="ai-modal"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="ai-prompt-input"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="ai-generate-button"]').exists()).toBe(true)
-  })
-
-  it('prompt 为空时生成按钮禁用', async () => {
-    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
-
-    const button = wrapper.find('[data-testid="ai-generate-button"]')
-    expect((button.element as HTMLButtonElement).disabled).toBe(true)
-  })
-
-  it('输入 prompt 后生成按钮可用', async () => {
-    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
-    const textarea = wrapper.find('[data-testid="ai-prompt-input"]')
-    await textarea.setValue('明天下午三点帮我取快递，给10元')
-
-    const button = wrapper.find('[data-testid="ai-generate-button"]')
-    expect((button.element as HTMLButtonElement).disabled).toBe(false)
-  })
-
-  it('点击生成调用 store.generateDemandDraft', async () => {
+  it('AI 草稿先供确认类型，确认后才进入共同表单', async () => {
     mockGenerate.mockResolvedValue(buildDraft())
-    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
-    await wrapper.find('[data-testid="ai-prompt-input"]').setValue('明天下午三点帮我取快递，给10元')
-    await wrapper.find('[data-testid="ai-generate-button"]').trigger('click')
-    await flushPromises()
-
-    expect(mockGenerate).toHaveBeenCalledWith('明天下午三点帮我取快递，给10元')
-  })
-
-  it('生成期间按钮显示生成中并禁止重复点击', async () => {
-    let resolveGenerate: (value: AiDemandDraft) => void = () => {}
-    mockGenerate.mockReturnValue(new Promise<AiDemandDraft>((resolve) => {
-      resolveGenerate = resolve
-    }))
-    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
-    await wrapper.find('[data-testid="ai-prompt-input"]').setValue('取快递')
-    await wrapper.find('[data-testid="ai-generate-button"]').trigger('click')
-    await flushPromises()
-
-    const button = wrapper.find('[data-testid="ai-generate-button"]')
-    expect(button.text()).toContain('生成中')
-    expect((button.element as HTMLButtonElement).disabled).toBe(true)
-
-    resolveGenerate(buildDraft())
-    await flushPromises()
-  })
-
-  it('成功后回填现有表单字段', async () => {
-    mockGenerate.mockResolvedValue(buildDraft())
-    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
-    await wrapper.find('[data-testid="ai-prompt-input"]').setValue('明天下午三点帮我取快递，给10元')
-    await wrapper.find('[data-testid="ai-generate-button"]').trigger('click')
-    await flushPromises()
-
+    await openAi(wrapper)
+    await generate(wrapper)
+    expect(wrapper.find('[data-testid="ai-candidate"]').exists()).toBe(true)
+    expect(wrapper.find('#demand-title').exists()).toBe(false)
+    await acceptAiType(wrapper)
+    expect(wrapper.find('#demand-title').exists()).toBe(true)
     expect((wrapper.find('#demand-title').element as HTMLInputElement).value).toBe('代取快递并送到南区宿舍')
-    expect((wrapper.find('#demand-category').element as HTMLSelectElement).value).toBe('EXPRESS')
-    expect((wrapper.find('#demand-zone').element as HTMLSelectElement).value).toBe('XIANLIN')
-    expect((wrapper.find('#demand-location').element as HTMLInputElement).value).toBe('南区宿舍')
-    expect((wrapper.find('#demand-reward').element as HTMLInputElement).value).toBe('10')
-    expect((wrapper.find('#demand-start-datetime').element as HTMLInputElement).value).toBe('2026-10-08T15:00')
-    expect((wrapper.find('#demand-end-datetime').element as HTMLInputElement).value).toBe('2026-10-08T17:00')
-    expect((wrapper.find('#demand-tags').element as HTMLInputElement).value).toBe('快递,跑腿')
+    expect(wrapper.find('.ai-form-legend').text()).toContain('AI 草稿仅供参考')
+    await wrapper.find('#demand-title').setValue('我再次检查并修改了标题')
+    expect(mockCreate).not.toHaveBeenCalled()
   })
 
-  it('成功后关闭 Dialog', async () => {
-    mockGenerate.mockResolvedValue(buildDraft())
-    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
-    await wrapper.find('[data-testid="ai-prompt-input"]').setValue('取快递')
-    await wrapper.find('[data-testid="ai-generate-button"]').trigger('click')
-    await flushPromises()
-
-    expect(wrapper.find('[data-testid="ai-modal"]').exists()).toBe(false)
+  it('AI 未返回开始时间时按当前时间填写，不把缺失团队人数伪装成默认值', async () => {
+    mockGenerate.mockResolvedValue(buildDraft({ category: 'TEAM_UP', interactionMode: 'SELECT_MANY', startTime: null, targetParticipantCount: null, missingFields: ['targetParticipantCount'] }))
+    await openAi(wrapper, '需要 5 人一起组队')
+    await generate(wrapper)
+    await acceptAiType(wrapper)
+    expect((wrapper.find('#demand-start-datetime').element as HTMLInputElement).value).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/)
+    expect((wrapper.find('#demand-target-count').element as HTMLInputElement).value).toBe('')
+    expect(wrapper.find('.ai-form-legend').text()).toContain('AI 草稿仅供参考')
   })
 
-  it('missingFields 非空时在表单区域展示补充提示', async () => {
-    mockGenerate.mockResolvedValue(buildDraft({
-      campusZone: null,
-      location: null,
-      reward: null,
-      missingFields: ['campusZone', 'location', 'reward']
-    }))
-    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
-    await wrapper.find('[data-testid="ai-prompt-input"]').setValue('帮我找人买咖啡')
+  it('缺失开始时间时采用生成请求发起时的当前时间', async () => {
+    await openAi(wrapper)
+    mockGenerate.mockResolvedValue(buildDraft({ startTime: null }))
+    const beforeGenerate = Date.now()
+    await generate(wrapper)
+    const afterGenerate = Date.now()
+    await acceptAiType(wrapper)
+    const startValue = (wrapper.find('#demand-start-datetime').element as HTMLInputElement).value
+    expect(startValue).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/)
+    const startMs = new Date(startValue).getTime()
+    expect(Number.isNaN(startMs)).toBe(false)
+    // startDateTime 应在生成请求发起前后范围内，而非 applyAiDraft（确认）阶段
+    expect(startMs).toBeGreaterThanOrEqual(beforeGenerate - 60_000)
+    expect(startMs).toBeLessThanOrEqual(afterGenerate + 60_000)
+  })
+
+  it('AI 重生成完整替换上一版字段；空奖励不继承旧草稿值', async () => {
+    mockGenerate.mockResolvedValueOnce(buildDraft({ contactInfo: 'QQ: 123456', tags: ['旧标签'] }))
+    mockGenerate.mockResolvedValueOnce(buildDraft({ title: '第二版需求', description: null, location: null, reward: null, tags: [], contactInfo: null }))
+    await openAi(wrapper)
+    await generate(wrapper)
     await wrapper.find('[data-testid="ai-generate-button"]').trigger('click')
     await flushPromises()
-
-    const hint = wrapper.find('[data-testid="ai-missing-hint"]')
-    expect(hint.exists()).toBe(true)
-    expect(hint.text()).toContain('校区')
-    expect(hint.text()).toContain('地点')
-    expect(hint.text()).toContain('报酬')
-    // 未虚构的字段保持空（reward 在 missingFields 中，默认值被清空）
+    await acceptAiType(wrapper)
+    expect((wrapper.find('#demand-title').element as HTMLInputElement).value).toBe('第二版需求')
+    expect((wrapper.find('#demand-description').element as HTMLTextAreaElement).value).toBe('')
     expect((wrapper.find('#demand-location').element as HTMLInputElement).value).toBe('')
     expect((wrapper.find('#demand-reward').element as HTMLInputElement).value).toBe('')
-  })
-
-  it('AI 请求失败时展示错误且不回填表单', async () => {
-    mockGenerate.mockRejectedValue(new Error('AI 服务暂时不可用，请稍后重试'))
-    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
-    await wrapper.find('[data-testid="ai-prompt-input"]').setValue('取快递')
-    await wrapper.find('[data-testid="ai-generate-button"]').trigger('click')
-    await flushPromises()
-
-    const errorEl = wrapper.find('[data-testid="ai-error"]')
-    expect(errorEl.exists()).toBe(true)
-    expect(errorEl.text()).toContain('AI 服务暂时不可用')
-    // Dialog 仍然打开
-    expect(wrapper.find('[data-testid="ai-modal"]').exists()).toBe(true)
-    // 表单未被回填
-    expect((wrapper.find('#demand-title').element as HTMLInputElement).value).toBe('')
-  })
-
-  it('AI 生成后不自动提交 Demand', async () => {
-    mockGenerate.mockResolvedValue(buildDraft())
-    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
-    await wrapper.find('[data-testid="ai-prompt-input"]').setValue('取快递')
-    await wrapper.find('[data-testid="ai-generate-button"]').trigger('click')
-    await flushPromises()
-
-    expect(mockCreateDemand).not.toHaveBeenCalled()
-  })
-
-  it('AI 生成后用户可继续编辑表单', async () => {
-    mockGenerate.mockResolvedValue(buildDraft())
-    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
-    await wrapper.find('[data-testid="ai-prompt-input"]').setValue('取快递')
-    await wrapper.find('[data-testid="ai-generate-button"]').trigger('click')
-    await flushPromises()
-
-    const titleInput = wrapper.find('#demand-title')
-    expect((titleInput.element as HTMLInputElement).value).toBe('代取快递并送到南区宿舍')
-    await titleInput.setValue('代取快递并送到北区宿舍（用户修改）')
-    expect((titleInput.element as HTMLInputElement).value).toBe('代取快递并送到北区宿舍（用户修改）')
-  })
-
-  it('TEAM_UP 草稿回填目标人数', async () => {
-    mockGenerate.mockResolvedValue(buildDraft({
-      title: '周六下午找3个人一起打羽毛球',
-      category: 'TEAM_UP',
-      interactionMode: 'SELECT_MANY',
-      targetParticipantCount: 3,
-      startTime: '2026-10-10T14:00:00',
-      endTime: '2026-10-10T17:00:00',
-      reward: 0,
-      missingFields: ['campusZone', 'location']
-    }))
-    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
-    await wrapper.find('[data-testid="ai-prompt-input"]').setValue('周六下午找3个人一起打羽毛球')
-    await wrapper.find('[data-testid="ai-generate-button"]').trigger('click')
-    await flushPromises()
-
-    expect((wrapper.find('#demand-category').element as HTMLSelectElement).value).toBe('TEAM_UP')
-    expect((wrapper.find('#demand-target-count').element as HTMLInputElement).value).toBe('3')
-  })
-
-  it('reward=null 时清空默认值，即使 missingFields 不含 reward', async () => {
-    mockGenerate.mockResolvedValue(buildDraft({
-      title: '取快递',
-      description: '描述',
-      campusZone: 'XIANLIN',
-      location: '图书馆',
-      startTime: '2026-10-08T10:00:00',
-      endTime: '2026-10-08T12:00:00',
-      reward: null,
-      // 故意让 missingFields 不含 reward，验证前端不依赖 missingFields 决定清空
-      missingFields: []
-    }))
-    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
-    await wrapper.find('[data-testid="ai-prompt-input"]').setValue('取快递')
-    await wrapper.find('[data-testid="ai-generate-button"]').trigger('click')
-    await flushPromises()
-
-    // reward=null 必须清空，不依赖 missingFields，不能保留默认 10 元
-    expect((wrapper.find('#demand-reward').element as HTMLInputElement).value).toBe('')
-  })
-
-  it('reward=0 时保留为 0，不误判为空', async () => {
-    mockGenerate.mockResolvedValue(buildDraft({
-      title: '取快递',
-      description: '描述',
-      campusZone: 'XIANLIN',
-      location: '图书馆',
-      startTime: '2026-10-08T10:00:00',
-      endTime: '2026-10-08T12:00:00',
-      reward: 0,
-      missingFields: []
-    }))
-    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
-    await wrapper.find('[data-testid="ai-prompt-input"]').setValue('取快递')
-    await wrapper.find('[data-testid="ai-generate-button"]').trigger('click')
-    await flushPromises()
-
-    // reward=0 是有效值，必须保留为 "0"，不能误判为空
-    expect((wrapper.find('#demand-reward').element as HTMLInputElement).value).toBe('0')
-  })
-
-  it('category 从 TEAM_UP 改为 EXPRESS 时清理旧 targetParticipantCount', async () => {
-    // 先模拟用户选了 TEAM_UP + target count = 3
-    await wrapper.find('#demand-category').setValue('TEAM_UP')
-    await wrapper.find('#demand-target-count').setValue('3')
-    expect((wrapper.find('#demand-target-count').element as HTMLInputElement).value).toBe('3')
-
-    // AI 返回 EXPRESS（category 改变）
-    mockGenerate.mockResolvedValue(buildDraft({
-      title: '取快递',
-      description: '描述',
-      category: 'EXPRESS',
-      campusZone: 'XIANLIN',
-      location: '图书馆',
-      startTime: '2026-10-08T10:00:00',
-      endTime: '2026-10-08T12:00:00',
-      reward: 10,
-      missingFields: []
-    }))
-    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
-    await wrapper.find('[data-testid="ai-prompt-input"]').setValue('取快递')
-    await wrapper.find('[data-testid="ai-generate-button"]').trigger('click')
-    await flushPromises()
-
-    // EXPRESS 模式下 target count 输入框不显示（effectiveInteractionMode=DIRECT_ACCEPT）
-    // 旧的 targetParticipantCount=3 已被清理，不残留
-    expect(wrapper.find('#demand-target-count').exists()).toBe(false)
-    expect((wrapper.find('#demand-category').element as HTMLSelectElement).value).toBe('EXPRESS')
-  })
-
-  it('AI interactionMode=null 清空旧 mode（OTHER）', async () => {
-    // 先选 OTHER + interactionMode=SELECT_ONE
-    await wrapper.find('#demand-category').setValue('OTHER')
-    const modeSelect = wrapper.find('#demand-interaction-mode')
-    await modeSelect.setValue('SELECT_ONE')
-    expect((modeSelect.element as HTMLSelectElement).value).toBe('SELECT_ONE')
-
-    // AI 返回 OTHER + interactionMode=null
-    mockGenerate.mockResolvedValue(buildDraft({
-      title: '其他需求',
-      description: '描述',
-      category: 'OTHER',
-      campusZone: 'XIANLIN',
-      location: '图书馆',
-      startTime: '2026-10-08T10:00:00',
-      endTime: '2026-10-08T12:00:00',
-      reward: 0,
-      tags: [],
-      interactionMode: null,
-      targetParticipantCount: null,
-      missingFields: ['interactionMode']
-    }))
-    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
-    await wrapper.find('[data-testid="ai-prompt-input"]').setValue('其他需求')
-    await wrapper.find('[data-testid="ai-generate-button"]').trigger('click')
-    await flushPromises()
-
-    // 旧 SELECT_ONE 已清空，不能残留
-    expect((wrapper.find('#demand-interaction-mode').element as HTMLSelectElement).value).toBe('')
-  })
-
-  it('AI tags=[] 清空旧 tags', async () => {
-    await wrapper.find('#demand-tags').setValue('跑腿,代取')
-    expect((wrapper.find('#demand-tags').element as HTMLInputElement).value).toBe('跑腿,代取')
-
-    mockGenerate.mockResolvedValue(buildDraft({
-      title: '取快递',
-      description: '描述',
-      category: 'EXPRESS',
-      campusZone: 'XIANLIN',
-      location: '图书馆',
-      startTime: '2026-10-08T10:00:00',
-      endTime: '2026-10-08T12:00:00',
-      reward: 10,
-      tags: [],
-      missingFields: []
-    }))
-    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
-    await wrapper.find('[data-testid="ai-prompt-input"]').setValue('取快递')
-    await wrapper.find('[data-testid="ai-generate-button"]').trigger('click')
-    await flushPromises()
-
-    // 旧 tags 已清空，不 append
     expect((wrapper.find('#demand-tags').element as HTMLInputElement).value).toBe('')
-  })
-
-  it('AI targetParticipantCount=null 清空旧人数（TEAM_UP）', async () => {
-    await wrapper.find('#demand-category').setValue('TEAM_UP')
-    await wrapper.find('#demand-target-count').setValue('3')
-
-    mockGenerate.mockResolvedValue(buildDraft({
-      title: '组队',
-      description: '描述',
-      category: 'TEAM_UP',
-      campusZone: 'XIANLIN',
-      location: '操场',
-      startTime: '2026-10-10T14:00:00',
-      endTime: '2026-10-10T17:00:00',
-      reward: 0,
-      tags: [],
-      interactionMode: null,
-      targetParticipantCount: null,
-      missingFields: ['targetParticipantCount']
-    }))
-    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
-    await wrapper.find('[data-testid="ai-prompt-input"]').setValue('组队')
-    await wrapper.find('[data-testid="ai-generate-button"]').trigger('click')
-    await flushPromises()
-
-    // TEAM_UP 仍显示 target count 输入框，但值已清空（null → ''）
-    expect((wrapper.find('#demand-target-count').element as HTMLInputElement).value).toBe('')
-  })
-
-  it('连续两次 AI 生成：最终完全等于第二次草稿，不残留第一次', async () => {
-    // 第一次：TEAM_UP + count=3 + reward=20 + tags=['跑腿']
-    mockGenerate.mockResolvedValueOnce(buildDraft({
-      title: '组队打球',
-      description: '描述',
-      category: 'TEAM_UP',
-      campusZone: 'XIANLIN',
-      location: '操场',
-      startTime: '2026-10-10T14:00:00',
-      endTime: '2026-10-10T17:00:00',
-      reward: 20,
-      tags: ['跑腿'],
-      interactionMode: 'SELECT_MANY',
-      targetParticipantCount: 3,
-      missingFields: []
-    }))
-    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
-    await wrapper.find('[data-testid="ai-prompt-input"]').setValue('组队')
-    await wrapper.find('[data-testid="ai-generate-button"]').trigger('click')
-    await flushPromises()
-
-    // 第二次：EXPRESS + null + null + []
-    mockGenerate.mockResolvedValueOnce(buildDraft({
-      title: '代取快递',
-      description: '描述2',
-      category: 'EXPRESS',
-      campusZone: 'GULOU',
-      location: '图书馆',
-      startTime: '2026-10-08T10:00:00',
-      endTime: '2026-10-08T12:00:00',
-      reward: null,
-      tags: [],
-      interactionMode: null,
-      targetParticipantCount: null,
-      missingFields: ['reward']
-    }))
-    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
-    await wrapper.find('[data-testid="ai-prompt-input"]').setValue('取快递')
-    await wrapper.find('[data-testid="ai-generate-button"]').trigger('click')
-    await flushPromises()
-
-    // 最终完全等于第二次草稿，不残留第一次的 3/20/跑腿
-    expect((wrapper.find('#demand-category').element as HTMLSelectElement).value).toBe('EXPRESS')
-    expect((wrapper.find('#demand-reward').element as HTMLInputElement).value).toBe('')
-    expect((wrapper.find('#demand-tags').element as HTMLInputElement).value).toBe('')
-    // EXPRESS 不显示 target count（DIRECT_ACCEPT），旧的 3 已清空
-    expect(wrapper.find('#demand-target-count').exists()).toBe(false)
-  })
-
-  it('localStorage 污染：AI 返回 null/[] 清空 localStorage 旧值', async () => {
-    // 模拟 localStorage 有旧草稿
-    localStorage.setItem('campushub.demand.draft', JSON.stringify({
-      title: '', description: '', category: 'TEAM_UP', campusZone: '', location: '',
-      startDateTime: '', endDateTime: '', reward: '10', targetParticipantCount: '3',
-      interactionMode: '', tags: '旧标签', images: [], contactInfo: '', anonymous: false
-    }))
-    // 重新 mount 触发 onMounted loadDemandDraft
-    wrapper.unmount()
-    wrapper = mount(DemandPublishView, {
-      global: { stubs: { ImageUploader: true } }
-    })
-    await flushPromises()
-    // localStorage 恢复了旧值
-    expect((wrapper.find('#demand-reward').element as HTMLInputElement).value).toBe('10')
-    expect((wrapper.find('#demand-tags').element as HTMLInputElement).value).toBe('旧标签')
-
-    // AI 返回 null/[]
-    mockGenerate.mockResolvedValue(buildDraft({
-      title: '取快递',
-      description: '描述',
-      category: 'EXPRESS',
-      campusZone: 'XIANLIN',
-      location: '图书馆',
-      startTime: '2026-10-08T10:00:00',
-      endTime: '2026-10-08T12:00:00',
-      reward: null,
-      tags: [],
-      interactionMode: null,
-      targetParticipantCount: null,
-      missingFields: ['reward']
-    }))
-    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
-    await wrapper.find('[data-testid="ai-prompt-input"]').setValue('取快递')
-    await wrapper.find('[data-testid="ai-generate-button"]').trigger('click')
-    await flushPromises()
-
-    // localStorage 的旧值被 AI null/[] 清空，不能 fallback
-    expect((wrapper.find('#demand-reward').element as HTMLInputElement).value).toBe('')
-    expect((wrapper.find('#demand-tags').element as HTMLInputElement).value).toBe('')
-  })
-
-  it('AI 请求失败时表单完全保持原状态，不清空', async () => {
-    // 设置旧数据
-    await wrapper.find('#demand-reward').setValue('10')
-    await wrapper.find('#demand-tags').setValue('旧标签')
-    await wrapper.find('#demand-category').setValue('TEAM_UP')
-    await wrapper.find('#demand-target-count').setValue('3')
-
-    // AI 请求失败（500）
-    mockGenerate.mockRejectedValue(new Error('AI 服务暂时不可用，请稍后重试'))
-    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
-    await wrapper.find('[data-testid="ai-prompt-input"]').setValue('取快递')
-    await wrapper.find('[data-testid="ai-generate-button"]').trigger('click')
-    await flushPromises()
-
-    // 表单完全保持原状态，不能清空
-    expect((wrapper.find('#demand-reward').element as HTMLInputElement).value).toBe('10')
-    expect((wrapper.find('#demand-tags').element as HTMLInputElement).value).toBe('旧标签')
-    expect((wrapper.find('#demand-category').element as HTMLSelectElement).value).toBe('TEAM_UP')
-    expect((wrapper.find('#demand-target-count').element as HTMLInputElement).value).toBe('3')
-    // 错误提示展示
-    expect(wrapper.find('[data-testid="ai-error"]').exists()).toBe(true)
-  })
-
-  it('取消按钮关闭 Dialog（未生成时）', async () => {
-    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
-    expect(wrapper.find('[data-testid="ai-modal"]').exists()).toBe(true)
-
-    // Dialog 底部取消按钮
-    const buttons = wrapper.findAll('[data-testid="ai-modal"] button')
-    const cancelButton = buttons.find((b) => b.text() === '取消')
-    await cancelButton?.trigger('click')
-
-    expect(wrapper.find('[data-testid="ai-modal"]').exists()).toBe(false)
-  })
-
-  // ========== Bug 2: AI 结构化提取与回填回归测试 ==========
-
-  it('AI 回填 contactInfo 到联系方式字段', async () => {
-    mockGenerate.mockResolvedValue(buildDraft({
-      contactInfo: 'QQ: 25984515619',
-      category: 'TEAM_UP',
-      campusZone: 'SUZHOU',
-      interactionMode: 'SELECT_MANY',
-      targetParticipantCount: 5,
-      reward: 50
-    }))
-    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
-    await wrapper.find('[data-testid="ai-prompt-input"]').setValue('苏州校区足球队组队')
-    await wrapper.find('[data-testid="ai-generate-button"]').trigger('click')
-    await flushPromises()
-
-    const contactInput = wrapper.find('#demand-contact')
-    expect((contactInput.element as HTMLInputElement).value).toBe('QQ: 25984515619')
-  })
-
-  it('AI anonymous=true 时开启匿名控件', async () => {
-    mockGenerate.mockResolvedValue(buildDraft({
-      anonymous: true,
-      category: 'HELP'
-    }))
-    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
-    await wrapper.find('[data-testid="ai-prompt-input"]').setValue('匿名发布求助')
-    await wrapper.find('[data-testid="ai-generate-button"]').trigger('click')
-    await flushPromises()
-
-    const anonCheckbox = wrapper.find('input[type="checkbox"]')
-    expect((anonCheckbox.element as HTMLInputElement).checked).toBe(true)
-  })
-
-  it('AI anonymous=null 时不覆盖用户已有的匿名选择', async () => {
-    // 用户先手动勾选匿名
-    const anonCheckbox = wrapper.find('input[type="checkbox"]')
-    await anonCheckbox.setValue(true)
-    expect((anonCheckbox.element as HTMLInputElement).checked).toBe(true)
-
-    // AI 返回 anonymous=null（未提及匿名）
-    mockGenerate.mockResolvedValue(buildDraft({ anonymous: null }))
-    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
-    await wrapper.find('[data-testid="ai-prompt-input"]').setValue('取快递')
-    await wrapper.find('[data-testid="ai-generate-button"]').trigger('click')
-    await flushPromises()
-
-    // 匿名状态保持用户的手动选择
-    expect((wrapper.find('input[type="checkbox"]').element as HTMLInputElement).checked).toBe(true)
-  })
-
-  it('AI contactInfo=null 时保留用户已有的联系方式', async () => {
-    // 用户先手动输入联系方式
-    await wrapper.find('#demand-contact').setValue('微信: abc123')
-
-    // AI 返回 contactInfo=null
-    mockGenerate.mockResolvedValue(buildDraft({ contactInfo: null }))
-    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
-    await wrapper.find('[data-testid="ai-prompt-input"]').setValue('取快递')
-    await wrapper.find('[data-testid="ai-generate-button"]').trigger('click')
-    await flushPromises()
-
-    // 联系方式保持用户的手动输入
-    expect((wrapper.find('#demand-contact').element as HTMLInputElement).value).toBe('微信: abc123')
-  })
-
-  // ========== Fix 6: AI 字段来源追踪 ==========
-
-  it('第二轮 AI 不提及联系方式时，上一轮 AI 自动填写的 contactInfo 应清空', async () => {
-    // 第一轮 AI 填入联系方式
-    mockGenerate.mockResolvedValue(buildDraft({ contactInfo: 'QQ: 25984515619' }))
-    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
-    await wrapper.find('[data-testid="ai-prompt-input"]').setValue('组队打球')
-    await wrapper.find('[data-testid="ai-generate-button"]').trigger('click')
-    await flushPromises()
-
-    // 验证第一轮填入了联系方式
-    expect((wrapper.find('#demand-contact').element as HTMLInputElement).value).toBe('QQ: 25984515619')
-
-    // 第二轮 AI 不提及联系方式（完全不同的需求）
-    mockGenerate.mockResolvedValue(buildDraft({
-      title: '取快递',
-      description: '帮我取快递',
-      category: 'EXPRESS',
-      contactInfo: null
-    }))
-    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
-    await wrapper.find('[data-testid="ai-prompt-input"]').setValue('取快递')
-    await wrapper.find('[data-testid="ai-generate-button"]').trigger('click')
-    await flushPromises()
-
-    // 上一轮 AI 自动填写的联系方式应清空，不残留到无关的新需求中
     expect((wrapper.find('#demand-contact').element as HTMLInputElement).value).toBe('')
   })
 
-  it('用户手动修改 contactInfo 后，第二轮 AI 不提及时保留用户值', async () => {
-    // 第一轮 AI 填入联系方式
-    mockGenerate.mockResolvedValue(buildDraft({ contactInfo: 'QQ: 123456' }))
-    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
-    await wrapper.find('[data-testid="ai-prompt-input"]').setValue('组队')
-    await wrapper.find('[data-testid="ai-generate-button"]').trigger('click')
+  it('AI 失败时保留自然语言输入并允许重试，不进入表单', async () => {
+    mockGenerate.mockRejectedValueOnce(new Error('服务暂时不可用'))
+    await openAi(wrapper, '帮我找人辅导高数，奖励 20 校邻币')
+    await generate(wrapper)
+    expect(wrapper.find('[data-testid="ai-error"]').exists()).toBe(true)
+    expect((wrapper.find('[data-testid="ai-prompt-input"]').element as HTMLTextAreaElement).value).toContain('辅导高数')
+    expect(wrapper.find('#demand-title').exists()).toBe(false)
+    mockGenerate.mockResolvedValueOnce(buildDraft())
+    await generate(wrapper)
+    expect(wrapper.find('[data-testid="ai-candidate"]').exists()).toBe(true)
+  })
+
+  it('OTHER 不允许 AI 的 HELP 参与方式，要求用户补选合法方式', async () => {
+    mockGenerate.mockResolvedValue(buildDraft({ category: 'OTHER', interactionMode: 'HELP' }))
+    await openAi(wrapper, '其他需求')
+    await generate(wrapper)
+    expect(wrapper.find('[data-testid="ai-candidate-issue"]').text()).toContain('参与方式')
+    await acceptAiType(wrapper)
+    expect(wrapper.find('#demand-title').exists()).toBe(false)
+    await wrapper.find('#ai-mode-confirm').setValue('SELECT_ONE')
+    await acceptAiType(wrapper)
+    expect(wrapper.find('#demand-title').exists()).toBe(true)
+  })
+
+  it('联系方式映射到独立字段，奖励明确使用校邻币单位', async () => {
+    mockGenerate.mockResolvedValue(buildDraft({ contactInfo: 'QQ: 25984515619', reward: null, missingFields: ['reward'] }))
+    await openAi(wrapper)
+    await generate(wrapper)
+    await acceptAiType(wrapper)
+    expect((wrapper.find('#demand-contact').element as HTMLInputElement).value).toBe('QQ: 25984515619')
+    expect(wrapper.text()).toContain('奖励（校邻币）')
+    expect((wrapper.find('#demand-reward').element as HTMLInputElement).value).toBe('')
+  })
+
+  it('恢复已保存草稿后保留人工编辑，并以创建结果 ID 导航到详情', async () => {
+    await wrapper.find('[data-testid="category-card-EXPRESS"]').trigger('click')
+    await wrapper.find('#demand-title').setValue('帮我取一份文件')
+    await wrapper.find('#demand-description').setValue('下午前往图书馆')
+    await wrapper.find('#demand-category').setValue('EXPRESS')
+    await wrapper.find('#demand-zone').setValue('GULOU')
+    await wrapper.find('#demand-location').setValue('图书馆')
+    await wrapper.find('#demand-reward').setValue('0')
+    await wrapper.find('#demand-start-datetime').setValue('2026-10-08T10:00')
+    await wrapper.find('#demand-end-datetime').setValue('2026-10-08T11:00')
+    await wrapper.find('[data-testid="submit-demand"]').trigger('click')
     await flushPromises()
+    expect(mockCreate).toHaveBeenCalledTimes(1)
+    expect(mockPush).toHaveBeenCalledWith({ name: 'DemandDetail', params: { id: 'd-42' } })
+  })
 
-    // 用户手动修改联系方式
-    await wrapper.find('#demand-contact').setValue('微信: manual_value')
-
-    // 第二轮 AI 不提及联系方式
-    mockGenerate.mockResolvedValue(buildDraft({ contactInfo: null }))
-    await wrapper.find('[data-testid="ai-publish-entry"]').trigger('click')
-    await wrapper.find('[data-testid="ai-prompt-input"]').setValue('取快递')
-    await wrapper.find('[data-testid="ai-generate-button"]').trigger('click')
-    await flushPromises()
-
-    // 用户手动修改的值应保留
-    expect((wrapper.find('#demand-contact').element as HTMLInputElement).value).toBe('微信: manual_value')
+  it('AI 确认不会静默覆盖已填写的人工草稿', async () => {
+    await wrapper.find('[data-testid="category-card-EXPRESS"]').trigger('click')
+    await wrapper.find('#demand-title').setValue('我手动写的标题')
+    await wrapper.find('[data-testid="change-type"]').trigger('click')
+    mockGenerate.mockResolvedValue(buildDraft({ title: 'AI 新标题' }))
+    mockConfirm.mockResolvedValue(false)
+    await openAi(wrapper)
+    await generate(wrapper)
+    await acceptAiType(wrapper)
+    expect(wrapper.find('#demand-title').exists()).toBe(false)
+    const savedDraft = JSON.parse(localStorage.getItem('campushub.demand.draft') ?? '{}')
+    expect(savedDraft.title).toBe('我手动写的标题')
+    expect(savedDraft.manualFields).toContain('title')
+    expect(mockCreate).not.toHaveBeenCalled()
   })
 })

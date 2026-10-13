@@ -93,6 +93,7 @@ export interface OrderTimelineEntry {
   at: string
   label: string
   operatorId?: string
+  note?: string
 }
 
 export interface OrderRecord {
@@ -104,6 +105,7 @@ export interface OrderRecord {
   demandStartTime?: string
   demandEndTime?: string
   demandCategory?: string
+  demandInteractionMode?: InteractionMode
   demandCampusZone?: string
   demandReward?: number
   requesterId: string
@@ -158,6 +160,21 @@ export interface RecommendationRecord {
 export interface DemandResponseRecord {
   id: string
   demandId: string
+  authorId: string
+  authorName: string
+  content: string
+  status: ResponseStatus
+  createdAt: string
+  updatedAt: string
+}
+
+export interface MyDemandResponseRecord {
+  id: string
+  demandId: string
+  demandTitle: string
+  demandStatus: string
+  demandCategory: string
+  demandInteractionMode: string
   authorId: string
   authorName: string
   content: string
@@ -288,4 +305,17 @@ export interface AiDemandDraft {
   contactInfo: string | null
   anonymous: boolean | null
   missingFields: string[]
+}
+
+export interface PublicUserProfile {
+  id: string
+  nickname: string
+  avatarUrl: string
+  role: string
+  status: string
+  creditScore: number
+}
+
+export interface UserStats {
+  completedOrders: number
 }

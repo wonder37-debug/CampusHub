@@ -71,7 +71,9 @@ function createMockStore(options: {
   demand?: any
   responses?: any[]
   currentUserId?: string
+  fetchDemandDetail?: () => Promise<any>
   createDemandResponse?: (demandId: string, content: string) => Promise<any>
+  withdrawDemand?: (demandId: string) => Promise<any>
 } = {}) {
   const demand = options.demand ?? buildDemand()
   const responses = options.responses ?? []
@@ -81,13 +83,21 @@ function createMockStore(options: {
     orders: [],
     reviews: [],
     demandResponses: responses,
+    demandResponsesDemandId: '',
     notifications: [],
-    getDemandById: () => demand,
-    fetchDemandDetail: () => Promise.resolve(demand),
+    getDemandById: function (demandId: string) {
+      return this.demands.find((item: any) => item.id === demandId)
+    },
+    fetchDemandDetail: options.fetchDemandDetail ?? function (demandId: string) {
+      return Promise.resolve(this.demands.find((item: any) => item.id === demandId) ?? null)
+    },
+    withdrawDemand: options.withdrawDemand ?? (() => Promise.resolve({ ...demand, status: 'CANCELLED' })),
     fetchOrders: () => Promise.resolve(),
     fetchOrderByDemandId: () => Promise.resolve(null),
-    fetchResponses: () => {
+    fetchResponses: function (demandId: string) {
       // 模拟后端返回当前 responses
+      this.demandResponsesDemandId = demandId
+      this.demandResponses = responses
       return Promise.resolve(responses)
     },
     fetchUserReviews: () => Promise.resolve(),
@@ -97,7 +107,7 @@ function createMockStore(options: {
   }
 }
 
-function mountDetailView() {
+async function mountDetailView() {
   setActivePinia(createPinia())
   const router = createRouter({
     history: createMemoryHistory(),
@@ -106,9 +116,12 @@ function mountDetailView() {
       { path: '/', component: { template: '<div></div>' } }
     ]
   })
-  return mount(DemandDetailView, {
+  await router.push('/demands/d1')
+  await router.isReady()
+  const wrapper = mount(DemandDetailView, {
     global: { plugins: [router] }
   })
+  return { wrapper, router }
 }
 
 describe('DemandDetailView - 重复留言/报名 UX', () => {
@@ -121,7 +134,7 @@ describe('DemandDetailView - 重复留言/报名 UX', () => {
     mockStore.value = createMockStore({
       responses: [buildResponse({ status: 'PENDING' })]
     })
-    const wrapper = mountDetailView()
+    const { wrapper } = await mountDetailView()
     // 触发 onMounted 中的数据加载
     await flushPromises()
     await flushPromises()
@@ -140,12 +153,12 @@ describe('DemandDetailView - 重复留言/报名 UX', () => {
     mockStore.value = createMockStore({
       responses: [buildResponse({ status: 'SELECTED' })]
     })
-    const wrapper = mountDetailView()
+    const { wrapper } = await mountDetailView()
     await flushPromises()
     await flushPromises()
 
     expect(wrapper.text()).toContain('已报名')
-    expect(wrapper.text()).toContain('已被选中')
+    expect(wrapper.text()).toContain('你已被选中')
     // SELECTED 已进入履约，不能撤回
     expect(wrapper.text()).toContain('已进入履约，无法撤回')
   })
@@ -158,7 +171,7 @@ describe('DemandDetailView - 重复留言/报名 UX', () => {
       responses: [],
       createDemandResponse: () => pendingPromise
     })
-    const wrapper = mountDetailView()
+    const { wrapper } = await mountDetailView()
     await flushPromises()
     await flushPromises()
 
@@ -188,7 +201,7 @@ describe('DemandDetailView - 重复留言/报名 UX', () => {
       demand: buildDemand({ interactionMode: 'HELP', category: 'HELP' }),
       responses: [buildResponse({ status: 'PENDING' })]
     })
-    const wrapper = mountDetailView()
+    const { wrapper } = await mountDetailView()
     await flushPromises()
     await flushPromises()
 
@@ -199,5 +212,98 @@ describe('DemandDetailView - 重复留言/报名 UX', () => {
 
     // 同时应显示已提交回答的状态卡片
     expect(wrapper.text()).toContain('已提交回答')
+  })
+
+  it('发布者不会看到接单或响应自己的需求入口', async () => {
+    mockStore.value = createMockStore({
+      currentUserId: 'publisher-1',
+      demand: buildDemand({ interactionMode: 'DIRECT_ACCEPT', canAccept: true })
+    })
+    const { wrapper } = await mountDetailView()
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('立即接单')
+    expect(wrapper.find('[data-testid="submit-response"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain('这是您自己发布的需求')
+  })
+
+  it('发布者撤回后留在详情页并重新读取服务端状态', async () => {
+    const demand = buildDemand({ interactionMode: 'DIRECT_ACCEPT', publisherId: 'publisher-1' })
+    const fetchDemandDetail = vi.fn(async () => demand)
+    const withdrawDemand = vi.fn(async () => {
+      demand.status = 'CANCELLED'
+      return demand
+    })
+    const store = createMockStore({ currentUserId: 'publisher-1', demand, fetchDemandDetail, withdrawDemand })
+    mockStore.value = store
+    const { wrapper } = await mountDetailView()
+    await flushPromises()
+
+    const withdraw = wrapper.findAll('button').find((button) => button.text() === '撤回需求')
+    expect(withdraw).toBeDefined()
+    await withdraw!.trigger('click')
+    await flushPromises()
+
+    expect(withdrawDemand).toHaveBeenCalledOnce()
+    expect(fetchDemandDetail).toHaveBeenCalledTimes(2)
+  })
+
+  it('路由切换需求 ID 后重新加载详情和响应，不残留上一条内容', async () => {
+    const firstResponse = buildResponse({ authorId: 'other-user', authorName: '旧响应者', content: '旧需求响应内容' })
+    const store = createMockStore({ responses: [firstResponse] })
+    const secondDemand = buildDemand({ id: 'd2', title: '微积分辅导', category: 'STUDY_HELP', interactionMode: 'SELECT_ONE' })
+    store.demands.push(secondDemand)
+    store.fetchDemandDetail = vi.fn(async (id: string) => store.demands.find((item: any) => item.id === id) ?? null)
+    store.fetchResponses = vi.fn(async (id: string) => {
+      store.demandResponsesDemandId = id
+      const result = id === 'd1' ? [firstResponse] : []
+      store.demandResponses = result
+      return result
+    })
+    mockStore.value = store
+
+    const { wrapper, router } = await mountDetailView()
+    await flushPromises()
+    expect(wrapper.text()).toContain('旧需求响应内容')
+
+    await router.push('/demands/d2')
+    await flushPromises()
+    expect(store.fetchDemandDetail).toHaveBeenLastCalledWith('d2')
+    expect(store.fetchResponses).toHaveBeenLastCalledWith('d2')
+    expect(wrapper.text()).toContain('微积分辅导')
+    expect(wrapper.text()).not.toContain('旧需求响应内容')
+  })
+
+  it('已完成需求为只读，不展示响应提交入口', async () => {
+    mockStore.value = createMockStore({
+      demand: buildDemand({ status: 'COMPLETED', interactionMode: 'HELP', category: 'HELP' })
+    })
+    const { wrapper } = await mountDetailView()
+    await flushPromises()
+    expect(wrapper.find('[data-testid="submit-response"]').exists()).toBe(false)
+    expect(wrapper.findAll('button').some((button) => button.text() === '采纳')).toBe(false)
+  })
+
+  it.each([
+    ['SELECT_MANY', 'TEAM_UP', '自动完成并结算'],
+    ['HELP', 'HELP', '采纳回答后自动结算']
+  ])('%s 需求按 Demand 流程完成，不展示正式订单入口', async (interactionMode, category, expectedCopy) => {
+    mockStore.value = createMockStore({
+      demand: buildDemand({ interactionMode, category })
+    })
+    const { wrapper } = await mountDetailView()
+    await flushPromises()
+    expect(wrapper.text()).toContain(expectedCopy)
+    expect(wrapper.findAll('button').some((button) => button.text().includes('订单'))).toBe(false)
+  })
+
+  it('详情请求失败显示失败与重试，不伪装成空需求', async () => {
+    mockStore.value = createMockStore({
+      fetchDemandDetail: () => Promise.reject(new Error('network unavailable'))
+    })
+    const { wrapper } = await mountDetailView()
+    await flushPromises()
+    expect(wrapper.text()).toContain('需求详情加载失败')
+    expect(wrapper.find('[role="alert"]').exists()).toBe(true)
+    expect(wrapper.text()).not.toContain('暂无需求')
   })
 })

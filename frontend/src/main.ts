@@ -3,6 +3,7 @@ import App from './App.vue'
 import router from './router'
 import pinia from './stores'
 import { useCampusHubStore } from '@/stores/campusHub'
+import './design-system.css'
 import './style.css'
 
 const app = createApp(App)

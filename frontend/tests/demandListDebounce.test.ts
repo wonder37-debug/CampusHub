@@ -25,7 +25,8 @@ vi.mock('@/utils/format', () => ({
 }))
 
 vi.mock('@/types/campushub', () => ({
-  DEMAND_CATEGORY_OPTIONS: []
+  DEMAND_CATEGORY_OPTIONS: [],
+  CAMPUS_ZONE_OPTIONS: []
 }))
 
 vi.mock('@/components/SkeletonCard.vue', () => ({
@@ -73,7 +74,7 @@ describe('DemandListView debounce 竞争', () => {
 
     expect(mockStore.value.fetchDemands).not.toHaveBeenCalled()
 
-    const refreshBtn = wrapper.find('.refresh-button')
+    const refreshBtn = wrapper.find('.home-refresh')
     await refreshBtn.trigger('click')
     await flushPromises()
 

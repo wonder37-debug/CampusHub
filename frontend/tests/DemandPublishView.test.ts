@@ -6,9 +6,10 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import DemandPublishView from '@/views/DemandPublishView.vue'
 
 // 用 vi.hoisted 把需要在 mock factory 中引用的可变状态提到顶层
-const { mockStore, mockCreateDemand } = vi.hoisted(() => ({
+const { mockStore, mockCreateDemand, mockConfirm } = vi.hoisted(() => ({
   mockStore: { value: null as any },
-  mockCreateDemand: { fn: null as ((data: any) => Promise<any>) | null }
+  mockCreateDemand: { fn: null as ((data: any) => Promise<any>) | null },
+  mockConfirm: vi.fn()
 }))
 
 vi.mock('@/stores/campusHub', () => ({
@@ -16,7 +17,7 @@ vi.mock('@/stores/campusHub', () => ({
 }))
 
 vi.mock('@/composables/useDialog', () => ({
-  useConfirm: () => Promise.resolve(true),
+  useConfirm: (...args: unknown[]) => mockConfirm(...args),
   useAlert: () => Promise.resolve()
 }))
 
@@ -54,6 +55,9 @@ function mountPublishView() {
 // 填充除 category/targetParticipantCount/interactionMode 之外的所有必填字段
 async function fillCommonRequiredFields(wrapper: any) {
   await flushPromises()
+  if (!wrapper.find('#demand-title').exists()) {
+    await wrapper.find('[data-testid="category-card-EXPRESS"]').trigger('click')
+  }
   const textareas = wrapper.findAll('textarea')
   await textareas[0].setValue('测试描述') // description
 
@@ -101,6 +105,7 @@ describe('DemandPublishView - TEAM_UP 表单校验', () => {
     vi.clearAllMocks()
     localStorage.clear()
     mockStore.value = createMockStore()
+    mockConfirm.mockResolvedValue(true)
   })
 
   it('TEAM_UP + 目标人数为空 → 校验失败，并明确指出“目标人数”', async () => {
@@ -167,6 +172,59 @@ describe('DemandPublishView - TEAM_UP 表单校验', () => {
     // TEAM_UP 不需要用户选择 interactionMode
     expect(callArg.interactionMode).toBeNull()
     expect(callArg.targetParticipantCount).toBe(2)
+  })
+
+  it('过去的开始时间仍可发布，页面不增加“开始时间必须在未来”的规则', async () => {
+    const createDemand = vi.fn(() => Promise.resolve({ id: 'd1' }))
+    mockStore.value = createMockStore(createDemand)
+    const wrapper = mountPublishView()
+    await fillCommonRequiredFields(wrapper)
+    await wrapper.find('#demand-category').setValue('EXPRESS')
+    await wrapper.find('#demand-start-datetime').setValue('2020-01-01T09:00')
+    await wrapper.find('#demand-end-datetime').setValue('2020-01-01T10:00')
+    await submitForm(wrapper)
+    expect(createDemand).toHaveBeenCalledTimes(1)
+  })
+
+  it('发布请求失败时保留表单内容并展示错误', async () => {
+    const createDemand = vi.fn(() => Promise.reject(new Error('网络暂时不可用')))
+    mockStore.value = createMockStore(createDemand)
+    const wrapper = mountPublishView()
+    await fillCommonRequiredFields(wrapper)
+    await setTargetCount(wrapper, '2')
+    await submitForm(wrapper)
+    expect(createDemand).toHaveBeenCalledTimes(1)
+    expect((wrapper.find('#demand-title').element as HTMLInputElement).value).toBe('测试标题需求')
+    expect(wrapper.find('p.hero-badge').text()).toContain('网络暂时不可用')
+  })
+
+  it('确认框打开期间重复点击不会重复提交', async () => {
+    const createDemand = vi.fn(() => Promise.resolve({ id: 'd1' }))
+    mockStore.value = createMockStore(createDemand)
+    let resolveConfirm: (value: boolean) => void = () => {}
+    mockConfirm.mockReturnValue(new Promise<boolean>((resolve) => { resolveConfirm = resolve }))
+    const wrapper = mountPublishView()
+    await fillCommonRequiredFields(wrapper)
+    await setTargetCount(wrapper, '2')
+    const button = wrapper.find('[data-testid="submit-demand"]')
+    await button.trigger('click')
+    await button.trigger('click')
+    expect(createDemand).not.toHaveBeenCalled()
+    resolveConfirm(true)
+    await flushPromises()
+    expect(createDemand).toHaveBeenCalledTimes(1)
+  })
+
+  it('切换离开 SELECT_MANY 类型会清除旧目标人数', async () => {
+    const wrapper = mountPublishView()
+    await fillCommonRequiredFields(wrapper)
+    await wrapper.find('#demand-category').setValue('TEAM_UP')
+    await setTargetCount(wrapper, '5')
+    await wrapper.find('#demand-category').setValue('ERRAND')
+    await flushPromises()
+    await wrapper.find('#demand-category').setValue('TEAM_UP')
+    await flushPromises()
+    expect((wrapper.find('#demand-target-count').element as HTMLInputElement).value).toBe('')
   })
 
   it('TEAM_UP 不要求 interactionMode - 互动模式选择框不渲染', async () => {

@@ -24,6 +24,7 @@ import com.campushub.backend.demand.domain.ResponseStatus;
 import com.campushub.backend.demand.dto.CreateDemandResponseCommand;
 import com.campushub.backend.demand.dto.DemandDetailResponse;
 import com.campushub.backend.demand.dto.DemandResponseDetail;
+import com.campushub.backend.demand.dto.MyDemandResponseView;
 import com.campushub.backend.demand.dto.PublishDemandCommand;
 import com.campushub.backend.demand.dto.SelectResponsesCommand;
 import com.campushub.backend.demand.repository.DemandRepository;
@@ -189,6 +190,26 @@ class DemandResponseApplicationServiceImplTest {
     }
 
     @Test
+    void shouldHideOrderedSelectOneResponseFromUnrelatedViewers() {
+        Long demandId = createSecondHandDemand();
+        DemandResponseDetail selected = demandResponseApplicationService.createResponse(
+            responder1Id, demandId, new CreateDemandResponseCommand("仅参与双方可见的响应内容"));
+        demandResponseApplicationService.createResponse(
+            responder2Id, demandId, new CreateDemandResponseCommand("仍公开的未选响应"));
+
+        demandResponseApplicationService.selectResponse(publisherId, demandId, selected.id());
+
+        assertThat(demandResponseApplicationService.listResponses(publisherId, demandId))
+            .extracting(DemandResponseDetail::id).contains(selected.id());
+        assertThat(demandResponseApplicationService.listResponses(responder1Id, demandId))
+            .extracting(DemandResponseDetail::id).contains(selected.id());
+        assertThat(demandResponseApplicationService.listResponses(null, demandId))
+            .extracting(DemandResponseDetail::id).doesNotContain(selected.id());
+        assertThat(demandResponseApplicationService.listResponses(outsiderId, demandId))
+            .extracting(DemandResponseDetail::id).doesNotContain(selected.id());
+    }
+
+    @Test
     void shouldRejectSelectByNonPublisher() {
         Long demandId = createSecondHandDemand();
         DemandResponseDetail response = demandResponseApplicationService.createResponse(
@@ -219,6 +240,7 @@ class DemandResponseApplicationServiceImplTest {
         );
 
         assertEquals("COMPLETED", result.status());
+        assertTrue(orderRepository.findByDemandId(demandId).isEmpty(), "组队完成不应创建正式订单");
         BigDecimal publisherBalance = userRepository.findById(publisherId).orElseThrow().getBalance();
         assertEquals(new BigDecimal("90.00"), publisherBalance);
         BigDecimal r1Balance = userRepository.findById(responder1Id).orElseThrow().getBalance();
@@ -259,6 +281,9 @@ class DemandResponseApplicationServiceImplTest {
 
         assertEquals("COMPLETED", result.status());
         assertEquals("SELECTED", demandResponseRepository.findById(response.id()).orElseThrow().getStatus().name());
+        assertTrue(orderRepository.findByDemandId(demandId).isEmpty(), "采纳回答不应创建正式订单");
+        assertThat(demandResponseApplicationService.listResponses(outsiderId, demandId))
+            .extracting(DemandResponseDetail::id).contains(response.id());
         BigDecimal responderBalance = userRepository.findById(responder1Id).orElseThrow().getBalance();
         assertEquals(new BigDecimal("110.00"), responderBalance);
         BigDecimal publisherBalance = userRepository.findById(publisherId).orElseThrow().getBalance();
@@ -1318,7 +1343,7 @@ class DemandResponseApplicationServiceImplTest {
         demandResponseApplicationService.withdrawResponse(responder1Id, response.id());
 
         // 列表中不应包含已撤回的留言
-        List<DemandResponseDetail> responses = demandResponseApplicationService.listResponses(demandId);
+        List<DemandResponseDetail> responses = demandResponseApplicationService.listResponses(null, demandId);
         assertFalse(responses.stream().anyMatch(r -> r.id().equals(response.id())),
             "已撤回的留言不应出现在列表中");
     }
@@ -1335,7 +1360,7 @@ class DemandResponseApplicationServiceImplTest {
         demandResponseApplicationService.withdrawResponse(responder1Id, response1.id());
 
         // response2 仍应在列表中
-        List<DemandResponseDetail> responses = demandResponseApplicationService.listResponses(demandId);
+        List<DemandResponseDetail> responses = demandResponseApplicationService.listResponses(null, demandId);
         assertTrue(responses.stream().anyMatch(r -> r.id().equals(response2.id())),
             "撤回一条留言不应影响其他留言");
         assertFalse(responses.stream().anyMatch(r -> r.id().equals(response1.id())),
@@ -1452,5 +1477,47 @@ class DemandResponseApplicationServiceImplTest {
         assertEquals(1L, demandResponseRepository.countSelectedByDemandId(demandId));
         assertEquals(DemandStatus.PENDING, demandRepository.findById(demandId).orElseThrow().getStatus(),
             "未达 target 时 demand 仍为 PENDING");
+    }
+
+    // ==================== listMyResponses ====================
+
+    @Test
+    void listMyResponsesReturnsAllResponsesForUser() {
+        Long demand1Id = createSecondHandDemand();
+        Long demand2Id = createHelpDemand(new BigDecimal("3.00"));
+
+        demandResponseApplicationService.createResponse(
+            responder1Id, demand1Id, new CreateDemandResponseCommand("我要这本书"));
+        demandResponseApplicationService.createResponse(
+            responder1Id, demand2Id, new CreateDemandResponseCommand("我来解答"));
+
+        List<MyDemandResponseView> myResponses = demandResponseApplicationService.listMyResponses(responder1Id);
+
+        assertEquals(2, myResponses.size(), "应返回用户提交的全部响应");
+        assertTrue(myResponses.stream().allMatch(r -> r.authorId().equals(responder1Id)),
+            "所有响应的 authorId 应为当前用户");
+        assertTrue(myResponses.stream().anyMatch(r -> r.demandTitle().equals("二手书")),
+            "应包含关联的需求标题");
+        assertTrue(myResponses.stream().allMatch(r -> !r.demandTitle().isEmpty()),
+            "每条响应应包含需求标题");
+    }
+
+    @Test
+    void listMyResponsesReturnsEmptyForUserWithNoResponses() {
+        List<MyDemandResponseView> myResponses = demandResponseApplicationService.listMyResponses(outsiderId);
+        assertTrue(myResponses.isEmpty(), "无响应的用户应返回空列表");
+    }
+
+    @Test
+    void listMyResponsesHidesWithdrawnContent() {
+        Long demandId = createSecondHandDemand();
+        DemandResponseDetail response = demandResponseApplicationService.createResponse(
+            responder1Id, demandId, new CreateDemandResponseCommand("原始内容"));
+        demandResponseApplicationService.withdrawResponse(responder1Id, response.id());
+
+        List<MyDemandResponseView> myResponses = demandResponseApplicationService.listMyResponses(responder1Id);
+        assertEquals(1, myResponses.size());
+        assertEquals("WITHDRAWN", myResponses.get(0).status());
+        assertEquals("该响应已撤回", myResponses.get(0).content(), "撤回响应的内容应被脱敏");
     }
 }

@@ -4,19 +4,41 @@ import { useRouter } from 'vue-router'
 
 import { useCampusHubStore } from '@/stores/campusHub'
 import { formatNotificationType, formatRelativeTime } from '@/utils/format'
+import { categorizeNotification, type NotificationCategory } from '@/utils/workbenchRules'
 
 const store = useCampusHubStore()
 const router = useRouter()
 
 const PAGE_SIZE = 10
 const page = ref(1)
-
-const allNotifications = computed(() => store.currentUserNotifications)
-const visibleNotifications = computed(() => allNotifications.value.slice(0, page.value * PAGE_SIZE))
-const hasMore = computed(() => visibleNotifications.value.length < allNotifications.value.length)
-const allLoaded = computed(() => !hasMore.value && allNotifications.value.length > 0)
+const loading = ref(false)
+const loadError = ref(false)
 const refreshing = ref(false)
 const markingAllRead = ref(false)
+const activeCategory = ref<'all' | NotificationCategory>('all')
+
+const allNotifications = computed(() => store.currentUserNotifications)
+
+const filteredNotifications = computed(() => {
+  if (activeCategory.value === 'all') return allNotifications.value
+  return allNotifications.value.filter((n) => categorizeNotification(n.type) === activeCategory.value)
+})
+
+const visibleNotifications = computed(() => filteredNotifications.value.slice(0, page.value * PAGE_SIZE))
+const hasMore = computed(() => visibleNotifications.value.length < filteredNotifications.value.length)
+const allLoaded = computed(() => !hasMore.value && filteredNotifications.value.length > 0)
+
+const categoryTabs = [
+  { value: 'all' as const, label: '全部' },
+  { value: 'interaction' as const, label: '互动' },
+  { value: 'order_fulfillment' as const, label: '订单履约' },
+  { value: 'system' as const, label: '系统' }
+]
+
+function switchCategory(cat: typeof activeCategory.value): void {
+  activeCategory.value = cat
+  page.value = 1
+}
 
 function loadMore(): void {
   page.value++
@@ -25,11 +47,12 @@ function loadMore(): void {
 async function refreshNotifications(): Promise<void> {
   refreshing.value = true
   page.value = 1
-  try {
-    await store.fetchNotifications()
-  } finally {
-    refreshing.value = false
+  loadError.value = false
+  await store.fetchNotifications()
+  if (store.notificationsFetchError) {
+    loadError.value = true
   }
+  refreshing.value = false
 }
 
 async function markAllRead(): Promise<void> {
@@ -48,6 +71,8 @@ function iconFor(type: string): string {
   if (type === 'DEMAND_APPROVED') return '✅'
   if (type === 'ORDER_ARBITRATION_REQUESTED') return '⚖️'
   if (type === 'ORDER_ARBITRATION_RESOLVED') return '📘'
+  if (type === 'DEMAND_RESPONSE_RECEIVED') return '💬'
+  if (type === 'PENDING_REVIEW') return '📝'
   return '🔔'
 }
 
@@ -109,13 +134,11 @@ async function openNotification(notification: any): Promise<void> {
     return
   }
 
-  // Response 评价收到：跳转到关联需求详情页（含 SELECT_MANY 组队评价入口）
   if (type === 'RESPONSE_REVIEW_RECEIVED') {
     router.push(`/demands/${encodeURIComponent(targetId || relatedId)}`)
     return
   }
 
-  // 待评价提醒：按 targetType 跳转订单/需求详情页（含评价入口）
   if (type === 'PENDING_REVIEW') {
     if (targetType === 'ORDER') {
       router.push(`/orders/${encodeURIComponent(targetId || relatedId)}?tab=reviews`)
@@ -125,12 +148,19 @@ async function openNotification(notification: any): Promise<void> {
     return
   }
 
-  // fallback: stay on notifications
   router.push('/notifications')
 }
 
 onMounted(() => {
-  void store.fetchNotifications()
+  loading.value = true
+  loadError.value = false
+  void (async () => {
+    await store.fetchNotifications()
+    if (store.notificationsFetchError) {
+      loadError.value = true
+    }
+    loading.value = false
+  })()
 })
 </script>
 
@@ -139,25 +169,60 @@ onMounted(() => {
     <section class="panel">
       <div class="page-head">
         <div style="flex:1">
-          <h1 class="page-title">消息</h1>
-          <p class="page-summary">接单、状态变更和评价会在这里显示。</p>
+          <p class="eyebrow">消息中心</p>
+          <h1 class="page-title">通知</h1>
+          <p class="page-summary">接单、状态变更、评价和系统消息会在这里显示。点击通知可查看相关详情。</p>
         </div>
         <button type="button" class="button primary" :disabled="refreshing" @click="refreshNotifications">
           {{ refreshing ? '刷新中...' : '↻ 刷新' }}
         </button>
-        <button type="button" class="button secondary" :disabled="markingAllRead" @click="markAllRead">{{ markingAllRead ? '处理中...' : '全部标记已读' }}</button>
+        <button type="button" class="button secondary" :disabled="markingAllRead || !allNotifications.some(n => !n.isRead)" @click="markAllRead">
+          {{ markingAllRead ? '处理中...' : '全部标记已读' }}
+        </button>
+      </div>
+
+      <div v-if="store.currentUser" class="segment-row">
+        <button
+          v-for="tab in categoryTabs"
+          :key="tab.value"
+          type="button"
+          class="button"
+          :class="activeCategory === tab.value ? 'primary' : 'secondary'"
+          @click="switchCategory(tab.value)"
+        >
+          {{ tab.label }}
+        </button>
       </div>
     </section>
 
-    <section class="notification-grid">
-      <div v-if="!store.currentUser" class="empty-state" style="--empty-icon:'🔔'">
-        <strong>请先登录查看消息</strong>
+    <section v-if="!store.currentUser" class="notification-grid">
+      <div class="empty-state" style="--empty-icon:'🔔'">
+        <strong>请先登录查看通知</strong>
         <p><a href="/auth" @click.prevent="router.push('/auth')" style="text-decoration: underline; cursor: pointer; color: var(--primary);">点击这里登录</a></p>
       </div>
+    </section>
 
-      <div v-else-if="!allNotifications.length" class="empty-state" style="--empty-icon:'🔔'">
-        <strong>暂无消息</strong>
-        <p>接单、评价和订单状态会在这里通知你。</p>
+    <section v-else-if="loading" class="notification-grid">
+      <div v-for="n in 3" :key="n" class="list-card" style="opacity:0.5">
+        <div class="status-row"><span class="badge is-neutral">🔔</span><span class="chip">加载中</span></div>
+        <div class="card-head"><h3>正在加载通知...</h3></div>
+      </div>
+    </section>
+
+    <section v-else-if="loadError" class="notification-grid">
+      <div class="empty-state" style="--empty-icon:'⚠'">
+        <strong>通知加载失败</strong>
+        <p>请检查网络后重试。</p>
+        <button type="button" class="button secondary" style="margin-top:12px" @click="refreshNotifications">重新加载</button>
+      </div>
+    </section>
+
+    <section v-else class="notification-grid">
+      <div v-if="!filteredNotifications.length" class="empty-state" style="--empty-icon:'🔔'">
+        <strong v-if="activeCategory === 'all'">暂无通知</strong>
+        <strong v-else>该分类下暂无通知</strong>
+        <p v-if="activeCategory === 'all'">接单、评价和订单状态变更会在这里通知你。</p>
+        <p v-else>切换到"全部"可以查看所有通知。</p>
       </div>
 
       <article
@@ -165,7 +230,11 @@ onMounted(() => {
         :key="notification.id"
         class="list-card notification-card"
         :class="notification.isRead ? 'is-read' : 'is-unread'"
+        tabindex="0"
+        role="link"
+        :aria-label="`查看通知：${notification.title || notification.content}`"
         @click="openNotification(notification)"
+        @keydown.enter="openNotification(notification)"
       >
         <div class="status-row">
           <span class="badge is-neutral">{{ iconFor(notification.type) }}</span>
@@ -198,15 +267,15 @@ onMounted(() => {
 
         <div class="meta">
           <span v-if="!notification.isRead" class="unread-dot"></span>
-          <span v-else>点击可查看相关订单或需求详情</span>
+          <span v-else>点击可查看相关详情</span>
         </div>
       </article>
 
       <div v-if="hasMore" class="list-card load-more-panel" @click="loadMore">
-        <h3>加载更多消息</h3>
-        <p class="subtle">当前显示 {{ visibleNotifications.length }} / {{ allNotifications.length }} 条</p>
+        <h3>加载更多通知</h3>
+        <p class="subtle">当前显示 {{ visibleNotifications.length }} / {{ filteredNotifications.length }} 条</p>
       </div>
-      <div v-if="allLoaded" class="load-more-done">📋 已展示全部 {{ allNotifications.length }} 条消息</div>
+      <div v-if="allLoaded" class="load-more-done">📋 已展示全部 {{ filteredNotifications.length }} 条通知</div>
     </section>
   </div>
 </template>
@@ -218,7 +287,11 @@ onMounted(() => {
   transition: background 0.2s ease, border-color 0.2s ease, opacity 0.2s ease;
 }
 
-/* 未读：柔和蓝色调背景 + 左侧强调色条 */
+.notification-card:focus-visible {
+  outline: 3px solid #88ad98;
+  outline-offset: 3px;
+}
+
 .is-unread {
   background: linear-gradient(135deg, rgba(232, 244, 255, 0.92), rgba(215, 236, 255, 0.85));
   border-left-color: #3b82f6;
@@ -229,7 +302,6 @@ onMounted(() => {
   background: linear-gradient(135deg, rgba(220, 238, 255, 0.96), rgba(205, 228, 255, 0.92));
 }
 
-/* 已读：柔和灰调背景 + 淡化视觉权重 */
 .is-read {
   background: linear-gradient(135deg, rgba(248, 248, 250, 0.95), rgba(242, 242, 244, 0.88));
   border-left-color: #c4c4c4;
@@ -241,7 +313,6 @@ onMounted(() => {
   background: linear-gradient(135deg, rgba(246, 246, 248, 0.98), rgba(240, 240, 242, 0.92));
 }
 
-/* 未读圆点指示器 */
 .unread-dot {
   display: inline-block;
   width: 8px;

@@ -38,4 +38,10 @@ public interface DemandResponseRepository {
     long countByDemandId(Long demandId);
 
     List<DemandResponse> findByIdIn(Collection<Long> ids);
+
+    /**
+     * 查询某用户提交的全部响应（跨需求），用于"我参与的互助"列表。
+     * 按 createdAt 降序返回。
+     */
+    List<DemandResponse> findByAuthorId(Long authorId);
 }

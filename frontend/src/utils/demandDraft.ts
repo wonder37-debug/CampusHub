@@ -15,6 +15,10 @@ export interface DemandDraft {
   images: string[]
   contactInfo: string
   anonymous: boolean
+  aiAssisted?: boolean
+  aiFilledFields?: string[]
+  aiPendingFields?: string[]
+  manualFields?: string[]
 }
 
 export function loadDemandDraft(): DemandDraft | null {

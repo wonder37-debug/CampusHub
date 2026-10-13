@@ -1,6 +1,7 @@
 package com.campushub.backend.demand.service;
 
 import com.campushub.backend.auth.domain.User;
+import com.campushub.backend.auth.domain.UserRole;
 import com.campushub.backend.auth.domain.UserStatus;
 import com.campushub.backend.auth.repository.UserRepository;
 import com.campushub.backend.common.exception.BusinessException;
@@ -13,11 +14,13 @@ import com.campushub.backend.demand.domain.ResponseStatus;
 import com.campushub.backend.demand.dto.CreateDemandResponseCommand;
 import com.campushub.backend.demand.dto.DemandDetailResponse;
 import com.campushub.backend.demand.dto.DemandResponseDetail;
+import com.campushub.backend.demand.dto.MyDemandResponseView;
 import com.campushub.backend.demand.dto.SelectResponsesCommand;
 import com.campushub.backend.demand.repository.DemandRepository;
 import com.campushub.backend.demand.repository.DemandResponseRepository;
 import com.campushub.backend.notification.service.NotificationApplicationService;
 import com.campushub.backend.order.dto.OrderDetailResponse;
+import com.campushub.backend.order.repository.OrderRepository;
 import com.campushub.backend.order.service.OrderApplicationService;
 import com.campushub.backend.order.service.RewardSettlementService;
 import org.springframework.stereotype.Service;
@@ -28,6 +31,8 @@ import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @Transactional(rollbackFor = Exception.class)
@@ -39,6 +44,7 @@ public class DemandResponseApplicationServiceImpl implements DemandResponseAppli
     private final DemandRepository demandRepository;
     private final UserRepository userRepository;
     private final OrderApplicationService orderApplicationService;
+    private final OrderRepository orderRepository;
     private final RewardSettlementService rewardSettlementService;
     private final NotificationApplicationService notificationApplicationService;
 
@@ -47,6 +53,7 @@ public class DemandResponseApplicationServiceImpl implements DemandResponseAppli
         DemandRepository demandRepository,
         UserRepository userRepository,
         OrderApplicationService orderApplicationService,
+        OrderRepository orderRepository,
         RewardSettlementService rewardSettlementService,
         NotificationApplicationService notificationApplicationService
     ) {
@@ -54,6 +61,7 @@ public class DemandResponseApplicationServiceImpl implements DemandResponseAppli
         this.demandRepository = demandRepository;
         this.userRepository = userRepository;
         this.orderApplicationService = orderApplicationService;
+        this.orderRepository = orderRepository;
         this.rewardSettlementService = rewardSettlementService;
         this.notificationApplicationService = notificationApplicationService;
     }
@@ -110,11 +118,26 @@ public class DemandResponseApplicationServiceImpl implements DemandResponseAppli
     }
 
     @Override
-    public List<DemandResponseDetail> listResponses(Long demandId) {
+    public List<DemandResponseDetail> listResponses(Long operatorId, Long demandId) {
         Demand demand = findDemand(demandId);
         // 排除 WITHDRAWN 状态的记录，普通列表不返回已撤回留言的原文
         List<DemandResponse> responses = demandResponseRepository.findByDemandIdAndStatusIn(
             demandId, List.of(ResponseStatus.PENDING, ResponseStatus.SELECTED, ResponseStatus.REJECTED));
+        if (responses.isEmpty()) {
+            return List.of();
+        }
+        boolean isPublisher = operatorId != null && operatorId.equals(demand.getPublisherId());
+        boolean isAdmin = operatorId != null && userRepository.findById(operatorId)
+            .map(user -> user.getRole() == UserRole.ADMIN)
+            .orElse(false);
+        boolean hasFormalSelectOneOrder = demand.getInteractionMode() == InteractionMode.SELECT_ONE
+            && orderRepository.findByDemandId(demandId).isPresent();
+        if (hasFormalSelectOneOrder && !isPublisher && !isAdmin) {
+            responses = responses.stream()
+                .filter(response -> response.getStatus() != ResponseStatus.SELECTED
+                    || operatorId != null && operatorId.equals(response.getAuthorId()))
+                .toList();
+        }
         if (responses.isEmpty()) {
             return List.of();
         }
@@ -248,6 +271,43 @@ public class DemandResponseApplicationServiceImpl implements DemandResponseAppli
         demandResponseRepository.save(response);
         String authorName = userRepository.findById(operatorId).map(User::getNickname).orElse("未知用户");
         return DemandResponseDetail.from(response, authorName);
+    }
+
+    @Override
+    public List<MyDemandResponseView> listMyResponses(Long operatorId) {
+        if (operatorId == null) {
+            return List.of();
+        }
+        List<DemandResponse> responses = demandResponseRepository.findByAuthorId(operatorId);
+        if (responses.isEmpty()) {
+            return List.of();
+        }
+        Set<Long> demandIds = responses.stream()
+            .map(DemandResponse::getDemandId)
+            .collect(Collectors.toSet());
+        Map<Long, Demand> demandMap = demandRepository.findAllById(demandIds).stream()
+            .collect(Collectors.toMap(Demand::getId, d -> d));
+        String authorName = userRepository.findById(operatorId)
+            .map(User::getNickname).orElse("未知用户");
+        return responses.stream()
+            .map(r -> {
+                Demand demand = demandMap.get(r.getDemandId());
+                return new MyDemandResponseView(
+                    r.getId(),
+                    r.getDemandId(),
+                    demand != null ? demand.getTitle() : "需求已删除",
+                    demand != null ? demand.getStatus().name() : "",
+                    demand != null ? demand.getCategory().name() : "",
+                    demand != null ? demand.getInteractionMode().name() : "",
+                    r.getAuthorId(),
+                    authorName,
+                    r.getStatus() == ResponseStatus.WITHDRAWN ? "该响应已撤回" : r.getContent(),
+                    r.getStatus().name(),
+                    r.getCreatedAt(),
+                    r.getUpdatedAt()
+                );
+            })
+            .toList();
     }
 
     private DemandDetailResponse completeTeamUpDemand(Demand demand, LocalDateTime now) {

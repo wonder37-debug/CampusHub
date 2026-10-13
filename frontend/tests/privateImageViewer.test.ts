@@ -3,7 +3,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 
-import DemandDetailView from '@/views/DemandDetailView.vue'
+import OrderDetailView from '@/views/OrderDetailView.vue'
 import { useRealCampusHubStore } from '@/stores/campusHub'
 
 const DEMAND_ID = 'd1'
@@ -100,6 +100,7 @@ function createViewStore(realStore: any) {
     notifications: [],
     getDemandById: () => demand,
     getOrderById: () => order,
+    fetchOrderDetail: () => Promise.resolve(order),
     fetchDemandDetail: () => Promise.resolve(demand),
     fetchOrders: () => Promise.resolve(),
     fetchOrderByDemandId: () => Promise.resolve(order),
@@ -110,15 +111,15 @@ function createViewStore(realStore: any) {
   }
 }
 
-function mountDetailView() {
+function mountOrderDetailView() {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
-      { path: '/demands/:id', component: DemandDetailView },
+      { path: '/orders/:id', component: OrderDetailView },
       { path: '/', component: { template: '<div></div>' } }
     ]
   })
-  return mount(DemandDetailView, { global: { plugins: [router] } })
+  return mount(OrderDetailView, { global: { plugins: [router] } })
 }
 
 /** 全屏预览通过 Teleport 挂到 body，需要直接查询 document */
@@ -149,13 +150,13 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
-describe('DemandDetailView - 私密凭证全屏预览', () => {
+describe('OrderDetailView - 私密凭证全屏预览', () => {
   it('打开预览时不会把未鉴权的原始 URL 交给 <img>', async () => {
     const realStore = useRealCampusHubStore()
     mockStore.value = createViewStore(realStore)
     stubFetch(() => new Response('binary-image-bytes', { status: 200 }))
 
-    const wrapper = mountDetailView()
+    const wrapper = mountOrderDetailView()
     await flushPromises()
     await flushPromises()
 
@@ -183,7 +184,7 @@ describe('DemandDetailView - 私密凭证全屏预览', () => {
     mockStore.value = createViewStore(realStore)
     stubFetch(() => new Response(null, { status: 403 }))
 
-    const wrapper = mountDetailView()
+    const wrapper = mountOrderDetailView()
     await flushPromises()
     await flushPromises()
 
@@ -208,7 +209,7 @@ describe('DemandDetailView - 私密凭证全屏预览', () => {
     mockStore.value = createViewStore(realStore)
     const fetchMock = stubFetch(() => new Response('binary', { status: 200 }))
 
-    const wrapper = mountDetailView()
+    const wrapper = mountOrderDetailView()
     await flushPromises()
     await flushPromises()
 

@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
+import { getRouteRedirect } from '@/router/access'
 
 const routes: RouteRecordRaw[] = [
   {
@@ -37,6 +38,7 @@ const routes: RouteRecordRaw[] = [
     path: '/orders/:id',
     name: 'OrderDetail',
     component: () => import('@/views/OrderDetailView.vue'),
+    meta: { requiresAuth: true },
     props: true
   },
   {
@@ -58,10 +60,24 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/users/:id',
+    name: 'UserProfile',
+    component: () => import('@/views/UserProfileView.vue'),
+    meta: { requiresAuth: true },
+    props: true
+  },
+  {
+    path: '/users/:id/demands',
+    name: 'UserDemands',
+    component: () => import('@/views/UserDemandsView.vue'),
+    meta: { requiresAuth: true },
+    props: true
+  },
+  {
     path: '/admin',
     name: 'Admin',
     component: () => import('@/views/AdminView.vue'),
-    meta: { requiresAuth: true }
+    meta: { requiresAuth: true, adminOnly: true }
   },
   {
     path: '/about',
@@ -85,6 +101,13 @@ const routes: RouteRecordRaw[] = [
   }
 ]
 
+declare module 'vue-router' {
+  interface RouteMeta {
+    requiresAuth?: boolean
+    adminOnly?: boolean
+  }
+}
+
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes,
@@ -95,18 +118,12 @@ const router = createRouter({
 
 // 全局路由守卫：未登录用户访问受保护页面时跳转到 /auth 并带上 redirect 查询
 router.beforeEach(async (to) => {
-  const requiresAuth = to.meta?.requiresAuth as boolean | undefined
-  if (!requiresAuth) return true
   try {
     const { useCampusHubStore } = await import('@/stores/campusHub')
     const store = useCampusHubStore()
-    if (!store.currentUser) {
-      return { path: '/auth', query: { redirect: to.fullPath } }
-    }
-    return true
+    return getRouteRedirect(to, store.currentUser)
   } catch {
-    // 如果无法获取 store，则保守处理，允许路由继续（避免阻塞应用）
-    return true
+    return getRouteRedirect(to, null)
   }
 })
 // 额外：管理员不允许访问 /orders，自动重定向到 /admin
@@ -129,11 +146,13 @@ const pageTitle: Record<string, string> = {
   DemandList: '需求大厅',
   DemandPublish: '发布需求',
   DemandDetail: '需求详情',
-  Orders: '我的订单',
+  Orders: '我的互助',
   OrderDetail: '订单详情',
   Notifications: '消息中心',
   Profile: '个人中心',
   ProfileEdit: '编辑资料',
+  UserProfile: '用户主页',
+  UserDemands: '用户需求',
   Admin: '管理后台',
   About: '关于',
   HelpCenter: '帮助中心',

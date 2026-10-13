@@ -31,11 +31,11 @@ async function handleAvatarUpdate(url: string): Promise<void> {
   }
 }
 
-const creditLevel = computed(() => {
+const creditScoreHint = computed(() => {
   const score = store.currentUser?.creditScore ?? 0
-  if (score >= 95) return '金牌助教'
-  if (score >= 85) return '银牌助教'
-  return '成长中'
+  if (score >= 80) return '信用良好'
+  if (score >= 60) return '信用一般'
+  return '需要提升'
 })
 
 const reviewsReceived = computed(() =>
@@ -170,6 +170,7 @@ onMounted(() => {
         <div class="mini-stat">
           <span class="subtle">信用分</span>
           <strong>{{ formatScore(store.currentUser.creditScore) }}</strong>
+          <small class="subtle" style="margin-top:4px;display:block;font-size:11px;">{{ creditScoreHint }} · 基于评价动态计算，非星级平均</small>
         </div>
         <div class="mini-stat">
           <span class="subtle">可用余额</span>
@@ -180,12 +181,9 @@ onMounted(() => {
           <strong>{{ formatMoney(store.currentUser?.frozenBalance ?? 0) }}</strong>
         </div>
         <div class="mini-stat">
-          <span class="subtle">信用等级</span>
-          <strong>{{ creditLevel }}</strong>
-        </div>
-        <div class="mini-stat">
           <span class="subtle">已完成订单</span>
           <strong>{{ store.currentUserOrders.filter((order) => order.status === 'COMPLETED').length }}</strong>
+          <small class="subtle" style="margin-top:4px;display:block;font-size:11px;">真实正式订单</small>
         </div>
       </div>
     </section>
@@ -239,9 +237,10 @@ onMounted(() => {
       </div>
     </section>
 
-    <!-- 页面底部：退出登录（横向全宽样式） -->
+    <!-- 页面底部：公开主页入口 + 退出登录 -->
     <section class="panel" style="margin-top: 16px;">
-      <div>
+      <div style="display:flex; flex-direction:column; gap:12px;">
+        <button type="button" class="button secondary" style="width:100%;" @click="router.push(`/users/${store.currentUserId}`)">查看我的公开主页</button>
         <button type="button" class="button primary" style="width:100%;" @click="logout">退出登录</button>
       </div>
     </section>

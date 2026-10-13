@@ -579,8 +579,8 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
                 if (currentStatus != OrderStatus.ACCEPTED) {
                     throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "only accepted orders can be cancelled");
                 }
-                if (!order.isParticipant(operatorId)) {
-                    throw new BusinessException(ErrorCode.PERMISSION_DENIED, "only participants can cancel order");
+                if (!operatorId.equals(order.getAccepterId())) {
+                    throw new BusinessException(ErrorCode.PERMISSION_DENIED, "only accepter can cancel order");
                 }
             }
             case ACCEPTED, IN_ARBITRATION ->

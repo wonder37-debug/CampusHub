@@ -1,0 +1,59 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --background: oklch(0.985 0.006 147);
+  --foreground: oklch(0.24 0.025 164);
+  --card: oklch(0.998 0.002 90);
+  --card-foreground: oklch(0.24 0.025 164);
+  --popover: oklch(0.998 0.002 90);
+  --popover-foreground: oklch(0.24 0.025 164);
+  --primary: oklch(0.43 0.075 164);
+  --primary-foreground: oklch(0.98 0.01 150);
+  --secondary: oklch(0.94 0.018 151);
+  --secondary-foreground: oklch(0.32 0.035 164);
+  --muted: oklch(0.95 0.012 150);
+  --muted-foreground: oklch(0.49 0.026 164);
+  --accent: oklch(0.94 0.035 64);
+  --accent-foreground: oklch(0.4 0.085 43);
+  --destructive: oklch(0.56 0.19 28);
+  --destructive-foreground: oklch(0.98 0.01 30);
+  --border: oklch(0.89 0.018 151);
+  --input: oklch(0.89 0.018 151);
+  --ring: oklch(0.57 0.075 164);
+  --radius: 0.8rem;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+}

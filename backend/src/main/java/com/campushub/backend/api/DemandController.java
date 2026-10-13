@@ -17,6 +17,7 @@ import com.campushub.backend.demand.dto.CreateDemandResponseCommand;
 import com.campushub.backend.demand.dto.DemandQuery;
 import com.campushub.backend.demand.dto.DemandResponseDetail;
 import com.campushub.backend.demand.dto.DemandSummaryResponse;
+import com.campushub.backend.demand.dto.MyDemandResponseView;
 import com.campushub.backend.demand.dto.PublishDemandCommand;
 import com.campushub.backend.demand.dto.SelectResponsesCommand;
 import com.campushub.backend.demand.dto.UpdateDemandCommand;
@@ -117,6 +118,7 @@ public class DemandController {
         @RequestParam(required = false) LocalDateTime startTimeTo,
         @RequestParam(required = false) String sort,
         @RequestParam(defaultValue = "false") boolean includeOwn,
+        @RequestParam(required = false) Long publisherId,
         @RequestParam(defaultValue = "1") int page,
         @RequestParam(defaultValue = "20") int size
     ) {
@@ -141,7 +143,8 @@ public class DemandController {
                 startTimeTo,
                 resolvedSort,
                 new PageQuery(page, size),
-                currentUser != null ? currentUser.userId() : null
+                currentUser != null ? currentUser.userId() : null,
+                publisherId
             )
         );
         List<Long> demandIds = rawPage.items().stream().map(DemandSummaryResponse::id).toList();
@@ -262,8 +265,9 @@ public class DemandController {
         HttpServletRequest request,
         @PathVariable Long demandId
     ) {
-        requestUserExtractor.tryExtract(request);
-        return ApiResponse.success(demandResponseApplicationService.listResponses(demandId));
+        CurrentUser currentUser = requestUserExtractor.tryExtract(request);
+        return ApiResponse.success(demandResponseApplicationService.listResponses(
+            currentUser == null ? null : currentUser.userId(), demandId));
     }
 
     @PostMapping("/{demandId}/responses/{responseId}/select")
@@ -318,5 +322,11 @@ public class DemandController {
     ) {
         CurrentUser currentUser = requestUserExtractor.requireCurrentUser(request);
         return ApiResponse.success(demandResponseApplicationService.withdrawResponse(currentUser.userId(), responseId));
+    }
+
+    @GetMapping("/responses/my")
+    public ApiResponse<List<MyDemandResponseView>> listMyResponses(HttpServletRequest request) {
+        CurrentUser currentUser = requestUserExtractor.requireCurrentUser(request);
+        return ApiResponse.success(demandResponseApplicationService.listMyResponses(currentUser.userId()));
     }
 }

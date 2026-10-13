@@ -189,6 +189,18 @@ public class MyBatisOrderRepository implements OrderRepository {
         return orderMapper.selectCount(buildHistoryWrapper(userId));
     }
 
+    @Override
+    public long countCompletedByUserId(Long userId) {
+        if (userId == null) {
+            return 0L;
+        }
+        LambdaQueryWrapper<OrderEntity> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(OrderEntity::getStatus, OrderStatus.COMPLETED.name());
+        wrapper.and(w -> w.eq(OrderEntity::getPublisherId, userId)
+            .or().eq(OrderEntity::getAccepterId, userId));
+        return orderMapper.selectCount(wrapper);
+    }
+
     private LambdaQueryWrapper<OrderEntity> buildHistoryWrapper(Long userId) {
         LambdaQueryWrapper<OrderEntity> wrapper = new LambdaQueryWrapper<>();
         wrapper.and(w -> w.eq(OrderEntity::getPublisherId, userId)
