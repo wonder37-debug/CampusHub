@@ -1640,6 +1640,16 @@ button.back-to-top:hover {
   transform: translateY(-2px);
   box-shadow: var(--shadow);
 }
+button.load-more-panel {
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  padding: 14px;
+}
+button.load-more-panel:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
 .load-more-done {
   text-align: center;
   padding: 14px;

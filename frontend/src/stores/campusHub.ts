@@ -480,11 +480,15 @@ export const useCampusHubStore = defineStore('campusHub', {
     notificationsFetchError: null as string | null,
     publicUserProfile: null as PublicUserProfile | null,
     publicUserProfileError: null as string | null,
+    publicUserProfileRequestVersion: 0,
     publicUserReviews: [] as ReviewRecord[],
     publicUserReviewsTotal: 0,
     publicUserReviewsError: null as string | null,
+    publicUserReviewsRequestVersion: 0,
+    publicUserReviewsUserId: '' as string,
     publicUserStats: null as UserStats | null,
     publicUserStatsError: null as string | null,
+    publicUserStatsRequestVersion: 0,
     adminUsers: [] as PublicUser[],
     adminDashboard: null as AdminDashboardSummary | null,
     adminPendingDemands: [] as DemandRecord[],
@@ -1048,8 +1052,11 @@ export const useCampusHubStore = defineStore('campusHub', {
     },
 
     async fetchPublicUserProfile(userId: string): Promise<void> {
+      const requestVersion = ++this.publicUserProfileRequestVersion
       try {
         const payload = await requestJson<any>(`/users/${encodeURIComponent(userId)}`, {}, this.token)
+        // 切换用户后旧请求不得覆盖新资料：仅当仍是最新请求时才写入
+        if (requestVersion !== this.publicUserProfileRequestVersion) return
         this.publicUserProfile = {
           id: String(payload.id ?? ''),
           nickname: String(payload.nickname ?? '未知用户'),
@@ -1060,31 +1067,62 @@ export const useCampusHubStore = defineStore('campusHub', {
         }
         this.publicUserProfileError = null
       } catch (e) {
+        if (requestVersion !== this.publicUserProfileRequestVersion) return
         this.publicUserProfileError = (e as Error)?.message || '用户信息加载失败'
       }
     },
 
-    async fetchPublicUserReviews(userId: string, page = 1, size = 5): Promise<void> {
+    async fetchPublicUserReviews(userId: string, page = 1, size = 5): Promise<boolean> {
+      const requestVersion = ++this.publicUserReviewsRequestVersion
+      // 第一页（含切换用户后的首次加载）：重置目标用户并清空旧评价，防止上一用户的评价闪烁
+      if (page === 1) {
+        this.publicUserReviewsUserId = userId
+        this.publicUserReviews = []
+        this.publicUserReviewsTotal = 0
+        this.publicUserReviewsError = null
+      }
       try {
         const payload = await requestJson<any>(
           `/users/${encodeURIComponent(userId)}/reviews?page=${page}&size=${size}`, {}, this.token)
         const items = Array.isArray(payload?.items) ? payload.items : (Array.isArray(payload) ? payload : [])
-        this.publicUserReviews = items.map((item: any) => mapReviewRecord(item))
-        this.publicUserReviewsTotal = Number(payload?.total ?? items.length)
+        const mapped = items.map((item: any) => mapReviewRecord(item))
+        // 仅当仍是最新请求且目标用户未切换时才写入，防止旧请求覆盖新用户数据
+        if (requestVersion !== this.publicUserReviewsRequestVersion || this.publicUserReviewsUserId !== userId) {
+          return false
+        }
+        if (page === 1) {
+          // 第一页：直接替换
+          this.publicUserReviews = mapped
+        } else {
+          // 后续页：追加并按 id 去重，保留历史评价
+          const merged = new Map<string, ReviewRecord>()
+          this.publicUserReviews.forEach((review: ReviewRecord) => merged.set(review.id, review))
+          mapped.forEach((review: ReviewRecord) => merged.set(review.id, review))
+          this.publicUserReviews = Array.from(merged.values())
+        }
+        this.publicUserReviewsTotal = Number(payload?.total ?? mapped.length)
         this.publicUserReviewsError = null
+        return true
       } catch (e) {
+        if (requestVersion !== this.publicUserReviewsRequestVersion || this.publicUserReviewsUserId !== userId) {
+          return false
+        }
         this.publicUserReviewsError = (e as Error)?.message || '评价加载失败'
+        return false
       }
     },
 
     async fetchPublicUserStats(userId: string): Promise<void> {
+      const requestVersion = ++this.publicUserStatsRequestVersion
       try {
         const payload = await requestJson<any>(`/users/${encodeURIComponent(userId)}/stats`, {}, this.token)
+        if (requestVersion !== this.publicUserStatsRequestVersion) return
         this.publicUserStats = {
           completedOrders: Number(payload?.completedOrders ?? 0)
         }
         this.publicUserStatsError = null
       } catch (e) {
+        if (requestVersion !== this.publicUserStatsRequestVersion) return
         this.publicUserStatsError = (e as Error)?.message || '统计数据加载失败'
       }
     },

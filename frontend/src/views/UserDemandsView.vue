@@ -14,6 +14,7 @@ const store = useCampusHubStore()
 
 const userId = computed(() => String(route.params.id ?? ''))
 const loading = ref(true)
+const loadingMore = ref(false)
 const error = ref('')
 const PAGE_SIZE = 12
 const page = ref(1)
@@ -47,23 +48,27 @@ async function loadDemands(): Promise<void> {
 }
 
 async function loadMore(): Promise<void> {
-  page.value++
+  if (loadingMore.value || !hasMore.value) return
+  loadingMore.value = true
+  const nextPage = page.value + 1
   try {
     await store.fetchDemands({
       publisherId: userId.value,
-      page: page.value,
+      page: nextPage,
       size: PAGE_SIZE
     })
     if (store.demandFetchError) {
-      page.value--
       error.value = store.demandFetchError
     } else {
       localDemands.value = [...localDemands.value, ...store.demands]
       totalCount.value = store.demandFetchTotal
+      // 仅当成功追加后才推进页码，避免失败后下次请求跳页
+      page.value = nextPage
     }
   } catch (e) {
-    page.value--
     error.value = handleError(e, '加载更多失败')
+  } finally {
+    loadingMore.value = false
   }
 }
 
@@ -76,7 +81,8 @@ function backToProfile(): void {
 }
 
 watch(() => route.params.id, (newId) => {
-  if (newId && String(newId) !== userId.value) {
+  // 切换用户 ID 时清理旧列表并重新加载；store 的请求序列号会丢弃仍在途中的旧请求
+  if (newId) {
     localDemands.value = []
     totalCount.value = 0
     void loadDemands()
@@ -129,10 +135,10 @@ onMounted(() => {
         :current-user-id="store.currentUser?.id ?? ''"
       />
 
-      <div v-if="hasMore" class="list-card load-more-panel" @click="loadMore">
-        <h3>加载更多</h3>
+      <button v-if="hasMore" type="button" class="list-card load-more-panel" :disabled="loadingMore" @click="loadMore">
+        <h3>{{ loadingMore ? '加载中...' : '加载更多' }}</h3>
         <p class="subtle">当前显示 {{ localDemands.length }} / {{ totalCount }} 条</p>
-      </div>
+      </button>
       <div v-if="allLoaded" class="load-more-done">📋 已展示全部 {{ totalCount }} 条公开需求</div>
     </section>
   </div>

@@ -51,9 +51,13 @@ async function loadProfile(): Promise<void> {
 async function loadMoreReviews(): Promise<void> {
   if (loadingMoreReviews.value || !hasMoreReviews.value) return
   loadingMoreReviews.value = true
-  reviewPage.value++
+  const nextPage = reviewPage.value + 1
   try {
-    await store.fetchPublicUserReviews(userId.value, reviewPage.value, REVIEW_PAGE_SIZE)
+    // 仅当 store 确认数据已写入（未被竞态丢弃且未失败）时才推进页码，避免跳页
+    const written = await store.fetchPublicUserReviews(userId.value, nextPage, REVIEW_PAGE_SIZE)
+    if (written) {
+      reviewPage.value = nextPage
+    }
   } finally {
     loadingMoreReviews.value = false
   }
@@ -69,7 +73,8 @@ function goBack(): void {
 }
 
 watch(() => route.params.id, (newId) => {
-  if (newId && String(newId) !== userId.value) {
+  // 切换用户 ID 时清理旧数据并重新加载；store 层的请求版本号会丢弃仍在途中的旧请求
+  if (newId) {
     store.publicUserProfile = null
     store.publicUserReviews = []
     store.publicUserReviewsTotal = 0
