@@ -20,20 +20,26 @@ const PAGE_SIZE = 12
 const page = ref(1)
 const localDemands = ref<DemandRecord[]>([])
 const totalCount = ref(0)
+// 组件级请求版本号：切换用户或重新加载时递增，使仍在途中的旧请求返回后不处理结果
+let requestVersion = 0
 
 const hasMore = computed(() => localDemands.value.length < totalCount.value)
 const allLoaded = computed(() => !hasMore.value && localDemands.value.length > 0)
 
 async function loadDemands(): Promise<void> {
+  const version = ++requestVersion
+  const targetUser = userId.value
   loading.value = true
   error.value = ''
   page.value = 1
   try {
     await store.fetchDemands({
-      publisherId: userId.value,
+      publisherId: targetUser,
       page: 1,
       size: PAGE_SIZE
     })
+    // 切换用户后旧请求不得更新新用户的列表、总数、页码或错误状态
+    if (version !== requestVersion || targetUser !== userId.value) return
     if (store.demandFetchError) {
       error.value = store.demandFetchError
     } else {
@@ -41,34 +47,38 @@ async function loadDemands(): Promise<void> {
       totalCount.value = store.demandFetchTotal
     }
   } catch (e) {
+    if (version !== requestVersion || targetUser !== userId.value) return
     error.value = handleError(e, '需求列表加载失败')
   } finally {
-    loading.value = false
+    if (version === requestVersion) loading.value = false
   }
 }
 
 async function loadMore(): Promise<void> {
   if (loadingMore.value || !hasMore.value) return
+  const version = ++requestVersion
+  const targetUser = userId.value
   loadingMore.value = true
   const nextPage = page.value + 1
   try {
     await store.fetchDemands({
-      publisherId: userId.value,
+      publisherId: targetUser,
       page: nextPage,
       size: PAGE_SIZE
     })
+    if (version !== requestVersion || targetUser !== userId.value) return
     if (store.demandFetchError) {
       error.value = store.demandFetchError
     } else {
       localDemands.value = [...localDemands.value, ...store.demands]
       totalCount.value = store.demandFetchTotal
-      // 仅当成功追加后才推进页码，避免失败后下次请求跳页
       page.value = nextPage
     }
   } catch (e) {
+    if (version !== requestVersion || targetUser !== userId.value) return
     error.value = handleError(e, '加载更多失败')
   } finally {
-    loadingMore.value = false
+    if (version === requestVersion) loadingMore.value = false
   }
 }
 
@@ -81,10 +91,11 @@ function backToProfile(): void {
 }
 
 watch(() => route.params.id, (newId) => {
-  // 切换用户 ID 时清理旧列表并重新加载；store 的请求序列号会丢弃仍在途中的旧请求
+  // 切换用户 ID 时清理旧列表并重新加载；递增版本号使仍在途中的旧请求失效
   if (newId) {
     localDemands.value = []
     totalCount.value = 0
+    loadingMore.value = false
     void loadDemands()
   }
 })

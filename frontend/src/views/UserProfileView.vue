@@ -15,6 +15,8 @@ const loading = ref(true)
 const loadingMoreReviews = ref(false)
 const reviewPage = ref(1)
 const REVIEW_PAGE_SIZE = 5
+// 组件级请求版本号：切换用户或重新加载时递增，使仍在途中的旧请求返回后不更新加载状态
+let requestVersion = 0
 
 const profile = computed(() => store.publicUserProfile)
 const reviews = computed(() => store.publicUserReviews)
@@ -33,33 +35,39 @@ function initials(name: string): string {
 }
 
 async function loadProfile(): Promise<void> {
+  const version = ++requestVersion
+  const targetUser = userId.value
   loading.value = true
   reviewPage.value = 1
   try {
     await Promise.all([
-      store.fetchPublicUserProfile(userId.value),
-      store.fetchPublicUserReviews(userId.value, 1, REVIEW_PAGE_SIZE),
-      store.fetchPublicUserStats(userId.value)
+      store.fetchPublicUserProfile(targetUser),
+      store.fetchPublicUserReviews(targetUser, 1, REVIEW_PAGE_SIZE),
+      store.fetchPublicUserStats(targetUser)
     ])
   } catch (e) {
     // errors are stored in store state
   } finally {
-    loading.value = false
+    // 仅当仍是最新请求时才结束加载态，避免旧请求的 finally 错误重置新请求的 loading
+    if (version === requestVersion) loading.value = false
   }
 }
 
 async function loadMoreReviews(): Promise<void> {
   if (loadingMoreReviews.value || !hasMoreReviews.value) return
+  const version = ++requestVersion
+  const targetUser = userId.value
   loadingMoreReviews.value = true
   const nextPage = reviewPage.value + 1
   try {
-    // 仅当 store 确认数据已写入（未被竞态丢弃且未失败）时才推进页码，避免跳页
-    const written = await store.fetchPublicUserReviews(userId.value, nextPage, REVIEW_PAGE_SIZE)
+    // 仅当 store 确认数据已写入且组件请求仍有效时才推进页码，避免跳页或旧请求污染
+    const written = await store.fetchPublicUserReviews(targetUser, nextPage, REVIEW_PAGE_SIZE)
+    if (version !== requestVersion || targetUser !== userId.value) return
     if (written) {
       reviewPage.value = nextPage
     }
   } finally {
-    loadingMoreReviews.value = false
+    if (version === requestVersion) loadingMoreReviews.value = false
   }
 }
 
@@ -79,6 +87,7 @@ watch(() => route.params.id, (newId) => {
     store.publicUserReviews = []
     store.publicUserReviewsTotal = 0
     store.publicUserStats = null
+    loadingMoreReviews.value = false
     void loadProfile()
   }
 })
