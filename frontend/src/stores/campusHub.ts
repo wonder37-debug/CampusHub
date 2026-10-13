@@ -13,6 +13,7 @@ import type {
   DemandFormInput,
   DemandRecord,
   DemandResponseRecord,
+  MyDemandResponseRecord,
   DemandStatus,
   EmailVerificationRecord,
   InteractionMode,
@@ -23,8 +24,10 @@ import type {
   OrderStatus,
   ProfilePatchInput,
   PublicUser,
+  PublicUserProfile,
   ResponseStatus,
-  ReviewRecord
+  ReviewRecord,
+  UserStats
 } from '@/types/campushub'
 import {
   DEMAND_CATEGORY_OPTIONS,
@@ -100,6 +103,7 @@ function unwrapApiPayload<T>(payload: any): T {
 }
 
 const MAX_PAGE_SIZE = 100
+let demandFetchSequence = 0
 
 function normalizePageSize(size: number | undefined): number {
   const resolved = Number(size ?? MAX_PAGE_SIZE)
@@ -228,12 +232,13 @@ function mapDemandRecord(raw: any): DemandRecord {
     reward: Number(raw.reward ?? 0),
     interactionMode: (String(raw.interactionMode ?? 'DIRECT_ACCEPT')) as InteractionMode,
     targetParticipantCount: raw.targetParticipantCount == null ? null : Number(raw.targetParticipantCount),
+    selectedParticipantCount: raw.selectedParticipantCount == null ? null : Number(raw.selectedParticipantCount),
     status: String(raw.status ?? 'PENDING') as DemandStatus,
     anonymous: Boolean(raw.anonymous ?? false),
     anonymousCode: raw.anonymousCode ?? null,
     publisherId: raw.publisherId == null ? '' : String(raw.publisherId),
     publisherName: String(publisherDisplayName),
-    publisherAvatar: String(raw.publisherAvatar ?? buildAvatar(String(publisherDisplayName))),
+    publisherAvatar: String(raw.publisher?.avatarUrl ?? raw.publisherAvatar ?? ''),
     publisher,
     tags: Array.isArray(raw.tags) ? raw.tags.map((tag: any) => String(tag)) : [],
     createdAt: String(raw.createdAt ?? now()),
@@ -299,6 +304,7 @@ function mapOrderRecord(raw: any): OrderRecord {
     demandStartTime: String(demand.startTime ?? raw.startTime ?? ''),
     demandEndTime: String(demand.endTime ?? raw.endTime ?? ''),
     demandCategory: String(demand.category ?? raw.category ?? ''),
+    demandInteractionMode: demand.interactionMode == null ? undefined : String(demand.interactionMode) as InteractionMode,
     demandCampusZone: String(demand.campusZone ?? raw.campusZone ?? ''),
     demandReward: Number(demand.reward ?? raw.reward ?? 0),
     requesterId: String(requester.id ?? raw.publisherId ?? raw.requesterId ?? demand.publisherId ?? ''),
@@ -334,7 +340,8 @@ function mapOrderRecord(raw: any): OrderRecord {
       ? raw.statusHistory.map((entry: any) => ({
           at: String(entry.changedAt ?? entry.createdAt ?? now()),
           operatorId: entry.operatorId == null ? undefined : String(entry.operatorId),
-          label: mapOrderTimelineLabel(entry)
+          label: mapOrderTimelineLabel(entry),
+          note: entry.note == null ? undefined : String(entry.note)
         }))
       : []
   }
@@ -402,6 +409,23 @@ function mapDemandResponseRecord(raw: any): DemandResponseRecord {
   }
 }
 
+function mapMyResponseRecord(raw: any): MyDemandResponseRecord {
+  return {
+    id: String(raw.id ?? nextId('resp')),
+    demandId: String(raw.demandId ?? ''),
+    demandTitle: String(raw.demandTitle ?? '需求已删除'),
+    demandStatus: String(raw.demandStatus ?? ''),
+    demandCategory: String(raw.demandCategory ?? ''),
+    demandInteractionMode: String(raw.demandInteractionMode ?? ''),
+    authorId: String(raw.authorId ?? ''),
+    authorName: String(raw.authorName ?? '匿名'),
+    content: String(raw.content ?? ''),
+    status: String(raw.status ?? 'PENDING') as ResponseStatus,
+    createdAt: String(raw.createdAt ?? now()),
+    updatedAt: String(raw.updatedAt ?? raw.createdAt ?? now())
+  }
+}
+
 function nextId(prefix: string): string {
   return `${prefix}-${Math.random().toString(36).slice(2, 9)}`
 }
@@ -442,10 +466,25 @@ export const useCampusHubStore = defineStore('campusHub', {
     })(),
     accounts: [] as AccountRecord[],
     demands: [] as DemandRecord[],
+    demandFetchError: null as string | null,
+    demandFetchTotal: 0,
     orders: [] as OrderRecord[],
+    ordersFetchError: null as string | null,
     reviews: [] as ReviewRecord[],
     demandResponses: [] as DemandResponseRecord[],
+    demandResponsesDemandId: '' as string,
+    demandResponsesRequestVersion: 0,
+    myResponses: [] as MyDemandResponseRecord[],
+    myResponsesFetchError: null as string | null,
     notifications: [] as NotificationRecord[],
+    notificationsFetchError: null as string | null,
+    publicUserProfile: null as PublicUserProfile | null,
+    publicUserProfileError: null as string | null,
+    publicUserReviews: [] as ReviewRecord[],
+    publicUserReviewsTotal: 0,
+    publicUserReviewsError: null as string | null,
+    publicUserStats: null as UserStats | null,
+    publicUserStatsError: null as string | null,
     adminUsers: [] as PublicUser[],
     adminDashboard: null as AdminDashboardSummary | null,
     adminPendingDemands: [] as DemandRecord[],
@@ -838,20 +877,16 @@ export const useCampusHubStore = defineStore('campusHub', {
         return null
       }
 
-      try {
-        const order = await requestJson<any>(`/orders/by-demand/${encodeURIComponent(demandId)}`, {}, this.token)
-        if (!order) return null
-        const mapped = mapOrderRecord(order)
-        const existingIndex = this.orders.findIndex((item) => item.id === mapped.id)
-        if (existingIndex >= 0) {
-          this.orders.splice(existingIndex, 1, mapped)
-        } else {
-          this.orders.unshift(mapped)
-        }
-        return mapped
-      } catch {
-        return null
+      const order = await requestJson<any>(`/orders/by-demand/${encodeURIComponent(demandId)}`, {}, this.token)
+      if (!order) return null
+      const mapped = mapOrderRecord(order)
+      const existingIndex = this.orders.findIndex((item) => item.id === mapped.id)
+      if (existingIndex >= 0) {
+        this.orders.splice(existingIndex, 1, mapped)
+      } else {
+        this.orders.unshift(mapped)
       }
+      return mapped
     },
 
     async approveDemand(demandId: string, approved: boolean, reason?: string): Promise<DemandRecord> {
@@ -934,9 +969,14 @@ export const useCampusHubStore = defineStore('campusHub', {
     },
 
     async fetchResponses(demandId: string): Promise<DemandResponseRecord[]> {
+      const requestVersion = ++this.demandResponsesRequestVersion
+      this.demandResponsesDemandId = demandId
+      this.demandResponses = []
       const list = await requestJson<any>(`/demands/${encodeURIComponent(demandId)}/responses`, {}, this.token)
       const items = Array.isArray(list) ? list.map((raw: any) => mapDemandResponseRecord(raw)) : []
-      this.demandResponses = items
+      if (requestVersion === this.demandResponsesRequestVersion && this.demandResponsesDemandId === demandId) {
+        this.demandResponses = items
+      }
       return items
     },
 
@@ -982,6 +1022,71 @@ export const useCampusHubStore = defineStore('campusHub', {
       const mapped = mapDemandResponseRecord(response)
       await this.fetchResponses(demandId)
       return mapped
+    },
+
+    async fetchMyResponses(): Promise<void> {
+      if (!this.currentUserId) return
+      try {
+        const payload = await requestJson<any>('/demands/responses/my', {}, this.token)
+        const items = Array.isArray(payload) ? payload : (Array.isArray(payload?.items) ? payload.items : Array.isArray(payload?.data) ? payload.data : [])
+        this.myResponses = items.map((item: any) => mapMyResponseRecord(item))
+        this.myResponsesFetchError = null
+      } catch {
+        this.myResponsesFetchError = '参与记录加载失败，请检查网络后重试。'
+      }
+    },
+
+    async fetchPendingResponseCount(demandId: string): Promise<number> {
+      if (!this.token) return 0
+      try {
+        const list = await requestJson<any>(`/demands/${encodeURIComponent(demandId)}/responses`, {}, this.token)
+        const items = Array.isArray(list) ? list : (Array.isArray(list?.items) ? list.items : [])
+        return items.filter((r: any) => r.status === 'PENDING').length
+      } catch {
+        return 0
+      }
+    },
+
+    async fetchPublicUserProfile(userId: string): Promise<void> {
+      try {
+        const payload = await requestJson<any>(`/users/${encodeURIComponent(userId)}`, {}, this.token)
+        this.publicUserProfile = {
+          id: String(payload.id ?? ''),
+          nickname: String(payload.nickname ?? '未知用户'),
+          avatarUrl: String(payload.avatarUrl ?? ''),
+          role: String(payload.role ?? 'USER'),
+          status: String(payload.status ?? 'ACTIVE'),
+          creditScore: Number(payload.creditScore ?? payload.credit_score ?? 0)
+        }
+        this.publicUserProfileError = null
+      } catch (e) {
+        this.publicUserProfileError = (e as Error)?.message || '用户信息加载失败'
+      }
+    },
+
+    async fetchPublicUserReviews(userId: string, page = 1, size = 5): Promise<void> {
+      try {
+        const payload = await requestJson<any>(
+          `/users/${encodeURIComponent(userId)}/reviews?page=${page}&size=${size}`, {}, this.token)
+        const items = Array.isArray(payload?.items) ? payload.items : (Array.isArray(payload) ? payload : [])
+        this.publicUserReviews = items.map((item: any) => mapReviewRecord(item))
+        this.publicUserReviewsTotal = Number(payload?.total ?? items.length)
+        this.publicUserReviewsError = null
+      } catch (e) {
+        this.publicUserReviewsError = (e as Error)?.message || '评价加载失败'
+      }
+    },
+
+    async fetchPublicUserStats(userId: string): Promise<void> {
+      try {
+        const payload = await requestJson<any>(`/users/${encodeURIComponent(userId)}/stats`, {}, this.token)
+        this.publicUserStats = {
+          completedOrders: Number(payload?.completedOrders ?? 0)
+        }
+        this.publicUserStatsError = null
+      } catch (e) {
+        this.publicUserStatsError = (e as Error)?.message || '统计数据加载失败'
+      }
     },
 
     async submitReviewForResponse(responseId: string, rating: number, comment: string): Promise<ReviewRecord> {
@@ -1213,7 +1318,9 @@ export const useCampusHubStore = defineStore('campusHub', {
       size?: number
       all?: boolean
       includeOwn?: boolean
+      publisherId?: string
     }): Promise<void> {
+      const requestSequence = ++demandFetchSequence
       try {
         const params = new URLSearchParams()
         const requestedPage = typeof query === 'object' && query?.page != null ? query.page : 1
@@ -1230,6 +1337,7 @@ export const useCampusHubStore = defineStore('campusHub', {
           if (query.startTimeTo?.trim()) params.set('startTimeTo', query.startTimeTo.trim())
           if (query.sort?.trim()) params.set('sort', query.sort.trim())
           if (query.includeOwn) params.set('includeOwn', 'true')
+          if (query.publisherId) params.set('publisherId', query.publisherId)
         }
 
         const loadPage = async (page: number) => {
@@ -1253,15 +1361,27 @@ export const useCampusHubStore = defineStore('campusHub', {
             items.push(...pageItems)
           }
 
-          this.demands = items.map((item: any) => mapDemandRecord(item))
+          if (requestSequence === demandFetchSequence) {
+            this.demands = items.map((item: any) => mapDemandRecord(item))
+            this.demandFetchError = null
+            this.demandFetchTotal = total
+          }
           return
         }
 
         const payload = await loadPage(requestedPage)
         const items = extractPageItems(payload)
-        this.demands = items.map((item: any) => mapDemandRecord(item))
+        if (requestSequence === demandFetchSequence) {
+          this.demands = items.map((item: any) => mapDemandRecord(item))
+          this.demandFetchError = null
+          this.demandFetchTotal = extractPageTotal(payload, items.length)
+        }
       } catch {
-        // API 调用失败时保留现有数据，不覆盖为空数组
+        if (requestSequence === demandFetchSequence) {
+          this.demands = []
+          this.demandFetchError = '需求加载失败，请检查网络后重试。'
+          this.demandFetchTotal = 0
+        }
       }
     },
 
@@ -1294,14 +1414,16 @@ export const useCampusHubStore = defineStore('campusHub', {
           }
 
           this.orders = items.map((item: any) => mapOrderRecord(item))
+          this.ordersFetchError = null
           return
         }
 
         const payload = await loadPage(query.page ?? 1)
         const items = extractPageItems(payload)
         this.orders = items.map((item: any) => mapOrderRecord(item))
+        this.ordersFetchError = null
       } catch {
-        // API 调用失败时保留现有数据，不覆盖为空数组
+        this.ordersFetchError = '订单加载失败，请检查网络后重试。'
       }
     },
 
@@ -1310,8 +1432,9 @@ export const useCampusHubStore = defineStore('campusHub', {
         const payload = await requestJson<any>('/notifications?page=1&size=100', {}, this.token)
         const items = Array.isArray(payload?.items) ? payload.items : Array.isArray(payload) ? payload : payload?.data?.items ?? []
         this.notifications = items.map((item: any) => mapNotificationRecord(item, this.currentUserId))
+        this.notificationsFetchError = null
       } catch {
-        // API 调用失败时保留现有数据，不覆盖为空数组
+        this.notificationsFetchError = '通知加载失败，请检查网络后重试。'
       }
     },
 
@@ -1415,18 +1538,14 @@ export const useCampusHubStore = defineStore('campusHub', {
         return []
       }
 
-      try {
-        const payload = await requestJson<any>(`/recommendations?page=${page}&size=${size}`, {}, this.token)
-        const items = Array.isArray(payload?.items) ? payload.items : Array.isArray(payload?.data?.items) ? payload.data.items : []
-        return items.map((item: any, index: number) => ({
-          rank: Number(item.rank ?? index + 1),
-          score: Number(item.score ?? 0),
-          reasonTags: Array.isArray(item.reasonTags) ? item.reasonTags.map((tag: any) => String(tag)) : [],
-          demand: mapDemandRecord(item.demand ?? item)
-        }))
-      } catch {
-        return []
-      }
+      const payload = await requestJson<any>(`/recommendations?page=${page}&size=${size}`, {}, this.token)
+      const items = Array.isArray(payload?.items) ? payload.items : Array.isArray(payload?.data?.items) ? payload.data.items : []
+      return items.map((item: any, index: number) => ({
+        rank: Number(item.rank ?? index + 1),
+        score: Number(item.score ?? 0),
+        reasonTags: Array.isArray(item.reasonTags) ? item.reasonTags.map((tag: any) => String(tag)) : [],
+        demand: mapDemandRecord(item.demand ?? item)
+      }))
     }
 
     ,

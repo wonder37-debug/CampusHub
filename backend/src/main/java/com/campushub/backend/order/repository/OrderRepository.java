@@ -77,6 +77,13 @@ public interface OrderRepository {
     long countHistory(Long userId);
 
     /**
+     * 统计某用户已完成（COMPLETED）的正式订单数量（作为需求方或接单方）。
+     *
+     * @param userId 用户 ID，为 null 时返回 0
+     */
+    long countCompletedByUserId(Long userId);
+
+    /**
      * 查询给定 demand 集合中已有订单的 demand_id（用于推荐候选排除已被接单的 demand）。
      *
      * @param demandIds demand ID 集合，为 null/空时返回空集

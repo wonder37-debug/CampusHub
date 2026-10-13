@@ -3,6 +3,7 @@ package com.campushub.backend.demand.service;
 import com.campushub.backend.demand.dto.CreateDemandResponseCommand;
 import com.campushub.backend.demand.dto.DemandDetailResponse;
 import com.campushub.backend.demand.dto.DemandResponseDetail;
+import com.campushub.backend.demand.dto.MyDemandResponseView;
 import com.campushub.backend.demand.dto.SelectResponsesCommand;
 import com.campushub.backend.order.dto.OrderDetailResponse;
 
@@ -14,7 +15,7 @@ public interface DemandResponseApplicationService {
     DemandResponseDetail createResponse(Long operatorId, Long demandId, CreateDemandResponseCommand command);
 
     /** 列出 Demand 的所有响应。 */
-    List<DemandResponseDetail> listResponses(Long demandId);
+    List<DemandResponseDetail> listResponses(Long operatorId, Long demandId);
 
     /** SELECT_ONE：发布者选择一个 Response，创建 Order 进入履约。 */
     OrderDetailResponse selectResponse(Long operatorId, Long demandId, Long responseId);
@@ -27,4 +28,7 @@ public interface DemandResponseApplicationService {
 
     /** 作者撤回自己的响应（仅 PENDING 可撤回）。 */
     DemandResponseDetail withdrawResponse(Long operatorId, Long responseId);
+
+    /** 列出当前用户提交的全部响应（跨需求），附带关联 Demand 摘要。 */
+    List<MyDemandResponseView> listMyResponses(Long operatorId);
 }

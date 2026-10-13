@@ -40,7 +40,7 @@ export function formatDate(value: string): string {
 }
 
 export function formatMoney(value: number): string {
-  return `¥${Number(value || 0).toFixed(0)}`
+  return `${Number(value || 0).toFixed(0)} 校邻币`
 }
 
 export function formatScore(value: number): string {
@@ -207,9 +207,9 @@ export function formatNotificationType(type: NotificationType): string {
     case 'ORDER_ARBITRATION_RESOLVED':
       return '仲裁结果'
     case 'RESPONSE_REVIEW_RECEIVED':
-      return 'Response 评价收到'
+      return '组队评价收到'
     case 'DEMAND_RESPONSE_RECEIVED':
-      return '新留言通知'
+      return '新响应'
   }
 }
 

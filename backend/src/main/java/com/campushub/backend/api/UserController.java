@@ -2,6 +2,7 @@ package com.campushub.backend.api;
 
 import com.campushub.backend.api.view.PublicUserSummaryView;
 import com.campushub.backend.api.view.ReviewView;
+import com.campushub.backend.api.view.UserStatsView;
 import com.campushub.backend.api.view.UserSummaryView;
 import com.campushub.backend.auth.domain.User;
 import com.campushub.backend.auth.dto.UpdateProfileCommand;
@@ -14,6 +15,7 @@ import com.campushub.backend.common.exception.ErrorCode;
 import com.campushub.backend.common.model.PageQuery;
 import com.campushub.backend.common.security.CurrentUser;
 import com.campushub.backend.common.security.RequestUserExtractor;
+import com.campushub.backend.order.repository.OrderRepository;
 import com.campushub.backend.review.dto.ReviewQuery;
 import com.campushub.backend.review.dto.ReviewResponse;
 import com.campushub.backend.review.service.ReviewApplicationService;
@@ -33,6 +35,7 @@ public class UserController {
     private final AuthApplicationService authApplicationService;
     private final ReviewApplicationService reviewApplicationService;
     private final UserRepository userRepository;
+    private final OrderRepository orderRepository;
     private final RequestUserExtractor requestUserExtractor;
     private final ApiViewMapper apiViewMapper;
 
@@ -40,12 +43,14 @@ public class UserController {
         AuthApplicationService authApplicationService,
         ReviewApplicationService reviewApplicationService,
         UserRepository userRepository,
+        OrderRepository orderRepository,
         RequestUserExtractor requestUserExtractor,
         ApiViewMapper apiViewMapper
     ) {
         this.authApplicationService = authApplicationService;
         this.reviewApplicationService = reviewApplicationService;
         this.userRepository = userRepository;
+        this.orderRepository = orderRepository;
         this.requestUserExtractor = requestUserExtractor;
         this.apiViewMapper = apiViewMapper;
     }
@@ -84,6 +89,16 @@ public class UserController {
                 reviewPage.total()
             )
         );
+    }
+
+    @GetMapping("/{userId}/stats")
+    public ApiResponse<UserStatsView> getStats(
+        HttpServletRequest request,
+        @PathVariable Long userId
+    ) {
+        requestUserExtractor.requireCurrentUser(request);
+        long completedOrders = orderRepository.countCompletedByUserId(userId);
+        return ApiResponse.success(new UserStatsView((int) completedOrders));
     }
 
     @PutMapping("/me")

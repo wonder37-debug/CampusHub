@@ -136,6 +136,7 @@ public class MyBatisDemandRepository implements DemandRepository {
     private LambdaQueryWrapper<DemandEntity> buildWrapper(DemandQuery query) {
         LocalDateTime now = LocalDateTime.now();
         Long currentUserId = query.currentUserId();
+        Long publisherId = query.publisherId();
         LambdaQueryWrapper<DemandEntity> wrapper = new LambdaQueryWrapper<>();
         List<String> activeStatuses = List.of(
             DemandStatus.PENDING.name(),
@@ -145,11 +146,16 @@ public class MyBatisDemandRepository implements DemandRepository {
             w.and(v -> v.in(DemandEntity::getStatus, activeStatuses)
                     .and(vv -> vv.isNull(DemandEntity::getEndTime).or().ge(DemandEntity::getEndTime, now)))
              .or(v -> v.eq(DemandEntity::getStatus, DemandStatus.COMPLETED.name()));
-            if (currentUserId != null) {
+            if (currentUserId != null && publisherId == null) {
                 // 自己发布的需求（含审核中 REVIEWING 状态）始终可见
+                // 仅在非 publisherId 过滤模式下生效，避免公开需求列表混入非公开状态
                 w.or(o -> o.eq(DemandEntity::getPublisherId, currentUserId));
             }
         });
+        // 按发布者过滤公开需求（不含 REVIEWING/CANCELLED/EXPIRED）
+        if (publisherId != null) {
+            wrapper.and(w -> w.eq(DemandEntity::getPublisherId, publisherId));
+        }
         String q = query.q();
         if (q != null && !q.isBlank()) {
             String keyword = q.trim();

@@ -13,7 +13,8 @@ public record DemandQuery(
     LocalDateTime startTimeTo,
     DemandSort sort,
     PageQuery pageQuery,
-    Long currentUserId
+    Long currentUserId,
+    Long publisherId
 ) {
 
     public DemandQuery {
@@ -31,6 +32,20 @@ public record DemandQuery(
         DemandSort sort,
         PageQuery pageQuery
     ) {
-        this(q, category, campusZone, location, startTimeFrom, startTimeTo, sort, pageQuery, null);
+        this(q, category, campusZone, location, startTimeFrom, startTimeTo, sort, pageQuery, null, null);
+    }
+
+    public DemandQuery(
+        String q,
+        String category,
+        String campusZone,
+        String location,
+        LocalDateTime startTimeFrom,
+        LocalDateTime startTimeTo,
+        DemandSort sort,
+        PageQuery pageQuery,
+        Long currentUserId
+    ) {
+        this(q, category, campusZone, location, startTimeFrom, startTimeTo, sort, pageQuery, currentUserId, null);
     }
 }

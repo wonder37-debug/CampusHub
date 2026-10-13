@@ -5,22 +5,20 @@ import { useRoute, useRouter } from 'vue-router'
 
 import { useCampusHubStore } from '@/stores/campusHub'
 import SkeletonCard from '@/components/SkeletonCard.vue'
+import ErrorState from '@/components/ErrorState.vue'
 import ImageViewer from '@/components/ImageViewer.vue'
-import ImageUploader from '@/components/ImageUploader.vue'
-import PrivateImage from '@/components/PrivateImage.vue'
-import { formatAcceptDisabledReason, formatCampusZone, formatDateTime, formatDemandCategory, formatDemandStatus, formatInteractionMode, formatMoney, formatOrderStatus, formatResponseStatus, formatScore, statusToneClass } from '@/utils/format'
+import { formatAcceptDisabledReason, formatCampusZone, formatDateTime, formatDemandCategory, formatDemandStatus, formatInteractionMode, formatOrderStatus, formatResponseStatus, formatScore, statusToneClass } from '@/utils/format'
 import { useConfirm, useAlert } from '@/composables/useDialog'
+import { canRespondToDemand, canSelectResponse, canViewSelectedResponse, getDemandDetailMode } from '@/utils/detailRules'
 
 const route = useRoute()
 const router = useRouter()
 const store = useCampusHubStore()
 const note = ref('')
-const reviewRating = ref('5')
-const reviewComment = ref('')
 const message = ref('')
 const error = ref('')
-const completionSubmitted = ref(false)
-// 关键操作（接单/开始执行/提交完成/评价/仲裁）防重复点击 loading
+const loadState = ref<'loading' | 'ready' | 'not-found' | 'forbidden' | 'error'>('loading')
+const loadFailure = ref('')
 const submitting = ref(false)
 const loadingDemand = ref(false)
 const refreshing = ref(false)
@@ -37,17 +35,11 @@ const viewerImages = ref<string[]>([])
 // 与 viewerImages 等长：空字符串表示加载中/可正常显示，非空表示该张凭证加载失败的原因
 const viewerFailures = ref<string[]>([])
 let viewerVersion = 0
+let latestDemandLoad = 0
+const imageLoadFailures = ref<Record<string, boolean>>({})
 
-function revokeViewerBlobs() {
-  viewerImages.value.forEach(u => {
-    if (u.startsWith('blob:')) URL.revokeObjectURL(u)
-  })
-}
-
-/** 关闭/切换预览前的统一清理：自增版本号让在途请求作废，并释放已创建的 Blob URL */
 function resetViewer() {
   viewerVersion++
-  revokeViewerBlobs()
   viewerImages.value = []
   viewerFailures.value = []
 }
@@ -65,49 +57,60 @@ function openImageViewer(index: number) {
   showImageViewer.value = true
 }
 
-async function openPrivateImageViewer(urls: string[], idx: number) {
-  resetViewer()
-  viewerInitialIndex.value = idx
-  // 先用空占位打开预览：私密凭证必须等带鉴权的请求成功后才能显示，
-  // 不能先把原始 URL 交给 <img>，那会绕过服务端鉴权直接 401
-  viewerImages.value = urls.map(() => '')
-  viewerFailures.value = urls.map(() => '凭证加载中…')
-  showImageViewer.value = true
-  const expectedVersion = viewerVersion
-  const results = await Promise.all(urls.map(url => store.fetchProofImageBlob(url)))
-  if (expectedVersion !== viewerVersion) {
-    // 预览已被切换/关闭：丢弃结果，同时释放本次新创建的 Blob URL，避免泄漏
-    results.forEach(r => {
-      if (r.ok) URL.revokeObjectURL(r.objectUrl)
-    })
-    return
-  }
-  revokeViewerBlobs()
-  viewerImages.value = results.map(r => (r.ok ? r.objectUrl : ''))
-  viewerFailures.value = results.map(r => (r.ok ? '' : r.message))
-}
-
 onUnmounted(() => {
-  // 递增版本号让在途的 openPrivateImageViewer 结果作废，避免卸载后新 Blob URL 泄漏
   resetViewer()
 })
 
 async function refreshDemand(): Promise<void> {
+  loadingDemand.value = true
   refreshing.value = true
+  loadState.value = 'loading'
+  loadFailure.value = ''
+  const demandId = String(route.params.id ?? '')
+  const requestVersion = ++latestDemandLoad
+  store.demandResponses = []
+  store.demandResponsesDemandId = demandId
   try {
-    await store.fetchDemandDetail(String(route.params.id))
+    const loadedDemand = await store.fetchDemandDetail(demandId)
+    if (requestVersion !== latestDemandLoad) return
+    if (!loadedDemand) {
+      loadState.value = 'not-found'
+      return
+    }
+    store.demandResponses = []
     if (store.currentUser) {
       await store.fetchOrders()
-      const demandId = String(route.params.id)
+      if (requestVersion !== latestDemandLoad) return
       const hasRelatedOrder = store.orders.some((o) => o.demandId === demandId)
       if (!hasRelatedOrder) {
         await store.fetchOrderByDemandId(demandId)
+        if (requestVersion !== latestDemandLoad) return
       }
     }
+    const loadedResponses = await store.fetchResponses(demandId)
+    if (requestVersion !== latestDemandLoad) return
+    store.demandResponsesDemandId = demandId
+    store.demandResponses = loadedResponses
+    loadState.value = 'ready'
+  } catch (requestError) {
+    if (requestVersion !== latestDemandLoad) return
+    loadFailure.value = handleError(requestError, '需求详情暂时无法加载')
+    const status = Number((requestError as { status?: unknown })?.status)
+    const code = String((requestError as { code?: unknown })?.code ?? '')
+    loadState.value = status === 403 || code === 'PERMISSION_DENIED'
+      ? 'forbidden'
+      : status === 404 || code === 'RESOURCE_NOT_FOUND' ? 'not-found' : 'error'
   } finally {
-    refreshing.value = false
+    if (requestVersion === latestDemandLoad) {
+      loadingDemand.value = false
+      refreshing.value = false
+    }
   }
 }
+
+watch(() => String(route.params.id ?? ''), (id, previousId) => {
+  if (previousId !== undefined && id !== previousId) void refreshDemand()
+})
 
 const demand = computed(() => store.getDemandById(String(route.params.id)))
 const relatedOrder = computed(() => store.orders.find((order) => order.demandId === demand.value?.id))
@@ -115,36 +118,16 @@ const canAccept = computed(() => {
   if (!demand.value) return false
   // 仅 DIRECT_ACCEPT 走立即接单；SELECT_ONE/SELECT_MANY/HELP 走 Response 选择/采纳
   if ((demand.value.interactionMode ?? 'DIRECT_ACCEPT') !== 'DIRECT_ACCEPT') return false
-  if (typeof demand.value.canAccept === 'boolean') return demand.value.canAccept
-  if (relatedOrder.value) return false
-  if (demand.value.status !== 'PENDING') return false
-  if (!store.currentUser) return false
-  if (store.currentUser.role === 'ADMIN') return false
-  if (store.currentUser.id === demand.value.publisherId) return false
-  return true
+  return demand.value.canAccept === true
+    && demand.value.status === 'PENDING'
+    && Boolean(store.currentUser)
+    && store.currentUser?.role !== 'ADMIN'
+    && store.currentUser?.id !== demand.value.publisherId
 })
 
 const acceptDisabledReason = computed(() => {
   if (!demand.value) return '未找到需求'
   // 优先展示订单状态相关的真实情况
-  if (relatedOrder.value) {
-    const s = relatedOrder.value.status
-    if (s === 'COMPLETED') return '订单已完成，无法再次操作'
-    if (s === 'CANCELLED') return '订单已取消，无法再次操作'
-    // 区分身份：接单方 vs 发布方 vs 第三方
-    const isAcceptor = store.currentUser?.id === relatedOrder.value.serviceProviderId
-    const isPublisher = store.currentUser?.id === relatedOrder.value.requesterId
-    if (s === 'ACCEPTED') {
-      if (isAcceptor) return '您已接单，准备开始执行'
-      if (isPublisher) return '需求已被接单，等待服务完成'
-      return '该需求已被接单，来晚了一步。'
-    }
-    if (s === 'IN_PROGRESS') {
-      if (isAcceptor) return '您已接单，订单正在执行中'
-      if (isPublisher) return '订单正在执行中，等待服务完成'
-      return '订单正在执行中。'
-    }
-  }
   // 后端提供的不可接单原因
   if (demand.value.acceptDisabledReason) return formatAcceptDisabledReason(demand.value.acceptDisabledReason)
   if (demand.value.status === 'REVIEWING') return '该需求仍在审核中，暂时无法接单。'
@@ -156,214 +139,6 @@ const acceptDisabledReason = computed(() => {
 })
 // 个性化状态提示（由后端根据用户身份返回）
 const acceptStatusHint = computed(() => demand.value?.acceptStatusHint ?? null)
-const canStartExecution = computed(() => {
-  if (!demand.value) return false
-  if (typeof demand.value.canStartExecution === 'boolean') return demand.value.canStartExecution
-  return relatedOrder.value?.status === 'ACCEPTED' && store.currentUser?.id === relatedOrder.value.serviceProviderId
-})
-const relatedReviews = computed(() => {
-  const orderId = relatedOrder.value?.id
-  if (!orderId) return []
-  const merged = new Map<string, any>()
-  // 从订单响应中获取评价（包含双方评价，第三方用户也能看到）
-  if (relatedOrder.value?.reviews) {
-    for (const r of relatedOrder.value.reviews) merged.set(r.id, r)
-  }
-  // 从 store 中补充（当前用户提交的评价）
-  for (const r of store.reviews.filter((review) => review.orderId === orderId)) {
-    merged.set(r.id, r)
-  }
-  return Array.from(merged.values())
-})
-const hasSubmittedReview = computed(() => {
-  if (!relatedOrder.value || !store.currentUser) return false
-  if (typeof relatedOrder.value.currentUserReviewed === 'boolean') {
-    return relatedOrder.value.currentUserReviewed
-  }
-  return relatedReviews.value.some((r) => r.reviewerId === store.currentUser?.id)
-})
-
-const currentUserConfirmedCompletion = computed(() => {
-  if (!relatedOrder.value || !store.currentUser) return false
-  return relatedOrder.value.timeline.some(
-    (t) => t.operatorId === store.currentUser!.id
-      && (
-        t.label.includes('接单方确认完成')
-        || t.label.includes('需求方确认完成')
-        || t.label.includes('已确认完成，等待需求方确认')
-        || t.label.includes('已确认完成，等待接单方确认')
-      )
-  )
-})
-
-// 接单方是否已在时间线中确认完成（需求方需等待接单方先确认）
-const providerConfirmed = computed(() => {
-  if (!relatedOrder.value) return false
-  return relatedOrder.value.timeline.some(
-    (t) => t.operatorId === relatedOrder.value!.serviceProviderId
-      && (t.label.includes('接单方确认完成') || t.label.includes('已确认完成，等待需求方确认'))
-  )
-})
-
-// ========== 角色判断 ==========
-const isRequester = computed(() => {
-  if (!relatedOrder.value || !store.currentUser) return false
-  return store.currentUser.id === relatedOrder.value.requesterId
-})
-
-const isProvider = computed(() => {
-  if (!relatedOrder.value || !store.currentUser) return false
-  return store.currentUser.id === relatedOrder.value.serviceProviderId
-})
-
-// T026: 等待完成确认的提示文案，按角色（requester/provider/第三方）分支
-const waitingCompletionHint = computed(() => {
-  if (!relatedOrder.value) return ''
-  const iConfirmed = currentUserConfirmedCompletion.value
-  const otherConfirmed = providerConfirmed.value
-  if (isProvider.value) {
-    if (iConfirmed) return '你已确认完成，等待需求方确认'
-    return '等待接单方确认完成'
-  }
-  if (isRequester.value) {
-    if (iConfirmed) return '你已确认完成，等待接单方确认'
-    if (otherConfirmed) return '接单方已确认完成，等待你的确认'
-    return '等待接单方确认完成'
-  }
-  if (iConfirmed || otherConfirmed) return '等待对方确认完成'
-  return '等待接单方确认完成'
-})
-
-// ========== 仲裁功能 ==========
-const arbitrationDialogOpen = ref(false)
-const arbitrationReason = ref('')
-const arbitrationImages = ref<string[]>([])
-const arbitrationResponseDialogOpen = ref(false)
-const arbitrationResponseReason = ref('')
-const arbitrationResponseImages = ref<string[]>([])
-const proofImages = ref<string[]>([])
-
-/** 从时间线中查找仲裁发起人 ID */
-const arbitrationInitiatorId = computed(() => {
-  if (!relatedOrder.value) return undefined
-  const entry = relatedOrder.value.timeline.find((t) => t.label === '发起仲裁')
-  return entry?.operatorId
-})
-
-const arbitrationByRequester = computed(() => {
-  const id = arbitrationInitiatorId.value
-  if (!id || !relatedOrder.value) return false
-  return String(id) === String(relatedOrder.value.requesterId)
-})
-
-const arbitrationByProvider = computed(() => {
-  const id = arbitrationInitiatorId.value
-  if (!id || !relatedOrder.value) return false
-  return String(id) === String(relatedOrder.value.serviceProviderId)
-})
-
-const arbitrationTip = computed(() => {
-  if (!relatedOrder.value) return ''
-  if (arbitrationByRequester.value) {
-    if (isRequester.value) return '你发起了争议仲裁，当前订单暂停执行，请等待管理员处理。'
-    if (isProvider.value) return '需求方发起了争议仲裁，当前订单暂停执行，请配合管理员处理。'
-    return '需求方发起了争议仲裁，当前订单暂停执行。'
-  }
-  if (arbitrationByProvider.value) {
-    if (isProvider.value) return '你发起了争议仲裁，当前订单暂停执行，请等待管理员处理。'
-    if (isRequester.value) return '接单方发起了争议仲裁，当前订单暂停执行，请配合管理员处理。'
-    return '接单方发起了争议仲裁，当前订单暂停执行。'
-  }
-  if (isRequester.value) return '订单处于争议仲裁中，当前暂停执行，请等待管理员处理。'
-  if (isProvider.value) return '订单处于争议仲裁中，当前暂停执行，请配合管理员处理。'
-  return '此订单处于争议仲裁中，暂时暂停执行。'
-})
-
-const canRequestArbitration = computed(() => {
-  if (!relatedOrder.value) return false
-  if (!isProvider.value && !isRequester.value) return false
-  return relatedOrder.value.status === 'ACCEPTED' || relatedOrder.value.status === 'IN_PROGRESS'
-})
-
-// ========== 匿名保护 ==========
-const isDemandAnonymous = computed(() => {
-  return demand.value?.anonymous === true || (demand.value?.anonymousCode != null && demand.value.anonymousCode !== '')
-})
-
-function reviewDisplayName(name: string, reviewerId: string): string {
-  if (store.currentUser && reviewerId === store.currentUser.id) return '我'
-  if (isDemandAnonymous.value) {
-    const publisherId = relatedOrder.value?.requesterId
-    if (publisherId && reviewerId === publisherId) {
-      return demand.value?.anonymousCode ?? '匿名校友'
-    }
-  }
-  return name
-}
-
-/** 学号脱敏：保留前3位，其余用*替代 */
-function maskStudentId(id: string | undefined): string {
-  if (!id) return '未知'
-  if (id.length <= 3) return id + '****'
-  return id.slice(0, 3) + '****'
-}
-
-// ========== 时间线增强 ==========
-function formatTimelineLabel(label: string, operatorId?: string): string {
-  if (!relatedOrder.value) return label
-  if (label === '进行中') return '订单进行中'
-  if (label === '接单方确认完成，等待需求方确认') {
-    return isProvider.value ? '你已确认完成，等待需求方确认' : '接单方已确认完成，等待你的确认'
-  }
-  if (label === '需求方确认完成，等待接单方确认') {
-    return isRequester.value ? '你已确认完成，等待接单方确认' : '需求方已确认完成，等待你的确认'
-  }
-  if (label === '发起仲裁' && operatorId && relatedOrder.value) {
-    if (operatorId === relatedOrder.value.requesterId) {
-      return isRequester.value ? '你发起了争议仲裁' : '需求方发起了争议仲裁'
-    }
-    if (operatorId === relatedOrder.value.serviceProviderId) {
-      return isProvider.value ? '你发起了争议仲裁' : '接单方发起了争议仲裁'
-    }
-  }
-  if (label === '已确认完成，等待对方确认' && operatorId && relatedOrder.value) {
-    const isProviderAction = operatorId === relatedOrder.value.serviceProviderId
-    if (isProviderAction) {
-      return isProvider.value ? '你已确认完成，等待需求方确认' : '接单方已确认完成，等待你的确认'
-    } else {
-      return isRequester.value ? '你已确认完成，等待接单方确认' : '需求方已确认完成，等待你的确认'
-    }
-  }
-  return label
-}
-
-const enhancedTimeline = computed(() => {
-  if (!relatedOrder.value) return []
-  // 映射并按时间正序排列（从上到下自然阅读顺序）
-  const items = [...relatedOrder.value.timeline]
-    .map((entry) => ({
-      ...entry,
-      displayLabel: formatTimelineLabel(entry.label, entry.operatorId)
-    }))
-    .sort((a, b) => a.at.localeCompare(b.at))
-
-  // 追加评价条目
-  const reviews = relatedReviews.value
-  if (reviews.length > 0) {
-    const requesterReviewed = reviews.some((r) => r.reviewerId === relatedOrder.value!.requesterId)
-    const providerReviewed = reviews.some((r) => r.reviewerId === relatedOrder.value!.serviceProviderId)
-    if (requesterReviewed) {
-      const review = reviews.find((r) => r.reviewerId === relatedOrder.value!.requesterId)!
-      items.push({ at: review.createdAt, label: 'reviewer', displayLabel: '需求方已评价' })
-    }
-    if (providerReviewed) {
-      const review = reviews.find((r) => r.reviewerId === relatedOrder.value!.serviceProviderId)!
-      items.push({ at: review.createdAt, label: 'provider', displayLabel: '接单方已评价' })
-    }
-  }
-  return items
-})
-
 async function acceptCurrentDemand(): Promise<void> {
   if (!demand.value || submitting.value) {
     return
@@ -383,6 +158,7 @@ async function acceptCurrentDemand(): Promise<void> {
   try {
     const order = await store.acceptDemand(demand.value.id, note.value)
     message.value = `已接单，生成订单 ${order.id}`
+    await refreshDemand()
   } catch (acceptError) {
     error.value = handleError(acceptError, '接单失败')
   } finally {
@@ -403,155 +179,51 @@ async function withdrawDemand(): Promise<void> {
   try {
     await store.withdrawDemand(demand.value.id)
     message.value = '需求已撤回'
-    setTimeout(() => router.push('/'), 800)
+    await refreshDemand()
   } catch (e) {
     error.value = handleError(e, '撤回失败')
   }
 }
 
-async function startOrder(): Promise<void> {
-  if (!relatedOrder.value || submitting.value) {
-    return
-  }
-
-  submitting.value = true
-  try {
-    await store.startOrder(relatedOrder.value.id)
-    message.value = '订单已进入进行中状态。'
-  } catch (startError) {
-    error.value = handleError(startError, '操作失败')
-  } finally {
-    submitting.value = false
-  }
-}
-
-async function completeOrder(): Promise<void> {
-  if (!relatedOrder.value || submitting.value) {
-    return
-  }
-
-  submitting.value = true
-  try {
-    // 接单方提交完成必须上传 1-3 张凭证
-    if (isProvider.value && (proofImages.value.length < 1 || proofImages.value.length > 3)) {
-      await useAlert('凭证不足', '请上传 1-3 张完成凭证图片后再提交完成。')
-      return
-    }
-
-    if (!await useConfirm('确认完成', '确认完成此订单？此操作不可撤销。', { danger: true })) return
-
-    const proofImageUrls = isProvider.value ? proofImages.value : null
-    const updatedOrder = await store.completeOrder(relatedOrder.value.id, proofImageUrls)
-    completionSubmitted.value = updatedOrder.status !== 'COMPLETED'
-    message.value = updatedOrder.status === 'COMPLETED'
-      ? '双方都已确认完成，订单已完成。'
-      : '已提交完成确认，等待对方确认。'
-    if (isProvider.value) proofImages.value = []
-  } catch (completeError) {
-    error.value = handleError(completeError, '操作失败')
-  } finally {
-    submitting.value = false
-  }
-}
-
-async function submitReview(): Promise<void> {
-  if (!relatedOrder.value || submitting.value) {
-    return
-  }
-
-  error.value = ''
-  message.value = ''
-
-  submitting.value = true
-  try {
-    await store.submitReview(relatedOrder.value.id, Number(reviewRating.value), reviewComment.value)
-    message.value = '评价已提交。'
-    reviewComment.value = ''
-  } catch (reviewError) {
-    error.value = handleError(reviewError, '评价失败')
-  } finally {
-    submitting.value = false
-  }
-}
-
-function openArbitrationDialog(): void {
-  arbitrationReason.value = ''
-  arbitrationImages.value = []
-  arbitrationDialogOpen.value = true
-}
-
-function closeArbitrationDialog(): void {
-  arbitrationDialogOpen.value = false
-  arbitrationReason.value = ''
-  arbitrationImages.value = []
-}
-
-function openArbitrationResponseDialog(): void {
-  arbitrationResponseReason.value = ''
-  arbitrationResponseImages.value = []
-  arbitrationResponseDialogOpen.value = true
-}
-
-function closeArbitrationResponseDialog(): void {
-  arbitrationResponseDialogOpen.value = false
-  arbitrationResponseReason.value = ''
-  arbitrationResponseImages.value = []
-}
-
-async function submitArbitration(): Promise<void> {
-  if (!relatedOrder.value || submitting.value) return
-  if (!arbitrationReason.value.trim()) {
-    error.value = '请填写仲裁原因'
-    return
-  }
-
-  message.value = ''
-  error.value = ''
-  submitting.value = true
-  try {
-    await store.requestOrderArbitration(relatedOrder.value.id, arbitrationReason.value, arbitrationImages.value)
-    message.value = '已提交仲裁申请，等待管理员处理。'
-    closeArbitrationDialog()
-  } catch (arbitrationError) {
-    error.value = handleError(arbitrationError, '发起仲裁失败')
-  } finally {
-    submitting.value = false
-  }
-}
-
-async function submitArbitrationResponse(): Promise<void> {
-  if (!relatedOrder.value || submitting.value) return
-  if (!arbitrationResponseReason.value.trim()) {
-    error.value = '请填写补充说明'
-    return
-  }
-
-  message.value = ''
-  error.value = ''
-  submitting.value = true
-  try {
-    await store.submitArbitrationResponse(relatedOrder.value.id, arbitrationResponseReason.value, arbitrationResponseImages.value)
-    message.value = '已提交补充说明，等待管理员处理。'
-    closeArbitrationResponseDialog()
-  } catch (arbitrationError) {
-    error.value = handleError(arbitrationError, '提交补充说明失败')
-  } finally {
-    submitting.value = false
-  }
-}
-
 // ========== 业务模型 2.0 Response 交互 ==========
 const interactionMode = computed(() => demand.value?.interactionMode ?? 'DIRECT_ACCEPT')
-const responses = computed(() => store.demandResponses)
+const detailMode = computed(() => demand.value ? getDemandDetailMode(demand.value) : 'direct-accept')
+const responses = computed(() => store.demandResponsesDemandId === String(route.params.id ?? '') ? store.demandResponses : [])
 const isPublisher = computed(() => !!store.currentUser && store.currentUser.id === demand.value?.publisherId)
-const canRespond = computed(() => interactionMode.value !== 'DIRECT_ACCEPT' && demand.value?.status === 'PENDING' && !!store.currentUser && !isPublisher.value)
-const selectedCount = computed(() => responses.value.filter((r) => r.status === 'SELECTED').length)
-const targetCount = computed(() => demand.value?.targetParticipantCount ?? 0)
+const canRespond = computed(() => demand.value && canRespondToDemand(demand.value, store.currentUser?.id, store.currentUser?.role))
+const selectedCount = computed(() => demand.value?.selectedParticipantCount ?? null)
+const targetCount = computed(() => demand.value?.targetParticipantCount ?? null)
+const remainingSlots = computed(() => selectedCount.value !== null && targetCount.value !== null
+  ? Math.max(0, targetCount.value - selectedCount.value)
+  : null)
+const hasOrderAccess = computed(() => Boolean(relatedOrder.value && store.currentUser && (
+  store.currentUser.role === 'ADMIN'
+  || store.currentUser.id === relatedOrder.value.requesterId
+  || store.currentUser.id === relatedOrder.value.serviceProviderId
+)))
+const isFormalSelectOne = computed(() => detailMode.value === 'select-one' && Boolean(relatedOrder.value))
+const myActiveResponse = computed(() => {
+  const userId = store.currentUser?.id
+  if (!userId) return null
+  return responses.value.find((response) => response.authorId === userId
+    && (response.status === 'PENDING' || response.status === 'SELECTED')) ?? null
+})
+const visibleResponses = computed(() => responses.value.filter((response) => {
+  if (response.id === myActiveResponse.value?.id) return false
+  if (response.status !== 'SELECTED' || !isFormalSelectOne.value) return true
+  return canViewSelectedResponse(
+    true,
+    store.currentUser?.id,
+    demand.value?.publisherId ?? '',
+    store.currentUser?.role,
+    response.authorId
+  )
+}))
 
 // T024: SELECT_MANY 超员前置校验 —— 勾选时实时判断，超员自动回退并提示
 watch(selectedResponseIds, (next) => {
   const target = targetCount.value
-  if (target > 0 && next.length > target) {
+  if (target !== null && target > 0 && next.length > target) {
     void useAlert('超出目标人数', `该组队需求最多选择 ${target} 人，已超额，已自动保留前 ${target} 个。`)
     selectedResponseIds.value = next.slice(0, target)
   }
@@ -560,16 +232,32 @@ const responseListTitle = computed(() => {
   switch (interactionMode.value) {
     case 'HELP': return '回答'
     case 'SELECT_MANY': return '报名'
-    default: return '留言'
+    default: return '响应'
   }
+})
+const demandContentLabel = computed(() => {
+  if (demand.value?.category === 'SECOND_HAND') return '物品说明'
+  if (demand.value?.category === 'STUDY_TUTORING') return '学习目标与辅导要求'
+  if (detailMode.value === 'help') return '问题描述'
+  if (detailMode.value === 'select-many') return '活动与组队目标'
+  if (detailMode.value === 'direct-accept') return '任务说明'
+  return '需求说明'
+})
+const interactionGuidance = computed(() => {
+  if (demand.value?.category === 'SECOND_HAND') return '查看物品描述后提交响应。'
+  if (demand.value?.category === 'STUDY_TUTORING') return '说明辅导内容与时间。'
+  if (detailMode.value === 'select-many') return '发布者确认成员后结算。'
+  if (detailMode.value === 'help') return '在此需求内回答与采纳。'
+  if (detailMode.value === 'direct-accept') return '接单后进入订单履约。'
+  return ''
 })
 
 // 当前用户在该 Demand 上是否已有 active Response（PENDING 或 SELECTED）
 // SELECT_ONE/SELECT_MANY 仍保持一人一个 active Response；HELP 允许同一用户多条回答
-const myActiveResponse = computed(() => {
+const myRejectedResponse = computed(() => {
   const userId = store.currentUser?.id
   if (!userId) return null
-  return responses.value.find((r) => r.authorId === userId && (r.status === 'PENDING' || r.status === 'SELECTED')) ?? null
+  return visibleResponses.value.find((response) => response.authorId === userId && response.status === 'REJECTED') ?? null
 })
 
 // 已提交状态的友好提示文案
@@ -639,7 +327,7 @@ async function selectResponses(): Promise<void> {
     return
   }
   // T024: 提交前再校验一次超员（watch 已实时拦截，此处兜底）
-  if (targetCount.value > 0 && selectedResponseIds.value.length > targetCount.value) {
+  if (targetCount.value !== null && targetCount.value > 0 && selectedResponseIds.value.length > targetCount.value) {
     await useAlert('超出目标人数', `该组队需求最多选择 ${targetCount.value} 人，请取消多余选择后再提交。`)
     return
   }
@@ -711,33 +399,7 @@ async function withdrawResponse(responseId: string): Promise<void> {
   }
 }
 
-onMounted(() => {
-  loadingDemand.value = true
-  void (async () => {
-    try {
-      await store.fetchDemandDetail(String(route.params.id))
-      if (store.currentUser) {
-        await store.fetchOrders()
-        await store.fetchUserReviews(store.currentUser.id)
-        // 第三方用户可能不在 store.orders 中，通过 demandId 单独获取关联订单
-        const demandId = String(route.params.id)
-        const hasRelatedOrder = store.orders.some((o) => o.demandId === demandId)
-        if (!hasRelatedOrder) {
-          await store.fetchOrderByDemandId(demandId)
-        }
-      }
-      await store.fetchResponses(String(route.params.id))
-    } catch {
-      try {
-        await store.fetchDemands()
-      } catch {
-        // keep current view state; the empty-state branch will explain the failure
-      }
-    } finally {
-      loadingDemand.value = false
-    }
-  })()
-})
+onMounted(() => { void refreshDemand() })
 </script>
 
 <template>
@@ -751,7 +413,14 @@ onMounted(() => {
     </section>
   </div>
 
-  <div v-else-if="demand" class="page-grid demand-detail-layout">
+  <ErrorState v-else-if="loadState === 'error'" title="需求详情加载失败" :description="loadFailure" :retry="true" retry-label="重试" @retry="refreshDemand" />
+  <ErrorState v-else-if="loadState === 'forbidden'" title="无权查看此需求" description="该需求当前不可向你的账号展示。" />
+  <div v-else-if="loadState === 'not-found'" class="empty-state">
+    <strong>需求不存在</strong>
+    <p>该需求可能已被删除，或链接中的编号无效。</p>
+  </div>
+
+  <div v-else-if="demand && loadState === 'ready'" class="page-grid demand-detail-layout">
     <section class="panel">
       <div class="page-head" style="margin-bottom: 12px;">
         <button type="button" class="button primary" @click="router.back()">← 返回</button>
@@ -760,76 +429,70 @@ onMounted(() => {
         </button>
       </div>
 
-      <!-- 标题 + 报酬（置顶，左右对齐） -->
-      <div class="page-head" style="margin-top: 4px;">
+      <div class="detail-title-row" style="margin-top: 4px;">
         <div>
+          <div class="detail-kicker">
+            <span class="chip" :class="statusToneClass(demand.status)">{{ formatDemandStatus(demand.status) }}</span>
+            <span class="chip">{{ formatDemandCategory(demand.category) }}</span>
+            <span class="chip">{{ formatCampusZone(demand.campusZone) }}</span>
+          </div>
           <h1 class="page-title">{{ demand.title }}</h1>
         </div>
-        <strong class="page-title">{{ formatMoney(demand.reward) }}</strong>
+        <strong v-if="detailMode !== 'help' && demand.category !== 'SECOND_HAND' && demand.reward > 0" class="detail-reward">
+          {{ demand.reward }} <span>校邻币</span>
+        </strong>
       </div>
 
       <!-- 发布者信息 -->
-      <div class="avatar-row">
+      <RouterLink v-if="!demand.anonymous && demand.publisherId" :to="`/users/${demand.publisherId}`" class="avatar-row avatar-row--link">
         <img :src="demand.publisher?.avatarUrl ?? demand.publisherAvatar" :alt="demand.publisher?.nickname ?? demand.publisherName" class="avatar large" />
         <div>
-          <strong>发布者：{{ demand.anonymous ? (demand.anonymousCode ?? '匿名发布') : (demand.publisher?.nickname ?? demand.publisherName) }}</strong>
+          <strong>{{ demand.publisher?.nickname ?? demand.publisherName }}</strong>
           <p class="subtle">信用分：{{ demand.publisher ? formatScore(demand.publisher.creditScore) : '未知' }}</p>
-          <p class="meta" v-if="!demand.anonymous && demand.publisher?.studentId">发布者学号：{{ demand.publisherIdentityVisible === false ? (demand.publisherStudentIdMasked || '已隐藏') : demand.publisher.studentId }}</p>
+          <p class="meta">发布于 {{ formatDateTime(demand.createdAt) }}</p>
+        </div>
+      </RouterLink>
+      <div v-else class="avatar-row">
+        <div class="avatar large anonymous-avatar" aria-hidden="true">匿</div>
+        <div>
+          <strong>{{ demand.anonymousCode ?? '匿名发布' }}</strong>
           <p class="meta">发布于 {{ formatDateTime(demand.createdAt) }}</p>
         </div>
       </div>
 
-      <!-- 状态与标签 -->
-      <div class="status-row" style="margin-top: 12px;">
-        <span class="chip" :class="relatedOrder ? statusToneClass(relatedOrder.status) : statusToneClass(demand.status)">
-          {{ relatedOrder ? formatOrderStatus(relatedOrder.status) : formatDemandStatus(demand.status) }}
-        </span>
-        <span class="chip">{{ formatDemandCategory(demand.category) }}</span>
-        <span class="chip">{{ formatCampusZone(demand.campusZone) }}</span>
-        <span v-if="demand.anonymous" class="chip is-warning">匿名</span>
+      <div v-if="detailMode === 'select-many' && selectedCount !== null && targetCount !== null" class="participant-progress">
+        <strong>{{ selectedCount }}<span>/{{ targetCount }}</span></strong>
+        <span>已选成员</span>
+        <span class="meta">还差 {{ remainingSlots }} 人达到目标</span>
       </div>
-
-      <!-- 仲裁状态横幅 -->
-      <div v-if="relatedOrder?.status === 'IN_ARBITRATION'" class="arbitration-banner">
-        <div class="arbitration-icon">⚖️</div>
-        <div class="arbitration-content">
-          <strong>订单处于争议仲裁中</strong>
-          <p>{{ arbitrationTip }}</p>
-          <button v-if="relatedOrder?.canSubmitArbitrationResponse" type="button" class="button secondary" style="margin-top: 8px;" @click="openArbitrationResponseDialog">补充说明</button>
-        </div>
-      </div>
-
-      <!-- 仲裁裁决结果 -->
-      <div v-if="relatedOrder?.arbitrationResult" class="list-card" style="margin-top: 12px; border-color: rgba(180, 120, 40, 0.3);">
-        <div class="meta"><strong>⚖️ 裁决结果</strong></div>
-        <p style="margin-top: 4px; white-space: pre-wrap;">{{ relatedOrder.arbitrationResult }}</p>
-      </div>
-
-      <!-- 仲裁双方举证材料 -->
-      <div v-if="relatedOrder?.arbitrationSubmissions && relatedOrder.arbitrationSubmissions.length > 0" class="list-card" style="margin-top: 12px;">
-        <div class="meta"><strong>⚖️ 双方举证材料</strong></div>
-        <div v-for="sub in relatedOrder.arbitrationSubmissions" :key="String(sub.id ?? sub.submitterId + sub.submittedAt)" style="margin-top: 12px; padding-bottom: 12px; border-bottom: 1px solid rgba(0,0,0,0.08);">
-          <div class="meta">
-            <span class="chip" :class="sub.role === 'INITIATOR' ? 'is-warning' : 'is-info'">
-              {{ sub.role === 'INITIATOR' ? '发起方' : '另一方' }}
-            </span>
-            <span style="margin-left: 8px;">{{ sub.submitterName }}</span>
-          </div>
-          <p style="margin-top: 6px; white-space: pre-wrap;">{{ sub.reason }}</p>
-          <div v-if="sub.imageUrls && sub.imageUrls.length > 0" style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px;">
-            <PrivateImage
-              v-for="(url, idx) in sub.imageUrls"
-              :key="url + idx"
-              :src="url"
-              :alt="'证据图片' + (idx + 1)"
-            />
-          </div>
-        </div>
-      </div>
+      <div v-else-if="detailMode === 'select-many'" class="participant-progress is-unavailable">当前人数信息暂不可用，请刷新后再查看。</div>
 
       <!-- 需求详情（突出显示，置于时间信息之前） -->
+      <div class="demand-mode-note">
+        <span class="mode-note-mark" aria-hidden="true">{{ detailMode === 'help' ? '?' : detailMode === 'select-many' ? '＋' : detailMode === 'direct-accept' ? '↗' : '◎' }}</span>
+        <p>{{ interactionGuidance }}</p>
+      </div>
+
+      <div v-if="demand.images && demand.images.length > 0" class="demand-images demand-images-featured">
+        <p class="eyebrow">需求实拍 · {{ demand.images.length }} 张</p>
+        <div class="image-grid">
+          <button
+            v-for="(imgUrl, imgIdx) in demand.images"
+            :key="imgUrl"
+            type="button"
+            class="image-item"
+            :aria-label="`查看需求图片 ${imgIdx + 1}`"
+            @click="openImageViewer(imgIdx)"
+          >
+            <img :class="{ 'is-failed': imageLoadFailures[imgUrl] }" :src="imgUrl" :alt="`需求图片 ${imgIdx + 1}`" loading="lazy" class="demand-img" @error="imageLoadFailures[imgUrl] = true" />
+            <span v-if="imageLoadFailures[imgUrl]" class="image-failure">图片暂时无法显示</span>
+          </button>
+        </div>
+      </div>
+
+
       <div v-if="demand.description" class="demand-description-highlight">
-        <p class="eyebrow demand-detail-label">需求详情</p>
+        <p class="eyebrow demand-detail-label">{{ demandContentLabel }}</p>
         <div class="description-content">{{ demand.description }}</div>
       </div>
 
@@ -851,21 +514,6 @@ onMounted(() => {
         <p style="margin-top: 4px; white-space: pre-wrap;">{{ demand.contactInfo }}</p>
       </div>
 
-      <!-- 需求图片 -->
-      <div v-if="demand.images && demand.images.length > 0" class="demand-images" style="margin-top: 12px;">
-        <p class="eyebrow">需求图片 ({{ demand.images.length }})</p>
-        <div class="image-grid">
-          <div
-            v-for="(imgUrl, imgIdx) in demand.images"
-            :key="imgUrl"
-            class="image-item"
-            @click="openImageViewer(imgIdx)"
-          >
-            <img :src="imgUrl" :alt="`需求图片 ${imgIdx + 1}`" loading="lazy" class="demand-img" />
-          </div>
-        </div>
-      </div>
-
       <!-- 标签 -->
       <div class="tag-row" style="margin-top: 12px;">
         <span class="badge is-neutral">{{ demand.anonymous ? '匿名发布' : '实名发布' }}</span>
@@ -885,54 +533,26 @@ onMounted(() => {
         </div>
       </div>
 
-      <div class="list-card">
-        <strong>接单留言</strong>
-        <!-- 接单后留言已确定，只读显示；接单前显示可编辑的 textarea -->
-        <p v-if="relatedOrder" class="meta" style="margin-top: 4px;">{{ relatedOrder.note || '暂无留言' }}</p>
-        <div v-if="canAccept" class="field">
-          <label for="accept-note">留言内容</label>
-          <textarea id="accept-note" v-model="note" placeholder="给发布者留一句话"></textarea>
+      <div v-if="detailMode === 'direct-accept'" class="demand-action-card">
+        <div>
+          <p class="eyebrow">互助方式</p>
+          <strong>{{ demand.reward > 0 ? `完成后可获得 ${demand.reward} 校邻币` : '直接接单，按需求说明完成任务' }}</strong>
+          <p v-if="relatedOrder && hasOrderAccess" class="meta">正式订单已建立，后续进度与凭证请在订单中处理。</p>
+          <p v-else-if="relatedOrder" class="meta">该需求已进入正式订单流程。</p>
+          <p v-else-if="!canAccept && acceptDisabledReason" class="meta">{{ acceptDisabledReason }}</p>
+          <p v-else-if="acceptStatusHint" class="meta">{{ acceptStatusHint }}</p>
         </div>
-
-        <!-- 完成凭证上传（接单方提交完成前） -->
-        <div v-if="relatedOrder?.status === 'IN_PROGRESS' && isProvider && !currentUserConfirmedCompletion" class="field">
-          <label>完成凭证</label>
-          <p class="meta">请上传 1-3 张完成凭证图片，发布者确认完成时可查看。</p>
-          <ImageUploader v-model="proofImages" :max-count="3" purpose="proof" />
-        </div>
-
         <div class="card-actions">
-          <button
-            v-if="canAccept"
-            type="button"
-            class="button primary"
-            :disabled="submitting"
-            @click="acceptCurrentDemand"
-          >
-            {{ submitting ? '处理中...' : '立即接单' }}
+          <label v-if="canAccept" class="accept-note-field">
+            <span>给发布者留一句话（选填）</span>
+            <textarea id="accept-note" v-model="note" rows="2" placeholder="说明你将如何完成这项任务"></textarea>
+          </label>
+          <button v-if="canAccept" type="button" class="button primary" :disabled="submitting" @click="acceptCurrentDemand">
+            {{ submitting ? '处理中…' : '立即接单' }}
           </button>
-
-          <button v-if="canStartExecution" type="button" class="button primary" :disabled="submitting" @click="startOrder">{{ submitting ? '处理中...' : '开始执行' }}</button>
-          <button
-            v-if="relatedOrder?.status === 'IN_PROGRESS' && store.currentUser?.id === relatedOrder.serviceProviderId && !currentUserConfirmedCompletion"
-            type="button"
-            class="button primary"
-            :disabled="submitting"
-            @click="completeOrder"
-          >
-            {{ submitting ? '处理中...' : '提交完成确认' }}
+          <button v-if="hasOrderAccess && relatedOrder" type="button" class="button primary" @click="router.push({ name: 'OrderDetail', params: { id: relatedOrder.id } })">
+            查看正式订单
           </button>
-          <button
-            v-else-if="relatedOrder?.status === 'IN_PROGRESS' && store.currentUser?.id === relatedOrder.requesterId && providerConfirmed && !currentUserConfirmedCompletion"
-            type="button"
-            class="button primary"
-            :disabled="submitting"
-            @click="completeOrder"
-          >
-            {{ submitting ? '处理中...' : '确认完成' }}
-          </button>
-          <span v-else-if="relatedOrder?.status === 'IN_PROGRESS' && !completionSubmitted" class="chip is-warning">{{ waitingCompletionHint }}</span>
-          <button v-if="canRequestArbitration" type="button" class="button secondary" @click="openArbitrationDialog">发起仲裁</button>
         </div>
       </div>
 
@@ -957,6 +577,7 @@ onMounted(() => {
         <div v-if="myActiveResponse" class="list-card" style="margin-top: 4px; background: var(--accent-soft); border-color: rgba(31, 95, 83, 0.2);">
           <strong>{{ responseListTitle === '回答' ? '已提交回答' : (responseListTitle === '报名' ? '已报名' : '已留言') }}</strong>
           <p class="meta" style="margin-top: 4px;">{{ myResponseStatusHint }}</p>
+          <p class="response-own-content">{{ myActiveResponse.content }}</p>
           <div class="meta" style="margin-top: 4px;">当前状态：{{ formatResponseStatus(myActiveResponse.status) }} · {{ formatDateTime(myActiveResponse.createdAt) }}</div>
           <div class="card-actions" style="margin-top: 6px;">
             <button
@@ -971,8 +592,8 @@ onMounted(() => {
         </div>
 
         <!-- 列表 -->
-        <div v-if="responses.length" class="review-list" style="margin-top: 8px;">
-          <div v-for="r in responses" :key="r.id" class="timeline-item">
+        <div v-if="visibleResponses.length" class="review-list" style="margin-top: 8px;">
+          <div v-for="r in visibleResponses" :key="r.id" class="timeline-item">
             <div style="flex: 1;">
               <strong>{{ r.authorName }}</strong>
               <div class="meta" style="margin-top: 4px; white-space: pre-wrap;">{{ r.content }}</div>
@@ -987,20 +608,20 @@ onMounted(() => {
                 @click="withdrawResponse(r.id)"
               >撤回</button>
               <button
-                v-if="isPublisher && interactionMode === 'SELECT_ONE' && r.status === 'PENDING'"
+                v-if="canSelectResponse(demand, store.currentUser?.id, store.currentUser?.role, r.status) && detailMode === 'select-one'"
                 type="button"
                 class="button primary"
                 @click="selectResponse(r.id)"
               >选择</button>
               <label
-                v-if="isPublisher && interactionMode === 'SELECT_MANY' && r.status === 'PENDING'"
+                v-if="isPublisher && store.currentUser?.role !== 'ADMIN' && demand.status === 'PENDING' && detailMode === 'select-many' && r.status === 'PENDING'"
                 style="display: inline-flex; align-items: center; gap: 6px;"
               >
                 <input type="checkbox" :value="r.id" v-model="selectedResponseIds" />
                 <span>选择</span>
               </label>
               <button
-                v-if="isPublisher && interactionMode === 'HELP' && r.status === 'PENDING'"
+                v-if="isPublisher && store.currentUser?.role !== 'ADMIN' && demand.status === 'PENDING' && detailMode === 'help' && r.status === 'PENDING'"
                 type="button"
                 class="button primary"
                 @click="acceptAnswer(r.id)"
@@ -1042,24 +663,21 @@ onMounted(() => {
 
         <!-- SELECT_MANY 底部统计与确认 -->
         <div
-          v-if="isPublisher && interactionMode === 'SELECT_MANY'"
+          v-if="isPublisher && store.currentUser?.role !== 'ADMIN' && demand.status === 'PENDING' && detailMode === 'select-many'"
           class="card-actions"
           style="margin-top: 8px; justify-content: space-between;"
         >
-          <span class="chip" :class="targetCount > 0 && selectedCount >= targetCount ? 'is-success' : 'is-warning'">
-            {{ targetCount > 0 && selectedCount >= targetCount ? `已满 ${targetCount} 人` : `已选择 ${selectedCount} / ${targetCount} 人` }}
+          <span class="chip" :class="targetCount !== null && selectedCount !== null && selectedCount >= targetCount ? 'is-success' : 'is-warning'">
+            {{ selectedCount !== null && targetCount !== null ? (selectedCount >= targetCount ? `已满 ${targetCount} 人` : `已选择 ${selectedCount} / ${targetCount} 人`) : '人数信息暂不可用' }}
           </span>
           <button
             type="button"
             class="button primary"
-            :disabled="selectedResponseIds.length === 0 || (targetCount > 0 && selectedResponseIds.length > targetCount)"
+            :disabled="selectedResponseIds.length === 0 || (targetCount !== null && targetCount > 0 && selectedResponseIds.length > targetCount)"
             @click="selectResponses"
           >确认选择</button>
         </div>
       </div>
-
-      <span v-if="!canAccept && acceptDisabledReason" class="chip is-warning">{{ acceptDisabledReason }}</span>
-      <span v-if="acceptStatusHint" class="chip is-warning">{{ acceptStatusHint }}</span>
 
       <p v-if="message" class="hero-badge">{{ message }}</p>
       <p v-if="error" class="hero-badge" style="background: rgba(181, 71, 71, 0.14); color: var(--danger)">{{ error }}</p>
@@ -1067,103 +685,37 @@ onMounted(() => {
 
     <section class="panel demand-sidebar">
       <div class="sidebar-head">
-        <p class="eyebrow">关联信息</p>
-        <h2 class="section-title">订单、时间线与评价</h2>
+        <p class="eyebrow">下一步</p>
+        <h2 class="section-title">需求处理</h2>
       </div>
 
-      <div v-if="relatedOrder" class="section-grid">
-        <div class="list-card">
-          <div class="status-row">
-            <span class="chip" :class="statusToneClass(relatedOrder.status)">{{ formatOrderStatus(relatedOrder.status) }}</span>
-            <span class="chip">订单 {{ relatedOrder.id }}</span>
-          </div>
-          <div class="avatar-row">
-            <img :src="relatedOrder.serviceProviderAvatar" :alt="relatedOrder.serviceProviderName" class="avatar" />
-            <div>
-              <strong>接单方：{{ relatedOrder.serviceProviderName }}</strong>
-              <div class="meta">接单方学号：{{ isDemandAnonymous ? maskStudentId(relatedOrder.serviceProviderStudentId) : (relatedOrder.serviceProviderStudentId || '未知') }}</div>
-              <div class="meta">信用分 {{ formatScore(relatedOrder.serviceProviderCreditScore) }}</div>
-            </div>
-          </div>
-          <p>接单留言：{{ relatedOrder.note || '暂无留言' }}</p>
-
-          <!-- 完成凭证展示（已提交凭证后供发布者/管理员查看，通过认证 Blob 加载） -->
-          <div v-if="relatedOrder.proofImageUrls && relatedOrder.proofImageUrls.length > 0" style="margin-top: 8px;">
-            <p class="meta"><strong>完成凭证 ({{ relatedOrder.proofImageUrls.length }})</strong></p>
-            <div class="image-grid" style="margin-top: 6px;">
-              <PrivateImage
-                v-for="(url, pIdx) in relatedOrder.proofImageUrls"
-                :key="url"
-                :src="url"
-                :alt="'凭证图片 ' + (pIdx + 1)"
-                width="140px"
-                height="140px"
-                cursor="pointer"
-                @click="openPrivateImageViewer(relatedOrder.proofImageUrls, pIdx)"
-              />
-            </div>
-          </div>
-        </div>
-
-        <div class="list-card">
-          <strong>流程时间线</strong>
-          <div class="timeline">
-            <div v-for="(entry, idx) in enhancedTimeline" :key="`${entry.at}-${entry.label}-${idx}`" class="timeline-item">
-              <span>{{ entry.displayLabel }}</span>
-              <span class="meta">{{ formatDateTime(entry.at) }}</span>
-            </div>
-          </div>
-        </div>
-
-        <div v-if="relatedOrder.status === 'COMPLETED'" class="list-card">
-          <template v-if="hasSubmittedReview">
-            <strong>评价</strong>
-            <p class="hero-badge" style="margin-top:8px;">您已提交评价，不可重复评价。</p>
-          </template>
-          <template v-else-if="store.currentUser && (store.currentUser.id === relatedOrder.requesterId || store.currentUser.id === relatedOrder.serviceProviderId)">
-            <strong>提交评价</strong>
-            <div class="field">
-              <label for="review-rating">评分</label>
-              <select id="review-rating" v-model="reviewRating">
-                <option value="5">5 星</option>
-                <option value="4">4 星</option>
-                <option value="3">3 星</option>
-                <option value="2">2 星</option>
-                <option value="1">1 星</option>
-              </select>
-            </div>
-            <div class="field">
-              <label for="review-comment">评价</label>
-              <textarea id="review-comment" v-model="reviewComment" placeholder="分享你的体验"></textarea>
-            </div>
-            <button type="button" class="button primary" @click="submitReview">提交评价</button>
-          </template>
-        </div>
-
-        <div v-if="relatedReviews.length" class="list-card">
-          <strong>相关评价</strong>
-          <div class="review-list">
-            <div v-for="review in relatedReviews" :key="review.id" class="timeline-item">
-              <div>
-                <strong>{{ reviewDisplayName(review.reviewerName, review.reviewerId) }} → {{ reviewDisplayName(review.targetName, review.targetId) }}</strong>
-                <div class="meta">{{ review.comment }}</div>
-              </div>
-              <span class="chip is-success">{{ review.rating }} 星</span>
-            </div>
-          </div>
-        </div>
+      <div v-if="hasOrderAccess && relatedOrder" class="order-entry-card">
+        <span class="chip" :class="statusToneClass(relatedOrder.status)">{{ formatOrderStatus(relatedOrder.status) }}</span>
+        <h3>正式订单已建立</h3>
+        <p class="meta">订单进度、完成凭证、双方确认、仲裁和评价都在订单详情中处理。</p>
+        <button type="button" class="button primary" @click="router.push({ name: 'OrderDetail', params: { id: relatedOrder.id } })">前往订单详情</button>
       </div>
-
-      <div v-else class="empty-state" style="--empty-icon:'📦'">
-        <strong>当前还没有订单记录</strong>
-        <p>你可以先在该需求上完成接单操作，再回到这里查看订单与评价流程。</p>
+      <div v-else-if="detailMode === 'select-one' && myActiveResponse?.status === 'SELECTED'" class="order-entry-card">
+        <h3>你已被选中</h3>
+        <p class="meta">正式订单已建立。订单入口仅在服务端确认你的参与权限后显示。</p>
+      </div>
+      <div v-else-if="detailMode === 'select-one' && myRejectedResponse" class="order-entry-card">
+        <h3>本次未被选中</h3>
+        <p class="meta">你只能查看自己的处理结果，其他参与者的订单内容不会向你展示。</p>
+      </div>
+      <div v-else-if="detailMode === 'select-many'" class="order-entry-card">
+        <strong>{{ selectedCount ?? '—' }} / {{ targetCount ?? '—' }} 人已选</strong>
+        <p class="meta">达到目标人数后自动完成并结算。</p>
+      </div>
+      <div v-else-if="detailMode === 'help'" class="order-entry-card">
+        <strong>{{ demand.status === 'COMPLETED' ? '问题已解决' : '在需求中交流' }}</strong>
+        <p class="meta">采纳回答后自动结算。</p>
+      </div>
+      <div v-else class="order-entry-card">
+        <strong>{{ demand.status === 'PENDING' ? '需求开放中' : formatDemandStatus(demand.status) }}</strong>
+        <p class="meta">接单后进入正式订单履约。</p>
       </div>
     </section>
-  </div>
-
-  <div v-else class="empty-state" style="--empty-icon:'🔍'">
-    <strong>未找到需求</strong>
-    <p>请返回需求列表重新选择一个条目。</p>
   </div>
 
   <!-- 全屏图片预览 -->
@@ -1176,74 +728,134 @@ onMounted(() => {
   />
 
   <!-- 仲裁对话框 -->
-  <teleport to="body">
-    <div v-if="arbitrationDialogOpen" class="modal-backdrop" @click.self="closeArbitrationDialog">
-      <div class="modal-card panel">
-        <div class="modal-head">
-          <div>
-            <p class="eyebrow">订单仲裁</p>
-            <h3 class="section-title">提交争议说明</h3>
-          </div>
-          <button type="button" class="modal-close" @click="closeArbitrationDialog" title="关闭" aria-label="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
-        </div>
-
-        <p class="page-summary" style="margin-top: 0;">提交后订单会进入仲裁中状态，双方暂时无法继续推进订单，管理员会根据说明做出处理。</p>
-        <div class="field">
-          <label for="arbitration-reason">仲裁原因</label>
-          <textarea id="arbitration-reason" v-model="arbitrationReason" rows="5" placeholder="请简要说明争议点、当前情况和希望管理员关注的信息"></textarea>
-        </div>
-
-        <div class="field">
-          <label>证据图片（可选，最多5张）</label>
-          <ImageUploader v-model="arbitrationImages" :max-count="5" purpose="proof" />
-        </div>
-
-        <div class="card-actions" style="justify-content: flex-end;">
-          <button type="button" class="button secondary" @click="closeArbitrationDialog">取消</button>
-          <button type="button" class="button primary" :disabled="!arbitrationReason.trim()" @click="submitArbitration">提交仲裁</button>
-        </div>
-      </div>
-    </div>
-  </teleport>
-
-  <!-- 补充说明对话框 -->
-  <teleport to="body">
-    <div v-if="arbitrationResponseDialogOpen" class="modal-backdrop" @click.self="closeArbitrationResponseDialog">
-      <div class="modal-card panel">
-        <div class="modal-head">
-          <div>
-            <p class="eyebrow">仲裁补充说明</p>
-            <h3 class="section-title">提交补充说明</h3>
-          </div>
-          <button type="button" class="modal-close" @click="closeArbitrationResponseDialog" title="关闭" aria-label="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
-        </div>
-
-        <p class="page-summary" style="margin-top: 0;">作为另一方，您可以提交补充说明和证据图片，管理员将根据双方材料做出裁决。</p>
-        <div class="field">
-          <label for="arbitration-response-reason">补充说明</label>
-          <textarea id="arbitration-response-reason" v-model="arbitrationResponseReason" rows="5" placeholder="请补充您的说明和理由"></textarea>
-        </div>
-
-        <div class="field">
-          <label>证据图片（可选，最多5张）</label>
-          <ImageUploader v-model="arbitrationResponseImages" :max-count="5" purpose="proof" />
-        </div>
-
-        <div class="card-actions" style="justify-content: flex-end;">
-          <button type="button" class="button secondary" @click="closeArbitrationResponseDialog">取消</button>
-          <button type="button" class="button primary" :disabled="!arbitrationResponseReason.trim()" @click="submitArbitrationResponse">提交说明</button>
-        </div>
-      </div>
-    </div>
-  </teleport>
   </div>
 </template>
 
 <style scoped>
 /* ========== 双栏布局 ========== */
 .demand-detail-layout {
-  grid-template-columns: 1fr 380px;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 22px;
   align-items: start;
+}
+
+.detail-title-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.detail-title-row .page-title {
+  max-width: 820px;
+  margin: 12px 0 0;
+  font-size: clamp(2rem, 3vw, 2.65rem);
+  line-height: 1.16;
+  letter-spacing: -0.045em;
+}
+
+.detail-kicker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.detail-reward {
+  flex: 0 0 auto;
+  color: var(--accent-strong);
+  font-size: 1.45rem;
+  letter-spacing: -0.04em;
+  white-space: nowrap;
+}
+
+.detail-reward span {
+  color: var(--muted);
+  font-size: 0.58em;
+  letter-spacing: 0;
+}
+
+.demand-mode-note,
+.order-entry-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  background: #f8faf8;
+}
+
+.demand-mode-note p,
+.order-entry-card p {
+  margin: 0;
+  line-height: 1.55;
+}
+
+.mode-note-mark {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.participant-progress {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: baseline;
+  column-gap: 9px;
+  margin-top: 16px;
+  padding: 18px 20px;
+  border-radius: 15px;
+  background: #eef4ef;
+}
+
+.participant-progress strong {
+  color: var(--accent-strong);
+  font-size: 1.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.participant-progress strong span {
+  color: var(--muted);
+  font-size: 0.65em;
+}
+
+.participant-progress > span:last-child {
+  grid-column: 2;
+}
+
+.participant-progress.is-unavailable {
+  display: block;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.anonymous-avatar {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  background: #eef1ee;
+  font-weight: 700;
+}
+
+.accept-note-field {
+  display: grid;
+  min-width: min(360px, 100%);
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.accept-note-field textarea {
+  min-height: 66px;
+  resize: vertical;
 }
 
 .demand-sidebar {
@@ -1315,6 +927,18 @@ onMounted(() => {
   border-left: 4px solid var(--accent);
 }
 
+.demand-image-placeholder {
+  display: grid;
+  min-height: 160px;
+  margin-top: 16px;
+  place-items: center;
+  border: 1px dashed rgba(43, 72, 62, 0.22);
+  border-radius: 14px;
+  background: #f8faf8;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
 .demand-description-highlight .eyebrow {
   margin-bottom: 8px;
   color: var(--accent);
@@ -1370,6 +994,22 @@ onMounted(() => {
   margin-top: 16px;
 }
 
+.demand-images-featured .image-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.demand-images-featured .image-item {
+  aspect-ratio: 4 / 3;
+  border: 0;
+  border-radius: 12px;
+}
+
+.demand-images-featured .image-item:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+
 .image-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
@@ -1378,6 +1018,11 @@ onMounted(() => {
 }
 
 .image-item {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 0;
+  background: #eef1ee;
   border-radius: 10px;
   overflow: hidden;
   aspect-ratio: 1;
@@ -1395,6 +1040,40 @@ onMounted(() => {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.demand-img.is-failed {
+  display: none;
+}
+
+.response-own-content {
+  margin: 9px 0 0;
+  color: var(--text-strong);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.image-failure {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.order-entry-card {
+  align-items: flex-start;
+  flex-direction: column;
+}
+
+.order-entry-card h3 {
+  margin: 4px 0 0;
+  color: var(--text-strong);
+}
+
+.order-entry-card .button {
+  margin-top: 5px;
 }
 
 /* ========== 响应式：移动端切换为单栏 ========== */

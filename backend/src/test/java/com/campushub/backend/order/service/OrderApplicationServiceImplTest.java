@@ -158,6 +158,23 @@ class OrderApplicationServiceImplTest {
     }
 
     @Test
+    void onlyAccepterCanCancelAcceptedOrder() {
+        DemandDetailResponse demand = createDemand();
+        OrderDetailResponse accepted = orderApplicationService.accept(accepterId, demand.id(), new AcceptOrderCommand("我来处理"));
+
+        BusinessException exception = assertThrows(
+            BusinessException.class,
+            () -> orderApplicationService.updateStatus(
+                publisherId, accepted.orderId(), new UpdateOrderStatusCommand("CANCELLED", "发布者尝试取消", null)));
+        assertEquals(ErrorCode.PERMISSION_DENIED, exception.getErrorCode());
+
+        OrderDetailResponse cancelled = orderApplicationService.updateStatus(
+            accepterId, accepted.orderId(), new UpdateOrderStatusCommand("CANCELLED", "接单方取消", null));
+        assertEquals("CANCELLED", cancelled.status());
+        assertEquals("CANCELLED", demandApplicationService.getDetail(demand.id()).status());
+    }
+
+    @Test
     void shouldAllowValidStatusTransitions() {
         DemandDetailResponse demand = createDemand();
         OrderDetailResponse accepted = orderApplicationService.accept(accepterId, demand.id(), new AcceptOrderCommand("我来"));
