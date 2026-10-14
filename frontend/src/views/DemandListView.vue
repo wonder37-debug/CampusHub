@@ -31,7 +31,7 @@ const loadingDemands = ref(true)
 const refreshing = ref(false)
 const recommendationsError = ref('')
 const recommendedItems = ref<RecommendationRecord[]>([])
-const listError = computed(() => recommendationsError.value || store.demandFetchError || '')
+const listError = computed(() => store.demandFetchError || '')
 const categoryShortcuts = computed<Array<{ value: '' | DemandCategoryValue; label: string }>>(() => [
   { value: '', label: '全部需求' },
   ...DEMAND_CATEGORY_OPTIONS.map((value) => ({ value, label: formatDemandCategory(value) }))
@@ -131,7 +131,7 @@ async function refreshList(): Promise<void> {
       } catch {
         if (sequence === refreshSequence) {
           recommendedItems.value = []
-          recommendationsError.value = '推荐排序暂时不可用，请重试或切换排序方式。'
+          recommendationsError.value = '推荐暂时不可用，已按发布时间排序展示需求。'
         }
       }
     } else {
@@ -269,6 +269,10 @@ onBeforeUnmount(() => {
         </div>
         <span>Demand · 同学之间的真实需求</span>
       </div>
+
+      <p v-if="recommendationsError && !store.demandFetchError && !refreshing" class="home-inline-notice" data-testid="recommendation-fallback" role="status">
+        推荐暂时不可用，已按发布时间排序展示需求。
+      </p>
 
       <ErrorState
         v-if="listError && !refreshing"
@@ -461,6 +465,16 @@ onBeforeUnmount(() => {
 .home-categories button.is-active { border-color: #dce5dc; background: #edf2ed; color: var(--primary); font-weight: 650; }
 
 .home-feed { padding-top: 20px; }
+
+.home-inline-notice {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--muted) 55%, transparent);
+  color: var(--muted-foreground);
+  font-size: 0.82rem;
+}
 
 .home-feed-heading {
   display: flex;

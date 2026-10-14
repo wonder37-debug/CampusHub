@@ -132,6 +132,44 @@ public class NotificationApplicationServiceImpl implements NotificationApplicati
     }
 
     @Override
+    public void notifyDemandResponseSelected(Long receiverId, Long demandId) {
+        notifyDemandInteraction(receiverId, demandId, NotificationType.DEMAND_RESPONSE_SELECTED,
+            "你的响应已被选中", "中的响应已被发布者选中，请查看需求详情。");
+    }
+
+    @Override
+    public void notifyDemandResponseRejected(Long receiverId, Long demandId) {
+        notifyDemandInteraction(receiverId, demandId, NotificationType.DEMAND_RESPONSE_REJECTED,
+            "你的响应未被选中", "中的一条响应未被选中，你可以继续浏览其他需求。");
+    }
+
+    @Override
+    public void notifyDemandAnswerAccepted(Long receiverId, Long demandId) {
+        notifyDemandInteraction(receiverId, demandId, NotificationType.DEMAND_ANSWER_ACCEPTED,
+            "你的回答已被采纳", "中的回答已被发布者采纳。");
+    }
+
+    @Override
+    public void notifyTeamUpCompleted(Long receiverId, Long demandId) {
+        notifyDemandInteraction(receiverId, demandId, NotificationType.TEAM_UP_COMPLETED,
+            "组队已完成", "已达到目标人数，组队完成，校邻币奖励已结算。");
+    }
+
+    @Override
+    public void notifyDemandClosed(Long receiverId, Long demandId) {
+        notifyDemandInteraction(receiverId, demandId, NotificationType.DEMAND_CLOSED,
+            "需求已关闭", "已关闭，后续不会继续选择或采纳，请查看我的互助了解最终状态。");
+    }
+
+    private void notifyDemandInteraction(Long receiverId, Long demandId, NotificationType type,
+            String title, String messageSuffix) {
+        if (receiverId == null || demandId == null) return;
+        String demandTitle = resolveDemandTitle(demandId);
+        createNotification(receiverId, new NotificationDraft(
+            type, title, "需求《" + demandTitle + "》" + messageSuffix, demandId));
+    }
+
+    @Override
     public PageResponse<NotificationResponse> list(Long userId, NotificationQuery query) {
         if (userId == null) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "userId must not be null");
@@ -372,7 +410,9 @@ public class NotificationApplicationServiceImpl implements NotificationApplicati
             case ORDER_ACCEPTED, STATUS_CHANGED, REVIEW_RECEIVED, PENDING_REVIEW,
                 ORDER_ARBITRATION_REQUESTED, ORDER_ARBITRATION_RESOLVED -> "ORDER";
             case REVIEW_REQUEST, DEMAND_REJECTED, DEMAND_APPROVED,
-                RESPONSE_REVIEW_RECEIVED, DEMAND_RESPONSE_RECEIVED -> "DEMAND";
+                RESPONSE_REVIEW_RECEIVED, DEMAND_RESPONSE_RECEIVED,
+                DEMAND_RESPONSE_SELECTED, DEMAND_RESPONSE_REJECTED, DEMAND_ANSWER_ACCEPTED,
+                TEAM_UP_COMPLETED, DEMAND_CLOSED -> "DEMAND";
         };
     }
 
@@ -407,7 +447,8 @@ public class NotificationApplicationServiceImpl implements NotificationApplicati
         return switch (type) {
             case REVIEW_REQUEST -> "REVIEW_DEMAND";
             case DEMAND_REJECTED, DEMAND_APPROVED, RESPONSE_REVIEW_RECEIVED,
-                DEMAND_RESPONSE_RECEIVED -> "VIEW_DEMAND";
+                DEMAND_RESPONSE_RECEIVED, DEMAND_RESPONSE_SELECTED, DEMAND_RESPONSE_REJECTED,
+                DEMAND_ANSWER_ACCEPTED, TEAM_UP_COMPLETED, DEMAND_CLOSED -> "VIEW_DEMAND";
             case REVIEW_RECEIVED, PENDING_REVIEW, ORDER_ACCEPTED, STATUS_CHANGED,
                 ORDER_ARBITRATION_REQUESTED, ORDER_ARBITRATION_RESOLVED ->
                 "ORDER".equals(targetType) ? "VIEW_ORDER" : "VIEW_DEMAND";

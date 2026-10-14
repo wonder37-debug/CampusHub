@@ -208,6 +208,11 @@ class MyBatisNotificationRepositoryTest {
             case ORDER_ARBITRATION_RESOLVED -> "订单仲裁已处理";
             case RESPONSE_REVIEW_RECEIVED -> "收到组队评价";
             case DEMAND_RESPONSE_RECEIVED -> "收到新留言";
+            case DEMAND_RESPONSE_SELECTED -> "响应已选中";
+            case DEMAND_RESPONSE_REJECTED -> "响应未选中";
+            case DEMAND_ANSWER_ACCEPTED -> "回答已采纳";
+            case TEAM_UP_COMPLETED -> "组队已完成";
+            case DEMAND_CLOSED -> "需求已关闭";
         });
         notification.setContent(switch (type) {
             case ORDER_ACCEPTED -> "接单成功";
@@ -221,6 +226,11 @@ class MyBatisNotificationRepositoryTest {
             case ORDER_ARBITRATION_RESOLVED -> "订单仲裁结果已发布";
             case RESPONSE_REVIEW_RECEIVED -> "您的组队收到新评价";
             case DEMAND_RESPONSE_RECEIVED -> "有人在您的需求下提交了留言";
+            case DEMAND_RESPONSE_SELECTED -> "需求响应已被选中";
+            case DEMAND_RESPONSE_REJECTED -> "需求响应未被选中";
+            case DEMAND_ANSWER_ACCEPTED -> "回答被采纳";
+            case TEAM_UP_COMPLETED -> "组队目标已达成";
+            case DEMAND_CLOSED -> "需求已经关闭";
         });
         notification.setRead(false);
         notification.setCreatedAt(LocalDateTime.now());
