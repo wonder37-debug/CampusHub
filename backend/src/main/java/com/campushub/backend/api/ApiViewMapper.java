@@ -12,6 +12,7 @@ import com.campushub.backend.common.security.CurrentUser;
 import com.campushub.backend.demand.domain.Demand;
 import com.campushub.backend.demand.domain.DemandStatus;
 import com.campushub.backend.demand.domain.InteractionMode;
+import com.campushub.backend.demand.domain.ResponseStatus;
 import com.campushub.backend.demand.repository.DemandRepository;
 import com.campushub.backend.demand.repository.DemandResponseRepository;
 import com.campushub.backend.order.domain.ArbitrationSubmission;
@@ -187,7 +188,9 @@ public class ApiViewMapper {
             && currentUser != null
             && order.isParticipant(currentUser.userId())
             && !arbitrationSubmissions.stream()
-                .anyMatch(s -> "INITIATOR".equals(s.role()) && currentUser.userId().equals(s.submitterId()));
+                .anyMatch(s -> "INITIATOR".equals(s.role()) && currentUser.userId().equals(s.submitterId()))
+            && !arbitrationSubmissions.stream()
+                .anyMatch(s -> "RESPONDER".equals(s.role()) && currentUser.userId().equals(s.submitterId()));
 
         List<ReviewView> reviews = resolveReviews(order.getId(), reviewByOrderIdMap).stream()
             .map(review -> toReviewView(review, canSeePublisher, order.getPublisherId(), anonymousCode,
@@ -403,6 +406,15 @@ public class ApiViewMapper {
         }
         if (relatedOrder != null && relatedOrder.getAccepterId() != null
             && relatedOrder.getAccepterId().equals(currentUser.userId())) {
+            return demand.getContactInfo();
+        }
+        // SELECT_MANY has no formal Order: selected group members need the publisher contact.
+        if (demand.getInteractionMode() == InteractionMode.SELECT_MANY
+            && demand.getId() != null
+            && demandResponseRepository != null
+            && demandResponseRepository.findSelectedByDemandId(demand.getId()).stream()
+                .anyMatch(response -> currentUser.userId().equals(response.getAuthorId())
+                    && response.getStatus() == ResponseStatus.SELECTED)) {
             return demand.getContactInfo();
         }
         return null;

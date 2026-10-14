@@ -43,6 +43,12 @@ public interface NotificationApplicationService {
      */
     void notifyDemandResponseReceived(Long receiverId, Long demandId, String demandTitle, String responderNickname);
 
+    void notifyDemandResponseSelected(Long receiverId, Long demandId);
+    void notifyDemandResponseRejected(Long receiverId, Long demandId);
+    void notifyDemandAnswerAccepted(Long receiverId, Long demandId);
+    void notifyTeamUpCompleted(Long receiverId, Long demandId);
+    void notifyDemandClosed(Long receiverId, Long demandId);
+
     PageResponse<NotificationResponse> list(Long userId, NotificationQuery query);
 
     void markAsRead(Long userId, Long notificationId);

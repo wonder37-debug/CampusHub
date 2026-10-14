@@ -463,6 +463,23 @@ class OrderApplicationServiceImplTest {
     }
 
     @Test
+    void shouldRejectDuplicateArbitrationResponseFromCounterparty() {
+        DemandDetailResponse demand = createDemand();
+        OrderDetailResponse accepted = orderApplicationService.accept(accepterId, demand.id(), new AcceptOrderCommand("我来"));
+        orderApplicationService.requestArbitration(publisherId, accepted.orderId(),
+            new RequestOrderArbitrationCommand("发起方理由", null));
+        orderApplicationService.submitArbitrationResponse(accepterId, accepted.orderId(),
+            new com.campushub.backend.order.dto.ArbitrationSubmissionCommand("第一次说明", null));
+
+        BusinessException exception = assertThrows(BusinessException.class,
+            () -> orderApplicationService.submitArbitrationResponse(accepterId, accepted.orderId(),
+                new com.campushub.backend.order.dto.ArbitrationSubmissionCommand("重复说明", null)));
+
+        assertEquals(ErrorCode.BUSINESS_CONFLICT, exception.getErrorCode());
+        assertEquals(2, arbitrationSubmissionRepository.findByOrderId(accepted.orderId()).size());
+    }
+
+    @Test
     void shouldRejectArbitrationResponseFromInitiator() {
         DemandDetailResponse demand = createDemand();
         OrderDetailResponse accepted = orderApplicationService.accept(accepterId, demand.id(), new AcceptOrderCommand("我来"));

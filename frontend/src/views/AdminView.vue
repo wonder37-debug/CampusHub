@@ -329,7 +329,7 @@ async function submitDeleteOrder(): Promise<void> {
             </div>
             <div class="card-head">
               <h3>{{ demand.title }}</h3>
-              <strong>{{ demand.reward }} 元</strong>
+              <strong>{{ demand.reward }} 校邻币</strong>
             </div>
             <p>{{ demand.description }}</p>
               <div class="card-actions">

@@ -16,7 +16,9 @@ export interface TodoItem {
 export type NotificationCategory = 'interaction' | 'order_fulfillment' | 'system'
 
 export function categorizeNotification(type: string): NotificationCategory {
-  if (type === 'DEMAND_RESPONSE_RECEIVED' || type === 'REVIEW_RECEIVED' || type === 'RESPONSE_REVIEW_RECEIVED') {
+  if (type === 'DEMAND_RESPONSE_RECEIVED' || type === 'DEMAND_RESPONSE_SELECTED' || type === 'DEMAND_RESPONSE_REJECTED'
+      || type === 'DEMAND_ANSWER_ACCEPTED' || type === 'TEAM_UP_COMPLETED' || type === 'DEMAND_CLOSED'
+      || type === 'REVIEW_RECEIVED' || type === 'RESPONSE_REVIEW_RECEIVED') {
     return 'interaction'
   }
   if (type === 'ORDER_ACCEPTED' || type === 'STATUS_CHANGED' || type === 'ORDER_ARBITRATION_REQUESTED' || type === 'ORDER_ARBITRATION_RESOLVED' || type === 'PENDING_REVIEW') {
@@ -221,7 +223,17 @@ export function buildParticipatedResponseItems(
         hint = '等待发布者处理'
       }
     } else if (r.status === 'SELECTED') {
-      hint = '已被选中'
+      if (demandStatus === 'CANCELLED' || demandStatus === 'EXPIRED') {
+        hint = r.demandInteractionMode === 'SELECT_MANY'
+          ? '需求已关闭，组队未达目标人数，奖励未结算'
+          : '需求已关闭，后续不再处理'
+      } else if (demandStatus === 'COMPLETED' && r.demandInteractionMode === 'SELECT_MANY') {
+        hint = '组队已完成，奖励已结算'
+      } else if (demandStatus === 'COMPLETED' && r.demandInteractionMode === 'HELP') {
+        hint = '回答已被采纳'
+      } else {
+        hint = '已被选中'
+      }
     } else if (r.status === 'REJECTED') {
       hint = '未被选中'
     } else if (r.status === 'WITHDRAWN') {

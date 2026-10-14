@@ -300,6 +300,11 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
             throw new BusinessException(ErrorCode.BUSINESS_CONFLICT,
                 "arbitration initiator cannot submit response; only the other party can");
         }
+        if (arbitrationSubmissionRepository.findByOrderIdAndRole(orderId, "RESPONDER").stream()
+            .anyMatch(submission -> operatorId.equals(submission.submitterId()))) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT,
+                "arbitration response already submitted");
+        }
 
         if (command == null || command.reason() == null || command.reason().isBlank()) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "arbitration response reason must not be blank");
