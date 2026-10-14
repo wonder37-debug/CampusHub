@@ -224,7 +224,7 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
         validateReason(reason);
         Order order = findOrder(orderId);
         Demand demand = demandRepository.findById(order.getDemandId()).orElse(null);
-        if (demand != null && order.getStatus() != OrderStatus.COMPLETED) {
+        if (demand != null && order.getStatus() != OrderStatus.COMPLETED && demand.getStatus() != DemandStatus.CANCELLED) {
             demand.setStatus(DemandStatus.CANCELLED);
             demand.setUpdatedAt(LocalDateTime.now());
             demandRepository.save(demand);
