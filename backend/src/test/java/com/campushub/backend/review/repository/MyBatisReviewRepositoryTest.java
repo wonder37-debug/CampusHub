@@ -1,6 +1,7 @@
 package com.campushub.backend.review.repository;
 
 import com.baomidou.mybatisplus.test.autoconfigure.MybatisPlusTest;
+import com.campushub.backend.common.exception.BusinessException;
 import com.campushub.backend.common.model.PageQuery;
 import com.campushub.backend.review.domain.Review;
 import com.campushub.backend.review.dto.ReviewQuery;
@@ -20,6 +21,7 @@ import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
  * {@link MyBatisReviewRepository} 的切片测试。
@@ -271,6 +273,36 @@ class MyBatisReviewRepositoryTest {
     void findAllByOrderIdIn_handles_null_and_empty() {
         assertThat(repository.findAllByOrderIdIn(null)).isEmpty();
         assertThat(repository.findAllByOrderIdIn(List.of())).isEmpty();
+    }
+
+    @Test
+    void invalid_direction_throws_validation_error() {
+        BusinessException ex = assertThrows(BusinessException.class,
+            () -> new ReviewQuery(new PageQuery(1, 20), "invalid"));
+        assertThat(ex.getMessage()).contains("invalid review direction");
+    }
+
+    @Test
+    void uppercase_direction_is_normalized_and_accepted() {
+        repository.save(newReview(6011L, 10L, 30L, 5)); // targetId=30（received）
+
+        ReviewQuery upperReceived = new ReviewQuery(new PageQuery(1, 20), "RECEIVED");
+        assertThat(repository.findPage(30L, upperReceived)).hasSize(1);
+        assertThat(repository.count(30L, upperReceived)).isEqualTo(1L);
+    }
+
+    @Test
+    void null_and_blank_direction_default_to_all_and_returns_bidirectional() {
+        repository.save(newReview(6001L, 10L, 30L, 5)); // targetId=30（received）
+        repository.save(newReview(6002L, 30L, 40L, 4)); // authorId=30（given）
+
+        ReviewQuery nullDir = new ReviewQuery(new PageQuery(1, 20), null);
+        ReviewQuery blankDir = new ReviewQuery(new PageQuery(1, 20), "  ");
+        ReviewQuery explicitAll = new ReviewQuery(new PageQuery(1, 20), ReviewQuery.DIRECTION_ALL);
+
+        assertThat(repository.findPage(30L, nullDir)).hasSize(2);
+        assertThat(repository.findPage(30L, blankDir)).hasSize(2);
+        assertThat(repository.findPage(30L, explicitAll)).hasSize(2);
     }
 
     /**

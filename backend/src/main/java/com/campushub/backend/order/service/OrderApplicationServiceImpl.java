@@ -35,9 +35,15 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 @Transactional(rollbackFor = Exception.class)
@@ -52,6 +58,8 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
     private static final java.util.regex.Pattern PROOF_URL_PATTERN =
         java.util.regex.Pattern.compile("/api/v1/uploads/\\d{4}/\\d{2}/[a-zA-Z0-9][a-zA-Z0-9._-]*");
 
+    private static final Logger log = LoggerFactory.getLogger(OrderApplicationServiceImpl.class);
+
     private final OrderRepository orderRepository;
     private final DemandRepository demandRepository;
     private final UserRepository userRepository;
@@ -60,6 +68,7 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
     private final UserActionLogRepository userActionLogRepository;
     private final UploadedAssetRepository uploadedAssetRepository;
     private final ArbitrationSubmissionRepository arbitrationSubmissionRepository;
+    private final TransactionTemplate autoCompletionTxTemplate;
 
     public OrderApplicationServiceImpl(
         OrderRepository orderRepository,
@@ -69,7 +78,8 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         RewardSettlementService rewardSettlementService,
         UserActionLogRepository userActionLogRepository,
         UploadedAssetRepository uploadedAssetRepository,
-        ArbitrationSubmissionRepository arbitrationSubmissionRepository
+        ArbitrationSubmissionRepository arbitrationSubmissionRepository,
+        PlatformTransactionManager transactionManager
     ) {
         this.orderRepository = orderRepository;
         this.demandRepository = demandRepository;
@@ -79,6 +89,8 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         this.userActionLogRepository = userActionLogRepository;
         this.uploadedAssetRepository = uploadedAssetRepository;
         this.arbitrationSubmissionRepository = arbitrationSubmissionRepository;
+        this.autoCompletionTxTemplate = new TransactionTemplate(transactionManager);
+        this.autoCompletionTxTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
     @Override
@@ -357,6 +369,7 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
     }
 
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void autoCompleteOverdueOrders(Long userId) {
         List<Order> orders = orderRepository.findByParticipant(userId);
         for (Order summary : orders) {
@@ -368,7 +381,15 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
                 || !isProviderConfirmationOverdue(summary, LocalDateTime.now())) {
                 continue;
             }
-            autoCompleteOverdueOrder(summary.getId(), userId);
+            // 逐单独立事务：单笔自动完成或通知失败只回滚该订单，不影响其他订单
+            try {
+                autoCompletionTxTemplate.execute(status -> {
+                    autoCompleteOverdueOrder(summary.getId(), userId);
+                    return null;
+                });
+            } catch (Exception e) {
+                log.error("Failed to auto complete overdue order {}: {}", summary.getId(), e.getMessage(), e);
+            }
         }
     }
 

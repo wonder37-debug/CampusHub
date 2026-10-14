@@ -192,6 +192,34 @@ class MyBatisNotificationRepositoryTest {
         assertThat(allIds).containsExactlyInAnyOrder(n1.getId(), n2.getId(), n3.getId(), n4.getId());
     }
 
+    @Test
+    void save_order_deleted_notification_persists_and_loads_correctly() {
+        Notification notification = newNotification(10L, NotificationType.ORDER_DELETED);
+        notification.setRelatedId(5001L);
+
+        Notification saved = repository.save(notification);
+
+        Notification reloaded = repository.findById(saved.getId()).orElseThrow();
+        assertThat(reloaded.getType()).isEqualTo(NotificationType.ORDER_DELETED);
+        assertThat(reloaded.getTitle()).isEqualTo("订单已被管理员删除");
+        assertThat(reloaded.getContent()).isEqualTo("订单已被管理员删除并取消");
+        assertThat(reloaded.getRelatedId()).isEqualTo(5001L);
+        assertThat(reloaded.isRead()).isFalse();
+    }
+
+    @Test
+    void order_deleted_notification_appears_in_user_list_and_unread_count() {
+        repository.save(newNotification(10L, NotificationType.ORDER_DELETED));
+        repository.save(newNotification(10L, NotificationType.ORDER_ACCEPTED));
+
+        List<Notification> all = repository.findByUserId(10L);
+        assertThat(all).hasSize(2);
+        assertThat(all).extracting(Notification::getType)
+            .containsExactlyInAnyOrder(NotificationType.ORDER_DELETED, NotificationType.ORDER_ACCEPTED);
+
+        assertThat(repository.count(10L, new NotificationQuery(true, new PageQuery(1, 20)))).isEqualTo(2L);
+    }
+
     private static Notification newNotification(Long userId, NotificationType type) {
         Notification notification = new Notification();
         notification.setUserId(userId);

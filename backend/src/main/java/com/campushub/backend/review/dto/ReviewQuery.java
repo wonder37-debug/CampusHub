@@ -1,5 +1,7 @@
 package com.campushub.backend.review.dto;
 
+import com.campushub.backend.common.exception.BusinessException;
+import com.campushub.backend.common.exception.ErrorCode;
 import com.campushub.backend.common.model.PageQuery;
 
 /**
@@ -20,7 +22,16 @@ public record ReviewQuery(PageQuery pageQuery, String direction) {
 
     public ReviewQuery {
         pageQuery = pageQuery == null ? PageQuery.defaultPage() : pageQuery;
-        direction = direction == null || direction.isBlank() ? DIRECTION_ALL : direction.trim().toLowerCase(java.util.Locale.ROOT);
+        String normalized = direction == null || direction.isBlank()
+            ? DIRECTION_ALL
+            : direction.trim().toLowerCase(java.util.Locale.ROOT);
+        if (!DIRECTION_ALL.equals(normalized)
+            && !DIRECTION_RECEIVED.equals(normalized)
+            && !DIRECTION_GIVEN.equals(normalized)) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED,
+                "invalid review direction: " + normalized + "; must be one of: all, received, given");
+        }
+        direction = normalized;
     }
 
     /**
