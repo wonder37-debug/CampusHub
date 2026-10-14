@@ -117,6 +117,17 @@ public class MyBatisDemandResponseRepository implements DemandResponseRepository
     }
 
     @Override
+    public boolean existsSelectedByDemandIdAndAuthorId(Long demandId, Long authorId) {
+        if (demandId == null || authorId == null) {
+            return false;
+        }
+        return demandResponseMapper.selectCount(new LambdaQueryWrapper<DemandResponseEntity>()
+                .eq(DemandResponseEntity::getDemandId, demandId)
+                .eq(DemandResponseEntity::getAuthorId, authorId)
+                .eq(DemandResponseEntity::getStatus, ResponseStatus.SELECTED.name())) > 0;
+    }
+
+    @Override
     public long countSelectedByDemandId(Long demandId) {
         if (demandId == null) {
             return 0L;

@@ -142,6 +142,33 @@ class MyBatisReviewRepositoryTest {
         assertThat(repository.count(30L, new ReviewQuery(new PageQuery(1, 20)))).isEqualTo(2L);
     }
 
+    /**
+     * 公开信任档案语义：direction=received 仅返回收到的评价，不把发出的评价混入统计。
+     */
+    @Test
+    void findPage_direction_received_returns_only_target_matches() {
+        repository.save(newReview(5011L, 10L, 30L, 5)); // received by 30
+        repository.save(newReview(5012L, 30L, 40L, 4));  // given by 30
+
+        ReviewQuery received = new ReviewQuery(new PageQuery(1, 20), ReviewQuery.DIRECTION_RECEIVED);
+
+        assertThat(repository.findPage(30L, received)).hasSize(1);
+        assertThat(repository.findPage(30L, received).get(0).getOrderId()).isEqualTo(5011L);
+        assertThat(repository.count(30L, received)).isEqualTo(1L);
+    }
+
+    @Test
+    void findPage_direction_given_returns_only_author_matches() {
+        repository.save(newReview(5021L, 10L, 30L, 5)); // received by 30
+        repository.save(newReview(5022L, 30L, 40L, 4));  // given by 30
+
+        ReviewQuery given = new ReviewQuery(new PageQuery(1, 20), ReviewQuery.DIRECTION_GIVEN);
+
+        assertThat(repository.findPage(30L, given)).hasSize(1);
+        assertThat(repository.findPage(30L, given).get(0).getOrderId()).isEqualTo(5022L);
+        assertThat(repository.count(30L, given)).isEqualTo(1L);
+    }
+
     @Test
     void findPage_sorts_by_created_at_desc_then_id_desc() {
         Review older = repository.save(newReviewWithCreated(5101L, 10L, 30L, 5, LocalDateTime.now().minusMinutes(10)));

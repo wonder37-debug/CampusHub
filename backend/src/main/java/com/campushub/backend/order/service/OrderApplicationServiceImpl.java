@@ -359,45 +359,63 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
     @Override
     public void autoCompleteOverdueOrders(Long userId) {
         List<Order> orders = orderRepository.findByParticipant(userId);
-        LocalDateTime now = LocalDateTime.now();
         for (Order summary : orders) {
             if (summary.getStatus() != OrderStatus.IN_PROGRESS || !userId.equals(summary.getPublisherId())) {
                 continue;
             }
-            if (!hasCompletionConfirmation(summary, summary.getAccepterId())) {
+            // 预筛选（锁外快照）：仅对满足 48 小时窗口的订单加锁处理，减少无效行锁
+            if (!hasCompletionConfirmation(summary, summary.getAccepterId())
+                || !isProviderConfirmationOverdue(summary, LocalDateTime.now())) {
                 continue;
             }
-            LocalDateTime providerConfirmTime = summary.getStatusHistory().stream()
-                .filter(entry -> entry.operatorId() != null
-                    && entry.operatorId().equals(summary.getAccepterId())
-                    && entry.fromStatus() == OrderStatus.IN_PROGRESS
-                    && entry.toStatus() == OrderStatus.IN_PROGRESS
-                    && PROVIDER_CONFIRMED_NOTE.equals(entry.note()))
-                .map(OrderStatusHistoryEntry::changedAt)
-                .findFirst()
-                .orElse(null);
-            if (providerConfirmTime == null || providerConfirmTime.plusHours(48).isAfter(now)) {
-                continue;
-            }
-
-            // 加 Order 行锁，确保并发自动完成不会重复结算
-            Order order = orderRepository.findByIdForUpdate(summary.getId()).orElse(null);
-            if (order == null || order.getStatus() != OrderStatus.IN_PROGRESS) {
-                continue;
-            }
-            Demand demand = findDemand(order.getDemandId());
-            order.setStatus(OrderStatus.COMPLETED);
-            order.setCompletedAt(now);
-            order.setUpdatedAt(now);
-            order.addHistory(OrderStatus.IN_PROGRESS, OrderStatus.COMPLETED, userId, "SYSTEM_AUTO_COMPLETED", now);
-            demand.setStatus(DemandStatus.COMPLETED);
-            demand.setUpdatedAt(now);
-            orderRepository.save(order);
-            demandRepository.save(demand);
-            transferReward(demand, order);
-            notificationApplicationService.notifyOrderStatusChanged(order.getPublisherId(), order.getId(), OrderStatus.COMPLETED, true);
-            notificationApplicationService.notifyOrderStatusChanged(order.getAccepterId(), order.getId(), OrderStatus.COMPLETED, false);
+            autoCompleteOverdueOrder(summary.getId(), userId);
         }
+    }
+
+    @Override
+    public void autoCompleteOverdueOrder(Long orderId, Long operatorUserId) {
+        if (orderId == null) {
+            return;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        // 加 Order 行锁，确保并发自动完成（定时任务 + 发布触发 + 用户确认）不会重复结算；
+        // 锁内重新校验状态与 48 小时窗口，快照过期时安全跳过，保证幂等
+        Order order = orderRepository.findByIdForUpdate(orderId).orElse(null);
+        if (order == null || order.getStatus() != OrderStatus.IN_PROGRESS) {
+            return;
+        }
+        if (!hasCompletionConfirmation(order, order.getAccepterId())
+            || !isProviderConfirmationOverdue(order, now)) {
+            return;
+        }
+        Demand demand = findDemand(order.getDemandId());
+        order.setStatus(OrderStatus.COMPLETED);
+        order.setCompletedAt(now);
+        order.setUpdatedAt(now);
+        order.addHistory(OrderStatus.IN_PROGRESS, OrderStatus.COMPLETED, operatorUserId, "SYSTEM_AUTO_COMPLETED", now);
+        demand.setStatus(DemandStatus.COMPLETED);
+        demand.setUpdatedAt(now);
+        orderRepository.save(order);
+        demandRepository.save(demand);
+        transferReward(demand, order);
+        notificationApplicationService.notifyOrderStatusChanged(order.getPublisherId(), order.getId(), OrderStatus.COMPLETED, true);
+        notificationApplicationService.notifyOrderStatusChanged(order.getAccepterId(), order.getId(), OrderStatus.COMPLETED, false);
+    }
+
+    /**
+     * 接单方已确认完成且距确认时间超过 48 小时（发布者仍未确认），满足自动完成时间条件。
+     */
+    private boolean isProviderConfirmationOverdue(Order order, LocalDateTime now) {
+        LocalDateTime providerConfirmTime = order.getStatusHistory().stream()
+            .filter(entry -> entry.operatorId() != null
+                && entry.operatorId().equals(order.getAccepterId())
+                && entry.fromStatus() == OrderStatus.IN_PROGRESS
+                && entry.toStatus() == OrderStatus.IN_PROGRESS
+                && PROVIDER_CONFIRMED_NOTE.equals(entry.note()))
+            .map(OrderStatusHistoryEntry::changedAt)
+            .findFirst()
+            .orElse(null);
+        return providerConfirmTime != null && !providerConfirmTime.plusHours(48).isAfter(now);
     }
 
     private OrderDetailResponse confirmCompletion(Long operatorId, Order order, Demand demand, UpdateOrderStatusCommand command) {

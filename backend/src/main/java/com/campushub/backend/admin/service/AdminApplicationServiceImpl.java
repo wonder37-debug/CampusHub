@@ -38,7 +38,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -157,7 +159,13 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
         DemandReviewQuery reviewQuery = new DemandReviewQuery(
             query.q(), query.category(), query.campusZone(), query.pageQuery());
         List<Demand> demands = demandRepository.findReviewPage(reviewQuery);
-        List<DemandSummaryResponse> items = demands.stream().map(DemandSummaryResponse::from).toList();
+        // 待审列表同样使用实时昵称，避免 publisher_display_name 快照过期导致显示旧昵称
+        Map<Long, User> publisherMap = demands.isEmpty() ? Map.of()
+            : userRepository.findAllById(demands.stream().map(Demand::getPublisherId).filter(Objects::nonNull).distinct().toList())
+                .stream().collect(Collectors.toMap(User::getId, user -> user));
+        List<DemandSummaryResponse> items = demands.stream()
+            .map(demand -> DemandSummaryResponse.from(demand, resolveLiveNickname(publisherMap.get(demand.getPublisherId()), demand.getPublisherDisplayName())))
+            .toList();
         long total = demandRepository.countReview(reviewQuery);
         int page = query.pageQuery().page();
         int size = query.pageQuery().size();
@@ -221,8 +229,23 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
     @Override
     public void deleteOrder(Long operatorId, Long orderId, String reason) {
         requireAdmin(operatorId);
+        // 处置原因必填：可追溯并向双方提供解释，不能匿名无声删除
+        if (reason == null || reason.isBlank()) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "delete reason must not be blank");
+        }
         validateReason(reason);
-        Order order = findOrder(orderId);
+        // 加行锁，避免删除与状态变更/仲裁裁决并发竞态
+        Order order = findOrderForUpdate(orderId);
+        // 仲裁中的订单必须先走正式裁决流程，禁止通过删除绕过仲裁并销毁争议证据
+        if (order.getStatus() == OrderStatus.IN_ARBITRATION) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT,
+                "order in arbitration must be resolved before deletion; cannot bypass arbitration");
+        }
+        // 已完成订单包含结算与评价记录，原则上不允许物理删除
+        if (order.getStatus() == OrderStatus.COMPLETED) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT,
+                "completed order cannot be deleted; settlement and review records must be preserved");
+        }
         Demand demand = demandRepository.findById(order.getDemandId()).orElse(null);
         if (demand != null && order.getStatus() != OrderStatus.COMPLETED && demand.getStatus() != DemandStatus.CANCELLED) {
             demand.setStatus(DemandStatus.CANCELLED);
@@ -231,6 +254,13 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
             demandApplicationService.unfreezePublisherBalance(demand.getId());
         }
         orderRepository.deleteById(orderId);
+        // 通知双方：订单已被管理员删除及原因，点击可跳转关联需求查看取消状态
+        String demandTitle = demand != null ? demand.getTitle() : null;
+        String normalizedReason = reason.trim();
+        notificationApplicationService.notifyOrderDeletedByAdmin(
+            order.getPublisherId(), order.getDemandId(), demandTitle, normalizedReason);
+        notificationApplicationService.notifyOrderDeletedByAdmin(
+            order.getAccepterId(), order.getDemandId(), demandTitle, normalizedReason);
     }
 
     @Override
@@ -366,6 +396,16 @@ public class AdminApplicationServiceImpl implements AdminApplicationService {
         }
         validateReason(reason);
         return reason.trim();
+    }
+
+    /**
+     * 解析发布者显示名：优先取 users 表实时昵称，用户不存在或昵称为空时回退需求快照。
+     */
+    private String resolveLiveNickname(User publisher, String snapshotDisplayName) {
+        if (publisher != null && publisher.getNickname() != null && !publisher.getNickname().isBlank()) {
+            return publisher.getNickname();
+        }
+        return snapshotDisplayName;
     }
 
     private void transferReward(Demand demand, Order order) {

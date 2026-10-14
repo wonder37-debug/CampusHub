@@ -22,6 +22,13 @@ public interface DemandResponseRepository {
 
     List<DemandResponse> findSelectedByDemandId(Long demandId);
 
+    /**
+     * 判断某用户是否为该需求的已选中参与者（SELECTED 响应）。
+     * 覆盖 SELECT_MANY 被选中的组队成员与 HELP 被采纳的回答者——
+     * 这两类流程不创建正式 Order，需要独立的授权依据。
+     */
+    boolean existsSelectedByDemandIdAndAuthorId(Long demandId, Long authorId);
+
     long countSelectedByDemandId(Long demandId);
 
     /**

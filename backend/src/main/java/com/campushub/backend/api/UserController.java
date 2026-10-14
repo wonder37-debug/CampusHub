@@ -77,10 +77,13 @@ public class UserController {
         HttpServletRequest request,
         @PathVariable Long userId,
         @RequestParam(defaultValue = "1") int page,
-        @RequestParam(defaultValue = "20") int size
+        @RequestParam(defaultValue = "20") int size,
+        // 公开信任档案传 received 仅看收到的评价；本人“我的评价”不传（默认 all）保持双向
+        @RequestParam(required = false) String direction
     ) {
         CurrentUser currentUser = requestUserExtractor.requireCurrentUser(request);
-        PageResponse<ReviewResponse> reviewPage = reviewApplicationService.listUserReviews(userId, new ReviewQuery(new PageQuery(page, size)));
+        PageResponse<ReviewResponse> reviewPage = reviewApplicationService.listUserReviews(
+            userId, new ReviewQuery(new PageQuery(page, size), direction));
         return ApiResponse.success(
             new PageResponse<>(
                 reviewPage.items().stream().map(r -> apiViewMapper.toAnonymizedReviewView(r, currentUser)).toList(),

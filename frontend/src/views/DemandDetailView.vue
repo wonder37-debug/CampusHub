@@ -220,12 +220,17 @@ const visibleResponses = computed(() => responses.value.filter((response) => {
   )
 }))
 
-// T024: SELECT_MANY 超员前置校验 —— 勾选时实时判断，超员自动回退并提示
+// T024: SELECT_MANY 剩余名额前置校验 —— 勾选时按“剩余名额 = 目标人数 - 已选人数”实时判断，超员自动回退并提示
+// 与后端校验口径一致（后端限制“已选 + 本次新增 ≤ 目标”），避免前端看似可选、提交后才被拒
 watch(selectedResponseIds, (next) => {
   const target = targetCount.value
-  if (target !== null && target > 0 && next.length > target) {
-    void useAlert('超出目标人数', `该组队需求最多选择 ${target} 人，已超额，已自动保留前 ${target} 个。`)
-    selectedResponseIds.value = next.slice(0, target)
+  if (target === null || target <= 0) return
+  const remaining = Math.max(0, target - (selectedCount.value ?? 0))
+  if (next.length > remaining) {
+    void useAlert(remaining === 0 ? '名额已满' : '超出剩余名额', remaining === 0
+      ? `该组队需求已选满 ${target} 人，无法继续选择。`
+      : `还可选择 ${remaining} 人，已超额，已自动保留前 ${remaining} 个。`)
+    selectedResponseIds.value = next.slice(0, remaining)
   }
 })
 const responseListTitle = computed(() => {
@@ -326,10 +331,15 @@ async function selectResponses(): Promise<void> {
     error.value = '请至少选择一个'
     return
   }
-  // T024: 提交前再校验一次超员（watch 已实时拦截，此处兜底）
-  if (targetCount.value !== null && targetCount.value > 0 && selectedResponseIds.value.length > targetCount.value) {
-    await useAlert('超出目标人数', `该组队需求最多选择 ${targetCount.value} 人，请取消多余选择后再提交。`)
-    return
+  // T024: 提交前再校验一次剩余名额（watch 已实时拦截，此处兜底，与后端口径一致）
+  if (targetCount.value !== null && targetCount.value > 0) {
+    const remaining = Math.max(0, targetCount.value - (selectedCount.value ?? 0))
+    if (remaining === 0 || selectedResponseIds.value.length > remaining) {
+      await useAlert(remaining === 0 ? '名额已满' : '超出剩余名额', remaining === 0
+        ? `该组队需求已选满 ${targetCount.value} 人。`
+        : `还可选择 ${remaining} 人，请取消多余选择后再提交。`)
+      return
+    }
   }
   message.value = ''
   error.value = ''
@@ -550,6 +560,15 @@ onMounted(() => { void refreshDemand() })
           <button v-if="canAccept" type="button" class="button primary" :disabled="submitting" @click="acceptCurrentDemand">
             {{ submitting ? '处理中…' : '立即接单' }}
           </button>
+          <!-- 未登录游客：提供可点击的登录引导，避免只有静态文案无法跳转 -->
+          <button
+            v-else-if="!store.currentUser"
+            type="button"
+            class="button primary"
+            @click="router.push({ name: 'Auth', query: { redirect: route.fullPath } })"
+          >
+            登录后接单
+          </button>
           <button v-if="hasOrderAccess && relatedOrder" type="button" class="button primary" @click="router.push({ name: 'OrderDetail', params: { id: relatedOrder.id } })">
             查看正式订单
           </button>
@@ -571,6 +590,17 @@ onMounted(() => { void refreshDemand() })
               {{ responseSubmitting ? '提交中...' : '提交' }}
             </button>
           </div>
+        </div>
+
+        <!-- 未登录游客：提供可点击的登录引导，避免只有静态文案无法跳转 -->
+        <div v-else-if="!store.currentUser" class="card-actions" style="margin-top: 4px;">
+          <button
+            type="button"
+            class="button primary"
+            @click="router.push({ name: 'Auth', query: { redirect: route.fullPath } })"
+          >
+            登录后参与{{ responseListTitle }}
+          </button>
         </div>
 
         <!-- 当前用户已存在 active Response：直接显示状态，避免重复提交触发后端 BUSINESS_CONFLICT -->
@@ -670,10 +700,11 @@ onMounted(() => { void refreshDemand() })
           <span class="chip" :class="targetCount !== null && selectedCount !== null && selectedCount >= targetCount ? 'is-success' : 'is-warning'">
             {{ selectedCount !== null && targetCount !== null ? (selectedCount >= targetCount ? `已满 ${targetCount} 人` : `已选择 ${selectedCount} / ${targetCount} 人`) : '人数信息暂不可用' }}
           </span>
+          <span v-if="remainingSlots !== null && remainingSlots > 0" class="meta">还可选择 {{ remainingSlots }} 人</span>
           <button
             type="button"
             class="button primary"
-            :disabled="selectedResponseIds.length === 0 || (targetCount !== null && targetCount > 0 && selectedResponseIds.length > targetCount)"
+            :disabled="selectedResponseIds.length === 0 || (remainingSlots !== null && selectedResponseIds.length > remainingSlots)"
             @click="selectResponses"
           >确认选择</button>
         </div>
