@@ -498,7 +498,7 @@ EmailVerificationIssue issue = authApplicationService.sendRegistrationCode(email
 
 **或者使用一键启动脚本**（需要 Git Bash 或 WSL）：在项目根目录执行 `bash start.sh`。
 
-启动后默认测试账号：学号 `admin`，密码 `Admin1234`。
+启动后默认测试账号（由 `init_schema.sql` 预置）：管理员 `admin@edu.cn` / 学号 `ADMIN001` / 密码 `Admin123!`；普通用户 `test1@edu.cn`（TEST001）、`test2@edu.cn`（TEST002），密码同为 `Admin123!`。
 
 ### 8.6 本地模拟 CI 完整流程
 

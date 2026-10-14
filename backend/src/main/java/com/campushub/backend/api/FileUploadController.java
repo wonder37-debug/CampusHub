@@ -225,7 +225,14 @@ public class FileUploadController {
             String urlPath = "/api/v1/uploads/" + year + "/" + month + "/" + filename;
             UploadedAssetEntity asset = uploadedAssetRepository.findByUrlPath(urlPath);
 
-            if (asset != null && Boolean.TRUE.equals(asset.getIsPrivate())) {
+            // 失败关闭（fail-closed）：找不到资产元数据时按不存在处理（404），
+            // 不能默认走公开路径——否则本地重建数据库而保留上传目录时，
+            // 原本私密（凭证/仲裁）图片会失去私密标记变成公开可访问。
+            if (asset == null) {
+                return ResponseEntity.notFound().build();
+            }
+
+            if (Boolean.TRUE.equals(asset.getIsPrivate())) {
                 CurrentUser currentUser = requestUserExtractor.tryExtract(request);
                 if (currentUser == null) {
                     return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();

@@ -31,7 +31,8 @@ const loadingDemands = ref(true)
 const refreshing = ref(false)
 const recommendationsError = ref('')
 const recommendedItems = ref<RecommendationRecord[]>([])
-const listError = computed(() => recommendationsError.value || store.demandFetchError || '')
+// 需求数据本身的加载错误才阻塞整个列表；推荐接口失败不遮蔽已加载成功的需求流，仅降级为非阻塞提示
+const listError = computed(() => store.demandFetchError || '')
 const categoryShortcuts = computed<Array<{ value: '' | DemandCategoryValue; label: string }>>(() => [
   { value: '', label: '全部需求' },
   ...DEMAND_CATEGORY_OPTIONS.map((value) => ({ value, label: formatDemandCategory(value) }))
@@ -270,6 +271,11 @@ onBeforeUnmount(() => {
         <span>Demand · 同学之间的真实需求</span>
       </div>
 
+      <!-- 推荐服务降级提示：不阻塞已加载需求，排序自动回退最新发布 -->
+      <p v-if="recommendationsError && !listError && !refreshing" class="home-recommend-fallback" role="status">
+        {{ recommendationsError }}
+      </p>
+
       <ErrorState
         v-if="listError && !refreshing"
         title="需求流暂时不可用"
@@ -461,6 +467,16 @@ onBeforeUnmount(() => {
 .home-categories button.is-active { border-color: #dce5dc; background: #edf2ed; color: var(--primary); font-weight: 650; }
 
 .home-feed { padding-top: 20px; }
+
+.home-recommend-fallback {
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--primary) 24%, transparent);
+  border-radius: calc(var(--radius) * 0.85);
+  background: color-mix(in srgb, var(--primary) 7%, transparent);
+  color: var(--muted-foreground);
+  font-size: 0.8rem;
+}
 
 .home-feed-heading {
   display: flex;
