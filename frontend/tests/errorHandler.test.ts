@@ -145,9 +145,29 @@ describe('translateApiError - RATE_LIMITED 场景', () => {
   })
 })
 
+describe('translateApiError - 500/INTERNAL_ERROR 场景', () => {
+  it('AI 服务不可用：保留后端中文原因，不显示笼统的“系统发生错误”', () => {
+    expect(translateApiError({
+      code: 5000,
+      errorCode: 'INTERNAL_ERROR',
+      message: 'AI 服务暂时不可用，请稍后重试'
+    })).toBe('AI 服务暂时不可用，请稍后重试')
+  })
+
+  it('500 无中文 message 时回退通用兜底文案', () => {
+    expect(translateApiError({ code: 5000, errorCode: 'INTERNAL_ERROR', message: 'internal error' }))
+      .toBe('系统发生错误，请稍后重试')
+    expect(translateApiError({ code: 5000 })).toBe('系统发生错误，请稍后重试')
+  })
+})
+
 describe('handleError', () => {
   it('中文 Error 消息直接返回', () => {
     expect(handleError(new Error('你已经提交过了，无需重复提交。'))).toBe('你已经提交过了，无需重复提交。')
+  })
+
+  it('含产品名词字母的中文消息直接返回，不回退兜底文案', () => {
+    expect(handleError(new Error('AI 服务暂时不可用，请稍后重试'))).toBe('AI 服务暂时不可用，请稍后重试')
   })
 
   it('英文 Error 消息回退到 fallback', () => {

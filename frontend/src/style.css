@@ -21,6 +21,8 @@
   --radius-sm: 11px;
   --sans: 'Aptos', 'Segoe UI', 'PingFang SC', sans-serif;
   --heading: 'Aptos Display', 'Aptos', 'Segoe UI', sans-serif;
+  /* 统一下拉框自绘箭头（ Chevron ），供全局 select 与各场景复用 */
+  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5l5-5' fill='none' stroke='%236d7c74' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
 * {
@@ -50,6 +52,19 @@ input,
 select,
 textarea {
   font: inherit;
+}
+
+/*
+ * 统一下拉框箭头：浏览器原生的 select 箭头是直角系统样式，与全局圆角语言不匹配。
+ * 所有 select 去掉原生外观，改用自绘箭头（经 --select-arrow 变量共享，
+ * 避免各场景的 background 简写在层叠中把箭头图覆盖掉）。
+ */
+select {
+  appearance: none;
+  background-image: var(--select-arrow);
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 12px 8px;
 }
 
 button {
@@ -812,8 +827,16 @@ img {
 .button.secondary,
 .account-chip {
   color: var(--text-strong);
-  background: rgba(255, 255, 255, 0.72);
-  border-color: rgba(0, 0, 0, 0.06);
+  background: #ffffff;
+  border-color: rgba(43, 72, 62, 0.24);
+  box-shadow: 0 1px 2px rgba(31, 56, 47, 0.06);
+}
+
+/* 未选中的白色选项按钮：hover 时给出与选中态一致的高亮反馈，避免“一片白”难以辨认 */
+.button.secondary:hover {
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+  border-color: rgba(31, 95, 83, 0.32);
 }
 
 .button.primary {
@@ -1248,6 +1271,15 @@ img {
   transition: border-color 0.18s ease, box-shadow 0.18s ease;
 }
 
+.field select {
+  padding-right: 32px;
+  /* background 简写会重置 background-image，必须在简写之后重新声明箭头 */
+  background-image: var(--select-arrow);
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 12px 8px;
+}
+
 .field input:focus,
 .field select:focus,
 .field textarea:focus {
@@ -1258,6 +1290,35 @@ img {
 .field textarea {
   min-height: 126px;
   resize: vertical;
+}
+
+/* 筛选条中的紧凑输入框与下拉框（管理后台等）：与 .field 同一设计语言，尺寸更紧 */
+.input {
+  min-width: 0;
+  border: 1px solid rgba(43, 72, 62, 0.18);
+  border-radius: 12px;
+  background: #ffffff;
+  color: var(--text-strong);
+  font-size: 13px;
+  padding: 9px 12px;
+  outline: none;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.input:focus-visible {
+  border-color: rgba(31, 95, 83, 0.46);
+  box-shadow: 0 0 0 3px rgba(31, 95, 83, 0.12);
+}
+
+/* 原生 select 的箭头与边框是浏览器默认直角样式，统一替换为与圆角匹配的自绘箭头 */
+select.input {
+  appearance: none;
+  padding-right: 30px;
+  /* background 简写会重置 background-image，必须在简写之后重新声明箭头 */
+  background-image: var(--select-arrow);
+  background-repeat: no-repeat;
+  background-position: right 11px center;
+  background-size: 12px 8px;
 }
 
 .password-wrapper {

@@ -51,7 +51,7 @@ const FIELD_LABELS: Record<FieldKey, string> = {
   location: '地点',
   reward: '报酬',
   targetParticipantCount: '目标人数',
-  interactionMode: '互动模式',
+  interactionMode: '参与方式',
   startTime: '开始时间',
   endTime: '结束时间'
 }
@@ -219,7 +219,7 @@ function formatCampusCoins(amount: number): string {
 // 是否需要展示“目标人数”输入框（仅 SELECT_MANY 模式需要，包含 TEAM_UP 与 OTHER+SELECT_MANY）
 const showTargetParticipantCount = computed(() => effectiveInteractionMode.value === 'SELECT_MANY')
 
-// 是否需要展示“互动模式”选择框（仅 OTHER 分类需要用户手动选择）
+// 是否需要展示“参与方式”选择框（仅 OTHER 分类需要用户手动选择）
 const showInteractionMode = computed(() => form.category === 'OTHER')
 const typeFormCopy = computed(() => {
   switch (form.category) {
@@ -344,9 +344,9 @@ function runValidations(): void {
 
   if (form.category === 'OTHER') {
     if (!form.interactionMode) {
-      setFieldError('interactionMode', '请选择互动模式')
+      setFieldError('interactionMode', '请选择参与方式')
     } else if (!['DIRECT_ACCEPT', 'SELECT_ONE', 'SELECT_MANY'].includes(form.interactionMode)) {
-      setFieldError('interactionMode', '互动模式无效')
+      setFieldError('interactionMode', '请选择有效的参与方式')
     }
   }
 
@@ -611,7 +611,7 @@ const AI_DIALOG_FIELD_LABELS: Record<string, string> = {
   endTime: '结束时间',
   reward: '报酬',
   tags: '标签',
-  interactionMode: '互动模式',
+  interactionMode: '参与方式',
   targetParticipantCount: '目标人数'
 }
 
@@ -966,7 +966,7 @@ async function confirmAiType(): Promise<void> {
           </div>
 
           <div v-if="showInteractionMode" class="field" style="grid-column: 1 / -1;">
-            <label for="demand-interaction-mode">互动模式 <span class="required-mark">*</span></label>
+            <label for="demand-interaction-mode">参与方式 <span class="required-mark">*</span></label>
             <p v-if="aiFieldStatus('interactionMode')" class="field-origin">{{ aiFieldStatus('interactionMode') }}</p>
             <select id="demand-interaction-mode" v-model="form.interactionMode" @change="errors.interactionMode = ''; markFieldManual('interactionMode')">
               <option value="">请选择</option>
@@ -1285,7 +1285,7 @@ input[type="datetime-local"]:hover::-webkit-calendar-picker-indicator {
 .ai-form-legend { margin: 0; padding: 10px 12px; color: #355f49; background: #edf5ef; border-radius: 9px; font-size: 12px; line-height: 1.5; }
 .field-origin { margin: 0 0 5px; color: #54735e; font-size: 11px; line-height: 1.35; }
 .ai-candidate label { margin-top: 4px; font-size: 13px; font-weight: 600; }
-.ai-candidate select { width: 100%; padding: 10px 12px; color: var(--text-strong); background: #fff; border: 1px solid #d8e0da; border-radius: 9px; }
+.ai-candidate select { width: 100%; padding: 10px 32px 10px 12px; color: var(--text-strong); background: #fff; border: 1px solid #d8e0da; border-radius: 9px; background-image: var(--select-arrow); background-repeat: no-repeat; background-position: right 10px center; background-size: 12px 8px; }
 .ai-candidate .button { justify-self: start; margin-top: 6px; }
 
 @media (min-width: 1200px) {

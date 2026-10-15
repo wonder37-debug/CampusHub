@@ -68,6 +68,26 @@ class MyBatisOrderRepositoryTest {
     }
 
     @Test
+    void proof_image_urls_survive_findByIdForUpdate_then_save_like_status_machine_write() {
+        Order order = repository.save(newOrder(1004L, 10L, 20L));
+        order.setProofSubmitted(true);
+        order.setProofImageCount(2);
+        order.setProofImageUrls(List.of("/api/v1/uploads/2026/10/p1.png", "/api/v1/uploads/2026/10/p2.png"));
+        repository.save(order);
+
+        // 模拟订单状态机写路径：行锁加载 -> 改状态 -> 保存
+        Order locked = repository.findByIdForUpdate(order.getId()).orElseThrow();
+        assertThat(locked.getProofImageUrls())
+            .containsExactly("/api/v1/uploads/2026/10/p1.png", "/api/v1/uploads/2026/10/p2.png");
+        locked.setStatus(OrderStatus.IN_PROGRESS);
+        repository.save(locked);
+
+        Order reloaded = repository.findById(order.getId()).orElseThrow();
+        assertThat(reloaded.getProofImageUrls())
+            .containsExactly("/api/v1/uploads/2026/10/p1.png", "/api/v1/uploads/2026/10/p2.png");
+    }
+
+    @Test
     void findById_returns_empty_when_missing() {
         assertThat(repository.findById(9999L)).isEmpty();
         assertThat(repository.findById(null)).isEmpty();
