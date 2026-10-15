@@ -138,7 +138,7 @@ onMounted(() => {
           <div class="mini-stat">
             <span class="subtle">信用分</span>
             <strong>{{ formatScore(profile.creditScore) }}</strong>
-            <small class="subtle" style="margin-top:4px;display:block;font-size:11px;">综合评价反映</small>
+            <small class="subtle" style="margin-top:4px;display:block;font-size:11px;">基于履约评价综合计算</small>
           </div>
           <div class="mini-stat">
             <span class="subtle">已完成订单</span>

@@ -16,7 +16,7 @@ const imageLoaded = ref(false)
 const view = computed(() => getHomeDemandCard(props.demand, props.currentUserId))
 const imageUrl = computed(() => props.demand.images?.find((image) => image.trim()) ?? '')
 
-watch(() => props.demand.id, () => {
+watch([() => props.demand.id, imageUrl], () => {
   imageFailed.value = false
   imageLoaded.value = false
 })

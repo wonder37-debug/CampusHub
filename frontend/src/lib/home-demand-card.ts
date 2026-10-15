@@ -15,6 +15,16 @@ export interface HomeDemandCardView {
   personalResponseStatus: string | null
 }
 
+function isSameDemandDay(start: string | null | undefined, end: string | null | undefined): boolean {
+  if (!start || !end) return false
+  const startDate = new Date(start)
+  const endDate = new Date(end)
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return false
+  return startDate.getFullYear() === endDate.getFullYear()
+    && startDate.getMonth() === endDate.getMonth()
+    && startDate.getDate() === endDate.getDate()
+}
+
 export function isVisibleOnDemandHome(demand: DemandRecord): boolean {
   return demand.status === 'PENDING' || demand.status === 'IN_PROGRESS' || demand.status === 'COMPLETED'
 }
@@ -50,9 +60,9 @@ export function getHomeDemandCard(demand: DemandRecord, currentUserId: string): 
 
   const startTime = demand.startTime ? formatDateTime(demand.startTime) : ''
   const endTime = demand.endTime ? formatDateTime(demand.endTime) : ''
-  // 首页卡片信息位只放得下一行时间：同日压成起止时刻，跨天退化为“开始时间 起”，完整时段见详情页
+  // 首页卡片信息位只放得下一行时间：同日（按完整年月日判断，避免跨年同月同日误判）压成起止时刻，跨天退化为“开始时间 起”，完整时段见详情页
   const timeLabel = startTime && endTime
-    ? startTime.slice(0, 5) === endTime.slice(0, 5)
+    ? isSameDemandDay(demand.startTime, demand.endTime)
       ? `${startTime}–${endTime.slice(6)}`
       : `${startTime} 起`
     : startTime || endTime || null
