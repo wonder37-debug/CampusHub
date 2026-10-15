@@ -161,7 +161,8 @@ public class AiDemandApplicationServiceImpl implements AiDemandApplicationServic
 
         if (chatClient == null) {
             log.warn("AI 草稿生成被拒绝：ChatClient 未配置");
-            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "AI 服务尚未配置，请联系管理员");
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED,
+                "AI 服务尚未配置，请设置 AI_BASE_URL、AI_MODEL、AI_API_KEY 环境变量后重启应用");
         }
 
         LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Shanghai"));

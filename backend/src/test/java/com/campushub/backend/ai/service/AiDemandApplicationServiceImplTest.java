@@ -581,7 +581,7 @@ class AiDemandApplicationServiceImplTest {
             () -> unconfiguredService.generateDraft(new GenerateDemandDraftCommand("取快递")));
 
         assertEquals(ErrorCode.VALIDATION_FAILED, exception.getErrorCode());
-        assertEquals("AI 服务尚未配置，请联系管理员", exception.getMessage());
+        assertEquals("AI 服务尚未配置，请设置 AI_BASE_URL、AI_MODEL、AI_API_KEY 环境变量后重启应用", exception.getMessage());
     }
 
     @Test

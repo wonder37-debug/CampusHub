@@ -86,6 +86,14 @@ CampusHub 是南京大学软件工程课程大作业项目，采用前后端分�
 - 仲裁处理：裁决完成或取消
 - 仪表盘统计：DAU、总用户数、需求数、待审核数、订单数、分类分布
 
+### AI 需求草稿生成
+
+- 自然语言转结构化草稿：用户输入需求描述，AI 自动提取标题、分类、校区、时间、报酬等字段
+- 服务端二次校验：AI 输出经 `validate()` 校验枚举合法性、时间格式、字段长度、missingFields 白名单
+- 安全边界：不访问数据库、不创建 Demand、不执行工具调用，最终发布仍走现有 Demand 流程
+- 空值安全：未配置 `AI_BASE_URL` / `AI_MODEL` / `AI_API_KEY` 环境变量时应用可正常启动，AI 接口返回明确业务错误
+- 限流保护：每用户 1 分钟 5 次 + 全局 3 并发，异常不泄露密钥与内部堆栈
+
 ### 文件上传
 
 - 仅已登录用户可上传（USER/ADMIN），游客返回 401
@@ -109,6 +117,7 @@ CampusHub 是南京大学软件工程课程大作业项目，采用前后端分�
 | H2 Database | (继承) | 测试数据库 |
 | Spring Security Crypto | (继承) | BCrypt 密码加密 |
 | Spring Boot Mail | (继承) | SMTP 邮件发送 |
+| Spring AI | 1.0.0 | AI 需求草稿生成（OpenAI-compatible） |
 | Lombok | (继承) | 简化 Java POJO |
 
 ### 前端
@@ -144,6 +153,7 @@ sec-ii-2026/
 │       ├── main/
 │       │   ├── java/com/campushub/backend/
 │       │   │   ├── BackendApplication.java   # 入口类
+│       │   │   ├── ai/                       # AI 草稿生成模块
 │       │   │   ├── api/                      # 控制器层 + 视图对象
 │       │   │   ├── auth/                     # 认证模块
 │       │   │   ├── demand/                   # 需求模块
@@ -328,6 +338,104 @@ SPRING_MAIL_SMTP_SSL_ENABLE=true
 
 完整配置示例（QQ / 163 / Gmail）参见 `backend/邮箱验证码发信配置说明.md`。
 
+### AI 草稿生成配置
+
+CampusHub 集成了基于 Spring AI 的需求草稿生成功能（`POST /api/v1/ai/demand-draft`），支持 OpenAI-compatible Chat Completions 接口。**所有 AI 配置项必须通过环境变量注入，配置文件中不提供任何真实默认值或硬编码密钥。**
+
+#### 必需环境变量
+
+| 环境变量 | 对应配置项 | 说明 |
+|---------|-----------|------|
+| `AI_BASE_URL` | `spring.ai.openai.base-url` | OpenAI-compatible API 的 Base URL |
+| `AI_MODEL` | `spring.ai.openai.chat.options.model` | 调用的模型名称 |
+| `AI_API_KEY` | `spring.ai.openai.api-key` | API 密钥 |
+
+> 未设置时应用仍可正常启动，AI 接口调用将返回明确的业务错误提示。配置文件中仅保留空字符串占位符以维持 Spring Boot 自动配置的 Bean 初始化结构，由 `AiConfig` 检测空值后跳过 `ChatClient` 创建。
+
+#### 本地开发
+
+**PowerShell：**
+
+```powershell
+$env:AI_BASE_URL = "https://tokenhub.tencentmaas.com"
+$env:AI_MODEL = "deepseek/deepseek-flash"
+$env:AI_API_KEY = "sk-your-api-key"
+cd backend
+./mvnw spring-boot:run
+```
+
+**bash / zsh：**
+
+```bash
+export AI_BASE_URL="https://tokenhub.tencentmaas.com"
+export AI_MODEL="deepseek/deepseek-flash"
+export AI_API_KEY="sk-your-api-key"
+cd backend
+./mvnw spring-boot:run
+```
+
+#### 服务商配置示例
+
+##### DeepSeek（通过 TokenHub）
+
+```bash
+export AI_BASE_URL="https://tokenhub.tencentmaas.com"
+export AI_MODEL="deepseek/deepseek-flash"
+export AI_API_KEY="sk-your-tokenhub-api-key"
+```
+
+##### DeepSeek 官方
+
+```bash
+export AI_BASE_URL="https://api.deepseek.com"
+export AI_MODEL="deepseek-chat"
+export AI_API_KEY="sk-your-deepseek-api-key"
+```
+
+##### Qwen（通义千问 DashScope OpenAI-compatible 接口）
+
+```bash
+export AI_BASE_URL="https://dashscope.aliyuncs.com/compatible-mode"
+export AI_MODEL="qwen-plus"
+export AI_API_KEY="sk-your-dashscope-api-key"
+```
+
+##### OpenAI
+
+```bash
+export AI_BASE_URL="https://api.openai.com"
+export AI_MODEL="gpt-4o-mini"
+export AI_API_KEY="sk-your-openai-api-key"
+```
+
+#### 可选调优参数
+
+以下参数有默认值，可通过环境变量覆盖：
+
+| 环境变量 | 默认值 | 说明 |
+|---------|--------|------|
+| `AI_CONNECT_TIMEOUT_MS` | `10s` | HTTP 连接超时 |
+| `AI_READ_TIMEOUT_MS` | `60s` | HTTP 读取超时 |
+| `AI_RETRY_MAX_ATTEMPTS` | `2` | Spring AI 重试次数上限（不含首次调用） |
+| `AI_DEMAND_DRAFT_PROMPT_MAX_LENGTH` | `1000` | 用户输入自然语言最大字符数 |
+| `AI_DEMAND_DRAFT_RATE_LIMIT_WINDOW_MS` | `60000` | 限流窗口时长（毫秒） |
+| `AI_DEMAND_DRAFT_RATE_LIMIT_MAX_PER_WINDOW` | `5` | 每用户每窗口最大请求数 |
+| `AI_DEMAND_DRAFT_RATE_LIMIT_MAX_CONCURRENT` | `3` | 全局最大并发请求数 |
+
+#### 生产环境部署
+
+1. **通过环境变量注入**：在 Docker / Kubernetes / systemd 等运行环境中设置 `AI_BASE_URL`、`AI_MODEL`、`AI_API_KEY`
+2. **切勿将密钥写入配置文件**：`application.properties` 仅保留 `${AI_*:}` 占位符形式，不提供真实默认值
+3. **API Key 不可提交到版本控制**：`application-local.properties` 已被 `.gitignore` 忽略，但该文件中也不应硬编码密钥，应仅用于数据库密码等本地配置
+4. **空值安全**：`AiConfig` 检测到 `AI_BASE_URL` / `AI_MODEL` / `AI_API_KEY` 任一为空后跳过 `ChatClient` 创建；`AiDemandApplicationServiceImpl` 在 `ChatClient` 为 null 时返回明确的业务错误，不泄露内部堆栈或密钥
+
+#### 注意事项
+
+- **API Key 安全**：密钥仅通过环境变量传递，不记录到日志、不传给 LLM（用户身份信息不传给 AI provider）
+- **限流保护**：每用户 1 分钟最多 5 次请求，全局最多 3 个并发请求，避免 AI 调用成本失控
+- **异常处理**：所有 provider 原始异常（401/403/429/5xx/网络故障/JSON 解析失败）被转换为业务错误，不泄露 API Key、Authorization header 或内部堆栈
+- **模型兼容性**：需使用支持 OpenAI-compatible Chat Completions 的模型，AI 返回结构化 JSON 草稿，服务端二次校验保证字段合法性
+
 ### 邮箱域名白名单
 
 ```properties
@@ -424,6 +532,7 @@ cd backend
 | 订单 | `GET /orders`、`GET /orders/{id}`、`PUT /orders/{id}`、`POST /orders/{id}/arbitration`、`POST /orders/{id}/reviews` |
 | 通知 | `GET /notifications`、`POST /notifications/{id}/read` |
 | 推荐 | `GET /recommendations` |
+| AI | `POST /ai/demand-draft`（登录后可用，将自然语言转为需求草稿 JSON） |
 | 文件 | `POST /upload/images`、`GET /uploads/{year}/{month}/{filename}` |
 | 管理 | `GET /admin/dashboard`、`GET /admin/users`、`POST /admin/users/{id}/ban`、`GET /admin/demands/pending`、`POST /admin/demands/{id}/review`、`GET /admin/orders/arbitration`、`POST /admin/orders/{id}/arbitration/resolve` |
 
