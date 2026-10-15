@@ -399,7 +399,7 @@ async function submitForgotPassword(): Promise<void> {
               style="flex: 1 1 220px;"
             />
             <span class="chip is-neutral" style="padding-inline: 14px;">@</span>
-            <select id="register-email-domain" v-model="registerForm.emailDomain" style="flex: 0 0 180px;">
+            <select id="register-email-domain" class="input" v-model="registerForm.emailDomain" style="flex: 0 0 180px;">
               <option v-for="option in emailDomainOptions" :key="option.value" :value="option.value">
                 {{ option.label }}
               </option>

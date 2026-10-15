@@ -138,14 +138,14 @@ onMounted(() => {
           <div class="mini-stat">
             <span class="subtle">信用分</span>
             <strong>{{ formatScore(profile.creditScore) }}</strong>
-            <small class="subtle" style="margin-top:4px;display:block;font-size:11px;">基于历史评价动态计算，非星级平均</small>
+            <small class="subtle" style="margin-top:4px;display:block;font-size:11px;">综合评价反映</small>
           </div>
           <div class="mini-stat">
             <span class="subtle">已完成订单</span>
             <strong v-if="stats">{{ stats.completedOrders }}</strong>
             <strong v-else-if="statsError" style="color:var(--danger)">—</strong>
             <strong v-else>…</strong>
-            <small class="subtle" style="margin-top:4px;display:block;font-size:11px;">真实正式订单，不含报名或回答</small>
+            <small class="subtle" style="margin-top:4px;display:block;font-size:11px;">只统计正式完成订单，不含报名或回答</small>
           </div>
           <div class="mini-stat">
             <span class="subtle">收到的评价</span>

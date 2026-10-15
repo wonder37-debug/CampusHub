@@ -708,7 +708,7 @@ async function submitReview(): Promise<void> {
           <p v-if="pendingReviewTargetLabel" class="meta">当前待评价对象：{{ pendingReviewTargetLabel }}</p>
           <div class="field">
             <label for="review-rating">评分</label>
-            <select id="review-rating" v-model="reviewRating">
+            <select id="review-rating" class="input" v-model="reviewRating">
               <option value="5">5 星</option>
               <option value="4">4 星</option>
               <option value="3">3 星</option>

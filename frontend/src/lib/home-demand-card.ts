@@ -50,8 +50,11 @@ export function getHomeDemandCard(demand: DemandRecord, currentUserId: string): 
 
   const startTime = demand.startTime ? formatDateTime(demand.startTime) : ''
   const endTime = demand.endTime ? formatDateTime(demand.endTime) : ''
+  // 首页卡片信息位只放得下一行时间：同日压成起止时刻，跨天退化为“开始时间 起”，完整时段见详情页
   const timeLabel = startTime && endTime
-    ? `${startTime} – ${endTime}`
+    ? startTime.slice(0, 5) === endTime.slice(0, 5)
+      ? `${startTime}–${endTime.slice(6)}`
+      : `${startTime} 起`
     : startTime || endTime || null
 
   const focusLabel = taskCategory

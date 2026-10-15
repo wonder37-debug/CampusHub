@@ -205,7 +205,7 @@ onBeforeUnmount(() => {
     <section class="home-toolbar" aria-labelledby="home-title">
       <div class="home-heading">
         <div>
-          <p class="home-eyebrow">CAMPUS COMMUNITY</p>
+          <p class="home-eyebrow">校园社区</p>
           <h1 id="home-title">发现校园里的互助与好物</h1>
           <p>把正在发生的需求，和愿意搭把手的同学连接起来。</p>
         </div>
@@ -267,7 +267,7 @@ onBeforeUnmount(() => {
           <p v-if="!listError && !refreshing">{{ totalCount }} 条公开需求</p>
           <p v-else>更新校园里的新需求</p>
         </div>
-        <span>Demand · 同学之间的真实需求</span>
+        <span>同学之间的真实需求</span>
       </div>
 
       <ErrorState
@@ -430,7 +430,21 @@ onBeforeUnmount(() => {
 }
 
 .home-filter label { color: var(--muted-foreground); font-size: 0.75rem; white-space: nowrap; }
-.home-filter select { min-width: 0; border: 0; outline: 0; background: transparent; color: var(--foreground); font: inherit; font-size: 0.79rem; }
+.home-filter select {
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  font-size: 0.79rem;
+  /* 自绘箭头占右侧空间，避免文字与箭头重叠 */
+  padding-right: 18px;
+  background-image: var(--select-arrow);
+  background-repeat: no-repeat;
+  background-position: right center;
+  background-size: 11px 7px;
+}
 .home-filter--sort { min-width: 146px; }
 .home-refresh { flex: none; gap: 6px; }
 .is-spinning { animation: spin 900ms linear infinite; }
@@ -445,10 +459,10 @@ onBeforeUnmount(() => {
 
 .home-categories button {
   flex: none;
-  padding: 7px 12px;
-  border: 1px solid transparent;
+  padding: 7px 13px;
+  border: 1px solid var(--border);
   border-radius: 999px;
-  background: transparent;
+  background: var(--card);
   color: var(--muted-foreground);
   cursor: pointer;
   font: inherit;
@@ -456,9 +470,9 @@ onBeforeUnmount(() => {
   transition: color 140ms ease, background 140ms ease, border-color 140ms ease;
 }
 
-.home-categories button:hover { background: var(--muted); color: var(--foreground); }
+.home-categories button:hover { background: var(--muted); color: var(--foreground); border-color: color-mix(in srgb, var(--primary) 22%, var(--border)); }
 .home-categories button:focus-visible { outline: 3px solid var(--ring); outline-offset: 2px; }
-.home-categories button.is-active { border-color: #dce5dc; background: #edf2ed; color: var(--primary); font-weight: 650; }
+.home-categories button.is-active { border-color: color-mix(in srgb, var(--primary) 30%, transparent); background: color-mix(in srgb, var(--primary) 8%, var(--card)); color: var(--primary); font-weight: 650; }
 
 .home-feed { padding-top: 20px; }
 

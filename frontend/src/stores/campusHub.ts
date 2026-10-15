@@ -1562,7 +1562,7 @@ export const useCampusHubStore = defineStore('campusHub', {
           categoryDistribution: Array.isArray(payload?.categoryDistribution)
             ? payload.categoryDistribution.map((item: any) => ({
                 category: String(item.category ?? ''),
-                total: Number(item.total ?? 0)
+                total: Number(item.count ?? item.total ?? 0)
               }))
             : []
         }

@@ -719,6 +719,24 @@ class MyBatisDemandRepositoryTest {
         assertThat(repository.countByCategory()).isEmpty();
     }
 
+    @Test
+    void images_survive_findByIdForUpdate_then_save_like_admin_review() {
+        Demand demand = newDemand("带图需求", DemandCategory.ERRAND);
+        demand.setImages(List.of("/api/v1/uploads/2026/10/a.png", "/api/v1/uploads/2026/10/b.png"));
+        demand.setStatus(DemandStatus.REVIEWING);
+        Demand saved = repository.save(demand);
+
+        // 模拟管理审核：行锁加载 -> 改状态 -> 保存
+        Demand locked = repository.findByIdForUpdate(saved.getId()).orElseThrow();
+        assertThat(locked.getImages()).containsExactly("/api/v1/uploads/2026/10/a.png", "/api/v1/uploads/2026/10/b.png");
+        locked.setStatus(DemandStatus.PENDING);
+        locked.setIsApproved(true);
+        repository.save(locked);
+
+        Demand reloaded = repository.findById(saved.getId()).orElseThrow();
+        assertThat(reloaded.getImages()).containsExactly("/api/v1/uploads/2026/10/a.png", "/api/v1/uploads/2026/10/b.png");
+    }
+
     private static Demand newDemand(String title, DemandCategory category) {
         Demand demand = new Demand();
         demand.setPublisherId(1L);

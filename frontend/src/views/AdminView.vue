@@ -539,7 +539,7 @@ async function submitDeleteOrder(): Promise<void> {
         <p class="page-summary" style="margin-top: 0;">正在处理订单「{{ arbitrationOrderTitle || '未命名订单' }}」的争议，请选择裁决结果并填写说明。</p>
         <div class="field">
           <label for="arbitration-outcome">裁决结果</label>
-          <select id="arbitration-outcome" v-model="arbitrationOutcome">
+          <select id="arbitration-outcome" class="input" v-model="arbitrationOutcome">
             <option value="complete">判定完成订单</option>
             <option value="cancel">判定取消订单</option>
           </select>

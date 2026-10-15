@@ -170,7 +170,7 @@ onMounted(() => {
         <div class="mini-stat">
           <span class="subtle">信用分</span>
           <strong>{{ formatScore(store.currentUser.creditScore) }}</strong>
-          <small class="subtle" style="margin-top:4px;display:block;font-size:11px;">{{ creditScoreHint }} · 基于评价动态计算，非星级平均</small>
+          <small class="subtle" style="margin-top:4px;display:block;font-size:11px;">{{ creditScoreHint }}</small>
         </div>
         <div class="mini-stat">
           <span class="subtle">可用余额</span>
@@ -183,7 +183,7 @@ onMounted(() => {
         <div class="mini-stat">
           <span class="subtle">已完成订单</span>
           <strong>{{ store.currentUserOrders.filter((order) => order.status === 'COMPLETED').length }}</strong>
-          <small class="subtle" style="margin-top:4px;display:block;font-size:11px;">真实正式订单</small>
+          <small class="subtle" style="margin-top:4px;display:block;font-size:11px;">只统计正式完成订单，不含报名或回答</small>
         </div>
       </div>
     </section>
