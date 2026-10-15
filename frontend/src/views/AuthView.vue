@@ -67,6 +67,14 @@ const showForgotPasswordValue = ref(false)
 
 const currentUser = computed(() => store.currentUser)
 
+// 切换登录/注册 Tab 时清空提示，避免上一 Tab 的校验错误串台残留
+function switchTab(tab: 'login' | 'register'): void {
+  if (activeTab.value === tab) return
+  activeTab.value = tab
+  error.value = ''
+  message.value = ''
+}
+
 const registrationEmail = computed(() => {
   const prefix = registerForm.emailPrefix.trim()
   return prefix ? `${prefix}@${registerForm.emailDomain}` : ''
@@ -337,7 +345,7 @@ async function submitForgotPassword(): Promise<void> {
           type="button"
           class="button"
           :class="activeTab === 'login' ? 'primary' : 'secondary'"
-          @click="activeTab = 'login'"
+          @click="switchTab('login')"
         >
           登录
         </button>
@@ -345,7 +353,7 @@ async function submitForgotPassword(): Promise<void> {
           type="button"
           class="button"
           :class="activeTab === 'register' ? 'primary' : 'secondary'"
-          @click="activeTab = 'register'"
+          @click="switchTab('register')"
         >
           注册
         </button>

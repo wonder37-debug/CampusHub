@@ -183,10 +183,22 @@ public class MyBatisReviewRepository implements ReviewRepository {
         return entities.stream().map(ReviewEntity::getOrderId).filter(Objects::nonNull).collect(Collectors.toSet());
     }
 
+    /**
+     * 按方向构造查询条件：
+     * received → 仅收到的评价（公开信任档案）；given → 仅发出的评价；
+     * all/默认 → 双向查询（本人“我的评价”需要同时看到发出与收到）。
+     */
     private LambdaQueryWrapper<ReviewEntity> buildWrapper(Long targetUserId, ReviewQuery query) {
         LambdaQueryWrapper<ReviewEntity> wrapper = new LambdaQueryWrapper<>();
-        wrapper.and(w -> w.eq(ReviewEntity::getTargetId, targetUserId)
-            .or().eq(ReviewEntity::getAuthorId, targetUserId));
+        String direction = query == null || query.direction() == null ? ReviewQuery.DIRECTION_ALL : query.direction();
+        if (ReviewQuery.DIRECTION_RECEIVED.equals(direction)) {
+            wrapper.eq(ReviewEntity::getTargetId, targetUserId);
+        } else if (ReviewQuery.DIRECTION_GIVEN.equals(direction)) {
+            wrapper.eq(ReviewEntity::getAuthorId, targetUserId);
+        } else {
+            wrapper.and(w -> w.eq(ReviewEntity::getTargetId, targetUserId)
+                .or().eq(ReviewEntity::getAuthorId, targetUserId));
+        }
         return wrapper;
     }
 }

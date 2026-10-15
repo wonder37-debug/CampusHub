@@ -27,6 +27,15 @@ public interface OrderApplicationService {
 
     void autoCompleteOverdueOrders(Long userId);
 
+    /**
+     * 单笔订单的超时自动完成（发布触发与定时调度共用）：
+     * 加 Order 行锁后重新校验状态与“接单方确认后 48 小时未确认”窗口，幂等——并发/重复调用只结算一次。
+     *
+     * @param orderId 订单 ID
+     * @param operatorUserId 触发来源用户 ID；定时任务调用时传 null，状态历史 operator 为空表示系统触发
+     */
+    void autoCompleteOverdueOrder(Long orderId, Long operatorUserId);
+
     OrderDetailResponse requestArbitration(Long operatorId, Long orderId, RequestOrderArbitrationCommand command);
 
     OrderDetailResponse submitArbitrationResponse(Long operatorId, Long orderId, ArbitrationSubmissionCommand command);

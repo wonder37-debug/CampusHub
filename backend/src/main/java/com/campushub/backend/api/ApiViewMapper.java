@@ -67,7 +67,11 @@ public class ApiViewMapper {
         boolean canSeePublisher = canSeeDemandPublisher(demand, currentUser);
         User publisherUser = demand.getPublisherId() == null ? null : resolveUser(demand.getPublisherId(), userMap);
         Long publisherId = canSeePublisher ? demand.getPublisherId() : null;
-        String publisherDisplayName = canSeePublisher ? demand.getPublisherDisplayName() : demand.getAnonymousCode();
+        // publisher_display_name 是发布时的反范式快照，用户改昵称后会过期；
+        // 统一优先使用 users 表的实时昵称，仅在用户无法解析时回退快照值，避免列表与详情昵称不一致。
+        String publisherDisplayName = canSeePublisher
+            ? resolveLivePublisherDisplayName(publisherUser, demand.getPublisherDisplayName())
+            : demand.getAnonymousCode();
         PublicUserSummaryView publisher = publisherUser == null
             ? null
             : canSeePublisher
@@ -135,6 +139,16 @@ public class ApiViewMapper {
         if (id == null) return null;
         if (map != null) return map.get(id);
         return userRepository.findById(id).orElse(null);
+    }
+
+    /**
+     * 解析发布者显示名：优先取 users 表实时昵称，用户不存在或昵称为空时回退需求快照。
+     */
+    private String resolveLivePublisherDisplayName(User publisherUser, String snapshotDisplayName) {
+        if (publisherUser != null && publisherUser.getNickname() != null && !publisherUser.getNickname().isBlank()) {
+            return publisherUser.getNickname();
+        }
+        return snapshotDisplayName;
     }
 
     private Order resolveOrder(Long demandId, Map<Long, Order> map) {
@@ -386,7 +400,10 @@ public class ApiViewMapper {
     }
 
     /**
-     * 联系方式仅对接单人、发布者和管理员可见。
+     * 联系方式仅对接单人、发布者、已选中的组队/采纳参与者和管理员可见。
+     *
+     * <p>SELECT_MANY 组队与 HELP 采纳不创建正式 Order，被选中参与者通过 DemandResponse(SELECTED) 授权；
+     * 未选中的报名者、游客与普通第三方仍不可见。</p>
      */
     private String resolveContactInfo(Demand demand, Order relatedOrder, CurrentUser currentUser) {
         if (demand == null || demand.getContactInfo() == null) {
@@ -403,6 +420,10 @@ public class ApiViewMapper {
         }
         if (relatedOrder != null && relatedOrder.getAccepterId() != null
             && relatedOrder.getAccepterId().equals(currentUser.userId())) {
+            return demand.getContactInfo();
+        }
+        if (demand.getId() != null && demandResponseRepository != null
+            && demandResponseRepository.existsSelectedByDemandIdAndAuthorId(demand.getId(), currentUser.userId())) {
             return demand.getContactInfo();
         }
         return null;

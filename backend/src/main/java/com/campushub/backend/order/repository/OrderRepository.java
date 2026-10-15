@@ -32,6 +32,12 @@ public interface OrderRepository {
 
     List<Order> findByParticipant(Long userId);
 
+    /**
+     * 按状态查询全部订单（含 statusHistory 批量装配），用于定时任务扫描候选集。
+     * 仅限调度/后台低频调用，业务接口请使用分页或按 ID 查询。
+     */
+    List<Order> findAllByStatus(OrderStatus status);
+
     List<Order> findAll();
 
     /**

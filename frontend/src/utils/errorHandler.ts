@@ -140,6 +140,10 @@ export function translateApiError(payload: any): string {
     return codeMap.RATE_LIMITED
   }
 
+  if (rawMessage && !/[A-Za-z]/.test(rawMessage)) {
+    return rawMessage
+  }
+
   if (errorCode && codeMap[errorCode]) {
     return codeMap[errorCode]
   }
