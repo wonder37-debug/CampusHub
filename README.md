@@ -1,6 +1,6 @@
 # CampusHub — 校园互助服务平台
 
-> 一个面向高校校园场景的需求发布、接单执行、评价反馈全链路互助平台。学生可以发布跑腿代办、学习辅导、活动组队、二手交易等各类校园需求，其他学生接单履约后获得悬赏，平台提供悬赏金担保、信用体系、匿名保护、站内通知、个性化推荐、AI 草稿生成和管理后台，构建安全可信的校园互助闭环。
+> 一个面向南京大学高校校园场景的需求发布、接单执行、评价反馈全链路互助平台。学生可以发布跑腿代办、学习辅导、活动组队、二手交易等各类校园需求，其他学生接单履约后获得悬赏，平台提供悬赏金担保、信用体系、匿名保护、站内通知、个性化推荐、AI 草稿生成和管理后台，构建安全可信的校园互助闭环。
 
 ## 目录
 
@@ -12,7 +12,6 @@
 - [依赖环境](#依赖环境)
 - [安装步骤](#安装步骤)
 - [配置方式](#配置方式)
-- [AI 能力与湛卢协作开发](#ai-能力与湛卢协作开发)
 - [测试与质量保障](#测试与质量保障)
 - [使用方法](#使用方法)
 - [API 概览](#api-概览)
@@ -144,8 +143,6 @@ CampusHub 采用前后端分离的 Monorepo 架构，围绕"校园需求匹配"�
 | Pinia | ^3.0.4 | 状态管理 |
 | Vue Router | ^4.6.4 | 路由管理 |
 | Vitest | (随 Vite) | 组件/视图测试 |
-
-> 前端未使用任何第三方 UI 组件库，全部为纯手写自定义 CSS（暖色调 + 毛玻璃风格设计系统），样式与交互完全可控。
 
 ---
 
@@ -332,8 +329,8 @@ CampusHub 集成了基于 Spring AI 的需求草稿生成（`POST /api/v1/ai/dem
 **PowerShell：**
 
 ```powershell
-$env:AI_BASE_URL = "https://tokenhub.tencentmaas.com"
-$env:AI_MODEL = "deepseek/deepseek-flash"
+$env:AI_BASE_URL = "Your AI_BASE_URL"
+$env:AI_MODEL = "Your AI_MODEL"
 $env:AI_API_KEY = "sk-your-api-key"
 cd backend
 ./mvnw spring-boot:run
@@ -342,8 +339,8 @@ cd backend
 **bash / zsh：**
 
 ```bash
-export AI_BASE_URL="https://tokenhub.tencentmaas.com"
-export AI_MODEL="deepseek/deepseek-flash"
+export AI_BASE_URL="Your AI_BASE_URL"
+export AI_MODEL="Your AI_MODEL"
 export AI_API_KEY="sk-your-api-key"
 cd backend
 ./mvnw spring-boot:run
@@ -355,14 +352,14 @@ cd backend
 
 ```bash
 export AI_BASE_URL="https://api.deepseek.com"
-export AI_MODEL="deepseek-chat"
+export AI_MODEL="deepseek-flash"
 export AI_API_KEY="sk-your-deepseek-api-key"
 ```
 
 ##### Qwen（通义千问 DashScope OpenAI-compatible 接口）
 
 ```bash
-export AI_BASE_URL="https://dashscope.aliyuncs.com/compatible-mode"
+export AI_BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1"
 export AI_MODEL="qwen-plus"
 export AI_API_KEY="sk-your-dashscope-api-key"
 ```
@@ -370,7 +367,7 @@ export AI_API_KEY="sk-your-dashscope-api-key"
 ##### OpenAI
 
 ```bash
-export AI_BASE_URL="https://api.openai.com"
+export AI_BASE_URL="https://api.openai.com/v1"
 export AI_MODEL="gpt-4o-mini"
 export AI_API_KEY="sk-your-openai-api-key"
 ```
@@ -409,36 +406,6 @@ app.demo-data.enabled=true
 
 开启后启动时自动创建管理员和测试用户账号。
 
----
-
-## AI 能力与湛卢协作开发
-
-本项目全程依托湛卢（Zhanlu）原生 IDE 开发，形成了"AI 辅助 + 人工主体责任"的工程化开发范式。
-
-### 能力运用
-
-| 能力 | 运用环节 | 解决的问题 |
-|------|---------|-----------|
-| 代码智能生成 | DDD 分层骨架、仓储与控制器、前端页面与组件初稿 | 缩短重复样板代码编写耗时 |
-| 智能调试 | 数据层/展示层 Bug 定位（如初始化脚本幂等、邮箱输入） | 定位效率提升约 3 倍 |
-| 代码评审 | 每个功能分支的多轮审查（PR 2~5 轮） | 覆盖并发竞态、IDOR、凭证所有权、上传安全等问题 |
-| Bug 修复 | "审查-修复"批量流程：上传魔数校验、路径穿越、余额原子更新、401 会话竞态清理 | 系统性消除安全与并发隐患 |
-| 测试验证 | 生成并维护 536 个后端测试与前端 Vitest 测试，TDD 先行 | 保证交付前全量测试门禁通过 |
-
-### 高阶功能
-
-- **规划驱动开发**：使用"规格→计划→任务"文档链组织仓储统一、N+1 优化、视图组装等多步骤重构
-- **Agent 并行**：并行子代理同时执行相互独立的子任务，提升批次效率
-- **MCP 应用**：Playwright MCP 进行浏览器端到端流程验证与页面核查，形成"代码-测试-运行验证"闭环
-- **技能体系**：测试驱动开发（TDD）、验证前置完成、系统化调试贯穿开发全程
-
-### 协作契约
-
-- 工程师承担主体责任，AI 生成内容必须经人工审查后才能合入
-- 核心敏感逻辑（鉴权、资金、事务）由人工编写并重点评审
-- 多批次代码审查记录：26 项功能性问题（F1-F26）逐项修复并补充回归测试
-
----
 
 ## 测试与质量保障
 
@@ -567,5 +534,3 @@ npm test                # 运行 Vitest
 本项目基于 MIT 协议开源。
 
 - 作品名称：南京大学 CampusHub 校园服务平台
-- 参赛团队：南雍helper
-- 参赛赛道：2026 移动云杯 · AI Coding 赛道
