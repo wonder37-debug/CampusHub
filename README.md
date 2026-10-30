@@ -16,6 +16,7 @@
 - [使用方法](#使用方法)
 - [API 概览](#api-概览)
 - [数据库设计](#数据库设计)
+- [业务流程与状态机](docs/state-machines.md)
 - [CI/CD](#cicd)
 - [开源协议](#开源协议)
 
@@ -64,8 +65,11 @@ CampusHub 采用前后端分离的 Monorepo 架构，围绕"校园需求匹配"�
 
 ### 需求-响应-订单三层互动模型
 
-- 一个需求承载三种互动方式：直接接单（DIRECT_ACCEPT）、择优选择（SELECT_ONE）、满员组队（SELECT_MANY）
+- 一个需求承载四种互动方式：直接接单（DIRECT_ACCEPT）、择优选择（SELECT_ONE）、满员组队（SELECT_MANY）、问答采纳（HELP）
 - 留言/报名/回答等多种响应形式，按互动模式自动分流
+- 组队与问答模式不创建正式订单，选中/采纳即完成并结算；直接接单与择优选择走完整订单履约与仲裁链路
+
+> 📐 完整的分类映射、三条状态机（Demand / Order / Response）与全部转换规则见 [`docs/state-machines.md`](docs/state-machines.md)。
 
 ### 订单系统
 
