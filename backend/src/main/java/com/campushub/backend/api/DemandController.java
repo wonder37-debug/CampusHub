@@ -13,6 +13,7 @@ import com.campushub.backend.common.security.CurrentUser;
 import com.campushub.backend.common.security.RequestUserExtractor;
 import com.campushub.backend.demand.domain.Demand;
 import com.campushub.backend.demand.domain.DemandSort;
+import com.campushub.backend.demand.domain.DemandStatus;
 import com.campushub.backend.demand.dto.CreateDemandResponseCommand;
 import com.campushub.backend.demand.dto.DemandQuery;
 import com.campushub.backend.demand.dto.DemandResponseDetail;
@@ -159,10 +160,13 @@ public class DemandController {
         Map<Long, Order> orderMap = orderRepository.findAllByDemandIdIn(demandIds).stream()
             .collect(Collectors.toMap(Order::getDemandId, o -> o));
         Map<Long, Long> selectedCountMap = demandResponseRepository.countSelectedByDemandIds(demandIds);
+        Set<Long> selectedDemandIdsByCurrentUser = currentUser == null ? Set.of()
+            : demandResponseRepository.findSelectedDemandIdsByAuthor(currentUser.userId(), demandIds);
         List<DemandView> items = demandIds.stream()
             .map(demandMap::get)
             .filter(Objects::nonNull)
-            .map(demand -> apiViewMapper.toDemandView(demand, currentUser, userMap, orderMap, selectedCountMap))
+            .map(demand -> apiViewMapper.toDemandView(demand, currentUser, userMap, orderMap, selectedCountMap,
+                selectedDemandIdsByCurrentUser))
             .toList();
         return ApiResponse.success(new PageResponse<>(items, rawPage.page(), rawPage.size(), rawPage.total()));
     }
@@ -183,8 +187,27 @@ public class DemandController {
         CurrentUser currentUser = requestUserExtractor.tryExtract(request);
         Demand demand = demandRepository.findById(demandId)
             .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "demand not found"));
+        requireDemandVisible(demand, currentUser);
         recordView(currentUser, demand);
         return ApiResponse.success(apiViewMapper.toDemandView(demand, currentUser));
+    }
+
+    /**
+     * 需求可见性规则（与列表查询保持一致）：
+     * REVIEWING（审核中）需求仅发布者与管理员可见。
+     * 游客、第三方通过 ID 直接访问时返回 404，避免未审内容（标题/描述/悬赏/图片）泄露，
+     * 同时不暴露需求存在性。
+     */
+    private void requireDemandVisible(Demand demand, CurrentUser currentUser) {
+        if (demand.getStatus() != DemandStatus.REVIEWING) {
+            return;
+        }
+        boolean isPublisher = currentUser != null && demand.getPublisherId() != null
+            && demand.getPublisherId().equals(currentUser.userId());
+        boolean isAdmin = currentUser != null && currentUser.isAdmin();
+        if (!isPublisher && !isAdmin) {
+            throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "demand not found");
+        }
     }
 
     // ponytail: VIEW 去重——同一用户对同一需求 1 小时内的重复浏览只记一次，
@@ -266,6 +289,10 @@ public class DemandController {
         @PathVariable Long demandId
     ) {
         CurrentUser currentUser = requestUserExtractor.tryExtract(request);
+        Demand demand = demandRepository.findById(demandId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "demand not found"));
+        // 响应列表与详情同一可见性策略，避免通过 responses 接口绕过审核中内容的访问控制
+        requireDemandVisible(demand, currentUser);
         return ApiResponse.success(demandResponseApplicationService.listResponses(
             currentUser == null ? null : currentUser.userId(), demandId));
     }

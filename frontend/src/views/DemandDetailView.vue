@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
+import { Clock, MapPin, Phone } from '@lucide/vue'
 import { handleError } from '@/utils/errorHandler'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -37,6 +38,15 @@ const viewerFailures = ref<string[]>([])
 let viewerVersion = 0
 let latestDemandLoad = 0
 const imageLoadFailures = ref<Record<string, boolean>>({})
+// 封面比例跟随首张图原比例，限制在 [4/5, 2/1]，避免极端细长图撑爆版面；加载完成前用 16/10 兜底
+const coverRatio = ref('16 / 10')
+
+function onCoverImageLoad(event: Event): void {
+  const img = event.target as HTMLImageElement
+  const ratio = img.naturalWidth / img.naturalHeight
+  if (!Number.isFinite(ratio) || ratio <= 0) return
+  coverRatio.value = String(Math.min(Math.max(ratio, 0.8), 2))
+}
 
 function resetViewer() {
   viewerVersion++
@@ -109,7 +119,11 @@ async function refreshDemand(): Promise<void> {
 }
 
 watch(() => String(route.params.id ?? ''), (id, previousId) => {
-  if (previousId !== undefined && id !== previousId) void refreshDemand()
+  if (previousId !== undefined && id !== previousId) {
+    // 切换需求时复位封面比例，避免上一条需求的首图比例残留
+    coverRatio.value = '16 / 10'
+    void refreshDemand()
+  }
 })
 
 const demand = computed(() => store.getDemandById(String(route.params.id)))
@@ -220,12 +234,17 @@ const visibleResponses = computed(() => responses.value.filter((response) => {
   )
 }))
 
-// T024: SELECT_MANY 超员前置校验 —— 勾选时实时判断，超员自动回退并提示
+// T024: SELECT_MANY 剩余名额前置校验 —— 勾选时按“剩余名额 = 目标人数 - 已选人数”实时判断，超员自动回退并提示
+// 与后端校验口径一致（后端限制“已选 + 本次新增 ≤ 目标”），避免前端看似可选、提交后才被拒
 watch(selectedResponseIds, (next) => {
   const target = targetCount.value
-  if (target !== null && target > 0 && next.length > target) {
-    void useAlert('超出目标人数', `该组队需求最多选择 ${target} 人，已超额，已自动保留前 ${target} 个。`)
-    selectedResponseIds.value = next.slice(0, target)
+  if (target === null || target <= 0) return
+  const remaining = Math.max(0, target - (selectedCount.value ?? 0))
+  if (next.length > remaining) {
+    void useAlert(remaining === 0 ? '名额已满' : '超出剩余名额', remaining === 0
+      ? `该组队需求已选满 ${target} 人，无法继续选择。`
+      : `还可选择 ${remaining} 人，已超额，已自动保留前 ${remaining} 个。`)
+    selectedResponseIds.value = next.slice(0, remaining)
   }
 })
 const responseListTitle = computed(() => {
@@ -337,10 +356,15 @@ async function selectResponses(): Promise<void> {
     error.value = '请至少选择一个'
     return
   }
-  // T024: 提交前再校验一次超员（watch 已实时拦截，此处兜底）
-  if (targetCount.value !== null && targetCount.value > 0 && selectedResponseIds.value.length > targetCount.value) {
-    await useAlert('超出目标人数', `该组队需求最多选择 ${targetCount.value} 人，请取消多余选择后再提交。`)
-    return
+  // T024: 提交前再校验一次剩余名额（watch 已实时拦截，此处兜底，与后端口径一致）
+  if (targetCount.value !== null && targetCount.value > 0) {
+    const remaining = Math.max(0, targetCount.value - (selectedCount.value ?? 0))
+    if (remaining === 0 || selectedResponseIds.value.length > remaining) {
+      await useAlert(remaining === 0 ? '名额已满' : '超出剩余名额', remaining === 0
+        ? `该组队需求已选满 ${targetCount.value} 人。`
+        : `还可选择 ${remaining} 人，请取消多余选择后再提交。`)
+      return
+    }
   }
   message.value = ''
   error.value = ''
@@ -492,10 +516,12 @@ onMounted(() => { void refreshDemand() })
             :key="imgUrl"
             type="button"
             class="image-item"
+            :class="{ 'image-item--cover': imgIdx === 0 }"
+            :style="imgIdx === 0 ? { aspectRatio: coverRatio } : undefined"
             :aria-label="`查看需求图片 ${imgIdx + 1}`"
             @click="openImageViewer(imgIdx)"
           >
-            <img :class="{ 'is-failed': imageLoadFailures[imgUrl] }" :src="imgUrl" :alt="`需求图片 ${imgIdx + 1}`" loading="lazy" class="demand-img" @error="imageLoadFailures[imgUrl] = true" />
+            <img :class="{ 'is-failed': imageLoadFailures[imgUrl] }" :src="imgUrl" :alt="`需求图片 ${imgIdx + 1}`" loading="lazy" class="demand-img" @error="imageLoadFailures[imgUrl] = true" @load="imgIdx === 0 && onCoverImageLoad($event)" />
             <span v-if="imageLoadFailures[imgUrl]" class="image-failure">图片暂时无法显示</span>
           </button>
         </div>
@@ -507,36 +533,43 @@ onMounted(() => { void refreshDemand() })
         <div class="description-content">{{ demand.description }}</div>
       </div>
 
-      <!-- 时间 -->
-      <div class="list-card" style="margin-top: 12px;">
-        <div class="meta"><strong>⏰ 时间</strong></div>
-        <p style="margin-top: 4px;">{{ formatDateTime(demand.startTime || '') }} — {{ formatDateTime(demand.endTime || '') }}</p>
-      </div>
-
-      <!-- 地点 -->
-      <div class="list-card" style="margin-top: 8px;">
-        <div class="meta"><strong>📍 地点</strong></div>
-        <p style="margin-top: 4px;">{{ demand.location || '未填写' }}</p>
-      </div>
-
-      <!-- 联系方式（仅接单人/发布者/管理员可见） -->
-      <div v-if="demand.contactInfo" class="list-card" style="margin-top: 8px; border-color: rgba(31, 95, 83, 0.2);">
-        <div class="meta"><strong>📞 联系方式</strong></div>
-        <p style="margin-top: 4px; white-space: pre-wrap;">{{ demand.contactInfo }}</p>
+      <!-- 时间与地点：图标 + 标签 + 内容，同一网格基线对齐 -->
+      <div class="detail-facts">
+        <div class="detail-fact">
+          <span class="detail-fact-icon" aria-hidden="true"><Clock :size="16" :stroke-width="1.9" /></span>
+          <div>
+            <p class="detail-fact-label">时间</p>
+            <p class="detail-fact-value">{{ formatDateTime(demand.startTime || '') }} — {{ formatDateTime(demand.endTime || '') }}</p>
+          </div>
+        </div>
+        <div class="detail-fact">
+          <span class="detail-fact-icon" aria-hidden="true"><MapPin :size="16" :stroke-width="1.9" /></span>
+          <div>
+            <p class="detail-fact-label">地点</p>
+            <p class="detail-fact-value">{{ demand.location || '未填写' }}</p>
+          </div>
+        </div>
+        <div v-if="demand.contactInfo" class="detail-fact">
+          <span class="detail-fact-icon" aria-hidden="true"><Phone :size="16" :stroke-width="1.9" /></span>
+          <div>
+            <p class="detail-fact-label">联系方式</p>
+            <p class="detail-fact-value" style="white-space: pre-wrap;">{{ demand.contactInfo }}</p>
+          </div>
+        </div>
       </div>
 
       <!-- 标签 -->
-      <div class="tag-row" style="margin-top: 12px;">
+      <div class="tag-row detail-block">
         <span class="badge is-neutral">{{ demand.anonymous ? '匿名发布' : '实名发布' }}</span>
         <span v-for="tag in demand.tags" :key="tag" class="badge is-neutral">{{ tag }}</span>
       </div>
 
-      <div v-if="demand.status === 'CANCELLED' && demand.reviewReason" class="list-card" style="margin-top: 16px;">
+      <div v-if="demand.status === 'CANCELLED' && demand.reviewReason" class="list-card detail-block">
         <strong>审核原因</strong>
         <p style="margin-top: 8px; color: var(--danger);">{{ demand.reviewReason }}</p>
       </div>
 
-      <div v-if="demand.publisherId === store.currentUser?.id && (demand.status === 'REVIEWING' || demand.status === 'PENDING')" class="list-card" style="margin-top: 16px;">
+      <div v-if="demand.publisherId === store.currentUser?.id && (demand.status === 'REVIEWING' || demand.status === 'PENDING')" class="list-card detail-block">
         <strong>管理你的需求</strong>
         <p class="meta">{{ demand.status === 'REVIEWING' ? '该需求仍在审核中。' : '该需求已开放接单。' }}</p>
         <div class="card-actions">
@@ -561,6 +594,15 @@ onMounted(() => { void refreshDemand() })
           <button v-if="canAccept" type="button" class="button primary" :disabled="submitting" @click="acceptCurrentDemand">
             {{ submitting ? '处理中…' : '立即接单' }}
           </button>
+          <!-- 未登录游客：提供可点击的登录引导，避免只有静态文案无法跳转 -->
+          <button
+            v-else-if="!store.currentUser"
+            type="button"
+            class="button primary"
+            @click="router.push({ name: 'Auth', query: { redirect: route.fullPath } })"
+          >
+            登录后接单
+          </button>
           <button v-if="hasOrderAccess && relatedOrder" type="button" class="button primary" @click="router.push({ name: 'OrderDetail', params: { id: relatedOrder.id } })">
             查看正式订单
           </button>
@@ -568,8 +610,8 @@ onMounted(() => { void refreshDemand() })
       </div>
 
       <!-- Response 交互区域（非 DIRECT_ACCEPT 模式：SELECT_ONE / SELECT_MANY / HELP） -->
-      <div v-if="interactionMode !== 'DIRECT_ACCEPT'" class="list-card" style="margin-top: 12px;">
-        <div class="status-row" style="margin-bottom: 8px;">
+      <div v-if="interactionMode !== 'DIRECT_ACCEPT'" class="list-card detail-block">
+        <div class="status-row detail-block-head">
           <strong>{{ responseListTitle }}</strong>
           <span class="chip">{{ formatInteractionMode(interactionMode) }}</span>
         </div>
@@ -584,13 +626,24 @@ onMounted(() => { void refreshDemand() })
           </div>
         </div>
 
+        <!-- 未登录游客：提供可点击的登录引导，避免只有静态文案无法跳转 -->
+        <div v-else-if="!store.currentUser" class="card-actions" style="margin-top: 4px;">
+          <button
+            type="button"
+            class="button primary"
+            @click="router.push({ name: 'Auth', query: { redirect: route.fullPath } })"
+          >
+            登录后参与{{ responseListTitle }}
+          </button>
+        </div>
+
         <!-- 当前用户已存在 active Response：直接显示状态，避免重复提交触发后端 BUSINESS_CONFLICT -->
-        <div v-if="myActiveResponse" class="list-card" style="margin-top: 4px; background: var(--accent-soft); border-color: rgba(31, 95, 83, 0.2);">
+        <div v-if="myActiveResponse" class="list-card response-own-card">
           <strong>{{ responseListTitle === '回答' ? '已提交回答' : (responseListTitle === '报名' ? '已报名' : '已留言') }}</strong>
           <p class="meta" style="margin-top: 4px;">{{ myResponseStatusHint }}</p>
           <p class="response-own-content">{{ myActiveResponse.content }}</p>
           <div class="meta" style="margin-top: 4px;">当前状态：{{ formatResponseStatus(myActiveResponse.status) }} · {{ formatDateTime(myActiveResponse.createdAt) }}</div>
-          <div class="card-actions" style="margin-top: 6px;">
+          <div class="card-actions detail-block-inner">
             <button
               v-if="canWithdrawMyResponse"
               type="button"
@@ -598,12 +651,13 @@ onMounted(() => { void refreshDemand() })
               :disabled="responseSubmitting"
               @click="withdrawResponse(myActiveResponse.id)"
             >{{ responseSubmitting ? '撤回中...' : '撤回' }}</button>
-            <span v-else class="chip is-warning">已进入履约，无法撤回</span>
+            <!-- 仅 SELECTED 表示已进入履约；REJECTED/WITHDRAWN 与需求已关闭等状态由上方 myResponseStatusHint 说明 -->
+            <span v-else-if="myActiveResponse.status === 'SELECTED'" class="chip is-warning">已进入履约，无法撤回</span>
           </div>
         </div>
 
         <!-- 列表 -->
-        <div v-if="visibleResponses.length" class="review-list" style="margin-top: 8px;">
+        <div v-if="visibleResponses.length" class="review-list detail-block-inner">
           <div v-for="r in visibleResponses" :key="r.id" class="timeline-item">
             <div style="flex: 1;">
               <strong>{{ r.authorName }}</strong>
@@ -642,7 +696,7 @@ onMounted(() => { void refreshDemand() })
             <div
               v-if="interactionMode === 'SELECT_MANY' && demand.status === 'COMPLETED' && r.status === 'SELECTED'
                 && store.currentUser && (isPublisher || r.authorId === store.currentUser.id)"
-              style="margin-top: 8px;"
+              class="detail-block-inner"
             >
               <button
                 v-if="reviewingResponseId !== r.id && !hasReviewedResponse(r.id)"
@@ -660,9 +714,9 @@ onMounted(() => { void refreshDemand() })
                   <option value="2">2 星</option>
                   <option value="1">1 星</option>
                 </select>
-                <label style="margin-top: 6px;">评价内容</label>
+                <label class="detail-block-inner">评价内容</label>
                 <textarea v-model="responseReviewComment" placeholder="写下你的评价" rows="2"></textarea>
-                <div class="card-actions" style="margin-top: 6px;">
+                <div class="card-actions detail-block-inner">
                   <button type="button" class="button primary" :disabled="!responseReviewComment.trim()" @click="submitResponseReview(r.id)">提交评价</button>
                   <button type="button" class="button secondary" @click="cancelResponseReview">取消</button>
                 </div>
@@ -670,21 +724,21 @@ onMounted(() => { void refreshDemand() })
             </div>
           </div>
         </div>
-        <p v-else class="meta" style="margin-top: 8px;">暂无{{ responseListTitle }}</p>
+        <p v-else class="meta detail-block-inner">暂无{{ responseListTitle }}</p>
 
         <!-- SELECT_MANY 底部统计与确认 -->
         <div
           v-if="isPublisher && store.currentUser?.role !== 'ADMIN' && demand.status === 'PENDING' && detailMode === 'select-many'"
-          class="card-actions"
-          style="margin-top: 8px; justify-content: space-between;"
+          class="card-actions detail-block-inner card-actions--between"
         >
           <span class="chip" :class="targetCount !== null && selectedCount !== null && selectedCount >= targetCount ? 'is-success' : 'is-warning'">
             {{ selectedCount !== null && targetCount !== null ? (selectedCount >= targetCount ? `已满 ${targetCount} 人` : `已选择 ${selectedCount} / ${targetCount} 人`) : '人数信息暂不可用' }}
           </span>
+          <span v-if="remainingSlots !== null && remainingSlots > 0" class="meta">还可选择 {{ remainingSlots }} 人</span>
           <button
             type="button"
             class="button primary"
-            :disabled="selectedResponseIds.length === 0 || (targetCount !== null && targetCount > 0 && selectedResponseIds.length > targetCount)"
+            :disabled="selectedResponseIds.length === 0 || (remainingSlots !== null && selectedResponseIds.length > remainingSlots)"
             @click="selectResponses"
           >确认选择</button>
         </div>
@@ -795,6 +849,33 @@ onMounted(() => { void refreshDemand() })
   border: 1px solid var(--panel-border);
   border-radius: 14px;
   background: #f8faf8;
+}
+
+/* 详情页纵向堆叠块统一 12px 节奏，替代散落的内联 margin，保证各区块间距一致 */
+.detail-block {
+  margin-top: 12px;
+}
+
+.detail-block-head {
+  margin-bottom: 8px;
+}
+
+.detail-block-inner {
+  margin-top: 8px;
+}
+
+.demand-action-card {
+  margin-top: 12px;
+}
+
+.response-own-card {
+  margin-top: 4px;
+  background: var(--accent-soft);
+  border-color: rgba(31, 95, 83, 0.2);
+}
+
+.card-actions--between {
+  justify-content: space-between;
 }
 
 .demand-mode-note p,
@@ -1010,15 +1091,66 @@ onMounted(() => { void refreshDemand() })
   gap: 12px;
 }
 
+/* 第一张作为封面：跨两列、更矮的比例，让宽图与竖图都保持原比例完整显示 */
+.demand-images-featured .image-item--cover {
+  grid-column: span 2;
+  aspect-ratio: 16 / 10;
+}
+
 .demand-images-featured .image-item {
   aspect-ratio: 4 / 3;
   border: 0;
   border-radius: 12px;
+  background: #e9ede9;
 }
 
 .demand-images-featured .image-item:focus-visible {
   outline: 3px solid var(--accent);
   outline-offset: 3px;
+}
+
+/* ========== 时间 / 地点 / 联系方式 ========== */
+.detail-facts {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.detail-fact {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  padding: 13px 16px;
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  background: #f8faf8;
+}
+
+.detail-fact-icon {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.detail-fact-label {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.detail-fact-value {
+  margin: 3px 0 0;
+  color: var(--text-strong);
+  font-size: 0.92rem;
+  line-height: 1.55;
 }
 
 .image-grid {
@@ -1050,7 +1182,7 @@ onMounted(() => { void refreshDemand() })
 .demand-img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
 }
 
 .demand-img.is-failed {

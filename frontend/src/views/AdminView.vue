@@ -31,10 +31,6 @@ const arbitrationOrderId = ref('')
 const arbitrationOrderTitle = ref('')
 const arbitrationOutcome = ref<'complete' | 'cancel'>('complete')
 const arbitrationReason = ref('')
-const deleteDialogOpen = ref(false)
-const deletingOrderId = ref('')
-const deletingOrderTitle = ref('')
-const deleteReason = ref('')
 
 const isAdmin = computed(() => store.currentUser?.role === 'ADMIN')
 const adminDashboard = computed(() => store.adminDashboard)
@@ -246,37 +242,6 @@ async function submitArbitrationResolution(): Promise<void> {
     dialogError.value = handleError(resolveError, '仲裁处理失败')
   }
 }
-
-function openDeleteOrderDialog(order: { id: string; demandTitle?: string; title?: string }): void {
-  deletingOrderId.value = order.id
-  deletingOrderTitle.value = order.demandTitle || order.title || ''
-  deleteReason.value = ''
-  deleteDialogOpen.value = true
-}
-
-function closeDeleteOrderDialog(): void {
-  deleteDialogOpen.value = false
-  deletingOrderId.value = ''
-  deletingOrderTitle.value = ''
-  deleteReason.value = ''
-  dialogError.value = ''
-}
-
-async function submitDeleteOrder(): Promise<void> {
-  if (!deletingOrderId.value) {
-    closeDeleteOrderDialog()
-    return
-  }
-
-  try {
-    await store.deleteOrderByAdmin(deletingOrderId.value, deleteReason.value)
-    message.value = '订单已删除。'
-    closeDeleteOrderDialog()
-    await refreshAdminData()
-  } catch (deleteError) {
-    dialogError.value = handleError(deleteError, '删除订单失败')
-  }
-}
 </script>
 
 <template>
@@ -463,7 +428,8 @@ async function submitDeleteOrder(): Promise<void> {
             <div class="card-actions">
               <button type="button" class="button primary" @click="openArbitrationDialog(order)">裁决订单</button>
               <button type="button" class="button secondary" @click="router.push(`/orders/${order.id}`)">查看详情</button>
-              <button type="button" class="button danger" @click="openDeleteOrderDialog(order)">删除订单</button>
+              <!-- 删除入口已移除：仲裁队列中的删除可绕过裁决并销毁争议证据；
+                   后端接口保留状态约束（禁止删除仲裁中/已完成订单），需要处置时先完成裁决 -->
             </div>
           </div>
         </div>
@@ -539,7 +505,7 @@ async function submitDeleteOrder(): Promise<void> {
         <p class="page-summary" style="margin-top: 0;">正在处理订单「{{ arbitrationOrderTitle || '未命名订单' }}」的争议，请选择裁决结果并填写说明。</p>
         <div class="field">
           <label for="arbitration-outcome">裁决结果</label>
-          <select id="arbitration-outcome" v-model="arbitrationOutcome">
+          <select id="arbitration-outcome" class="input" v-model="arbitrationOutcome">
             <option value="complete">判定完成订单</option>
             <option value="cancel">判定取消订单</option>
           </select>
@@ -554,33 +520,6 @@ async function submitDeleteOrder(): Promise<void> {
         <div class="card-actions" style="justify-content: flex-end;">
           <button type="button" class="button secondary" @click="closeArbitrationDialog">取消</button>
           <button type="button" class="button primary" :disabled="!arbitrationReason.trim()" @click="submitArbitrationResolution">确认裁决</button>
-        </div>
-      </div>
-    </div>
-  </teleport>
-
-  <teleport to="body">
-    <div v-if="deleteDialogOpen" class="modal-backdrop" @click.self="closeDeleteOrderDialog">
-      <div class="modal-card panel">
-        <div class="modal-head">
-          <div>
-            <p class="eyebrow">删除订单</p>
-            <h3 class="section-title">管理员删除订单</h3>
-          </div>
-          <button type="button" class="modal-close" @click="closeDeleteOrderDialog" title="关闭" aria-label="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
-        </div>
-
-        <p class="page-summary" style="margin-top: 0;">将删除订单「{{ deletingOrderTitle || '未命名订单' }}」。如有需要，可填写删除原因用于审计与通知。</p>
-        <div class="field">
-          <label for="delete-order-reason">删除原因</label>
-          <textarea id="delete-order-reason" v-model="deleteReason" rows="5" placeholder="例如：违规订单、重复订单、数据修正等"></textarea>
-        </div>
-
-        <p v-if="dialogError" class="hero-badge" style="background: rgba(181, 71, 71, 0.14); color: var(--danger)">{{ dialogError }}</p>
-
-        <div class="card-actions" style="justify-content: flex-end;">
-          <button type="button" class="button secondary" @click="closeDeleteOrderDialog">取消</button>
-          <button type="button" class="button danger" @click="submitDeleteOrder">确认删除</button>
         </div>
       </div>
     </div>

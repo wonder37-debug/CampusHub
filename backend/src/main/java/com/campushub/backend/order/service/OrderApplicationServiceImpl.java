@@ -35,9 +35,15 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 @Transactional(rollbackFor = Exception.class)
@@ -52,6 +58,8 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
     private static final java.util.regex.Pattern PROOF_URL_PATTERN =
         java.util.regex.Pattern.compile("/api/v1/uploads/\\d{4}/\\d{2}/[a-zA-Z0-9][a-zA-Z0-9._-]*");
 
+    private static final Logger log = LoggerFactory.getLogger(OrderApplicationServiceImpl.class);
+
     private final OrderRepository orderRepository;
     private final DemandRepository demandRepository;
     private final UserRepository userRepository;
@@ -60,6 +68,7 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
     private final UserActionLogRepository userActionLogRepository;
     private final UploadedAssetRepository uploadedAssetRepository;
     private final ArbitrationSubmissionRepository arbitrationSubmissionRepository;
+    private final TransactionTemplate autoCompletionTxTemplate;
 
     public OrderApplicationServiceImpl(
         OrderRepository orderRepository,
@@ -69,7 +78,8 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         RewardSettlementService rewardSettlementService,
         UserActionLogRepository userActionLogRepository,
         UploadedAssetRepository uploadedAssetRepository,
-        ArbitrationSubmissionRepository arbitrationSubmissionRepository
+        ArbitrationSubmissionRepository arbitrationSubmissionRepository,
+        PlatformTransactionManager transactionManager
     ) {
         this.orderRepository = orderRepository;
         this.demandRepository = demandRepository;
@@ -79,6 +89,8 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
         this.userActionLogRepository = userActionLogRepository;
         this.uploadedAssetRepository = uploadedAssetRepository;
         this.arbitrationSubmissionRepository = arbitrationSubmissionRepository;
+        this.autoCompletionTxTemplate = new TransactionTemplate(transactionManager);
+        this.autoCompletionTxTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
     @Override
@@ -362,47 +374,74 @@ public class OrderApplicationServiceImpl implements OrderApplicationService {
     }
 
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void autoCompleteOverdueOrders(Long userId) {
         List<Order> orders = orderRepository.findByParticipant(userId);
-        LocalDateTime now = LocalDateTime.now();
         for (Order summary : orders) {
             if (summary.getStatus() != OrderStatus.IN_PROGRESS || !userId.equals(summary.getPublisherId())) {
                 continue;
             }
-            if (!hasCompletionConfirmation(summary, summary.getAccepterId())) {
+            // 预筛选（锁外快照）：仅对满足 48 小时窗口的订单加锁处理，减少无效行锁
+            if (!hasCompletionConfirmation(summary, summary.getAccepterId())
+                || !isProviderConfirmationOverdue(summary, LocalDateTime.now())) {
                 continue;
             }
-            LocalDateTime providerConfirmTime = summary.getStatusHistory().stream()
-                .filter(entry -> entry.operatorId() != null
-                    && entry.operatorId().equals(summary.getAccepterId())
-                    && entry.fromStatus() == OrderStatus.IN_PROGRESS
-                    && entry.toStatus() == OrderStatus.IN_PROGRESS
-                    && PROVIDER_CONFIRMED_NOTE.equals(entry.note()))
-                .map(OrderStatusHistoryEntry::changedAt)
-                .findFirst()
-                .orElse(null);
-            if (providerConfirmTime == null || providerConfirmTime.plusHours(48).isAfter(now)) {
-                continue;
+            // 逐单独立事务：单笔自动完成或通知失败只回滚该订单，不影响其他订单
+            try {
+                autoCompletionTxTemplate.execute(status -> {
+                    autoCompleteOverdueOrder(summary.getId(), userId);
+                    return null;
+                });
+            } catch (Exception e) {
+                log.error("Failed to auto complete overdue order {}: {}", summary.getId(), e.getMessage(), e);
             }
-
-            // 加 Order 行锁，确保并发自动完成不会重复结算
-            Order order = orderRepository.findByIdForUpdate(summary.getId()).orElse(null);
-            if (order == null || order.getStatus() != OrderStatus.IN_PROGRESS) {
-                continue;
-            }
-            Demand demand = findDemand(order.getDemandId());
-            order.setStatus(OrderStatus.COMPLETED);
-            order.setCompletedAt(now);
-            order.setUpdatedAt(now);
-            order.addHistory(OrderStatus.IN_PROGRESS, OrderStatus.COMPLETED, userId, "SYSTEM_AUTO_COMPLETED", now);
-            demand.setStatus(DemandStatus.COMPLETED);
-            demand.setUpdatedAt(now);
-            orderRepository.save(order);
-            demandRepository.save(demand);
-            transferReward(demand, order);
-            notificationApplicationService.notifyOrderStatusChanged(order.getPublisherId(), order.getId(), OrderStatus.COMPLETED, true);
-            notificationApplicationService.notifyOrderStatusChanged(order.getAccepterId(), order.getId(), OrderStatus.COMPLETED, false);
         }
+    }
+
+    @Override
+    public void autoCompleteOverdueOrder(Long orderId, Long operatorUserId) {
+        if (orderId == null) {
+            return;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        // 加 Order 行锁，确保并发自动完成（定时任务 + 发布触发 + 用户确认）不会重复结算；
+        // 锁内重新校验状态与 48 小时窗口，快照过期时安全跳过，保证幂等
+        Order order = orderRepository.findByIdForUpdate(orderId).orElse(null);
+        if (order == null || order.getStatus() != OrderStatus.IN_PROGRESS) {
+            return;
+        }
+        if (!hasCompletionConfirmation(order, order.getAccepterId())
+            || !isProviderConfirmationOverdue(order, now)) {
+            return;
+        }
+        Demand demand = findDemand(order.getDemandId());
+        order.setStatus(OrderStatus.COMPLETED);
+        order.setCompletedAt(now);
+        order.setUpdatedAt(now);
+        order.addHistory(OrderStatus.IN_PROGRESS, OrderStatus.COMPLETED, operatorUserId, "SYSTEM_AUTO_COMPLETED", now);
+        demand.setStatus(DemandStatus.COMPLETED);
+        demand.setUpdatedAt(now);
+        orderRepository.save(order);
+        demandRepository.save(demand);
+        transferReward(demand, order);
+        notificationApplicationService.notifyOrderStatusChanged(order.getPublisherId(), order.getId(), OrderStatus.COMPLETED, true);
+        notificationApplicationService.notifyOrderStatusChanged(order.getAccepterId(), order.getId(), OrderStatus.COMPLETED, false);
+    }
+
+    /**
+     * 接单方已确认完成且距确认时间超过 48 小时（发布者仍未确认），满足自动完成时间条件。
+     */
+    private boolean isProviderConfirmationOverdue(Order order, LocalDateTime now) {
+        LocalDateTime providerConfirmTime = order.getStatusHistory().stream()
+            .filter(entry -> entry.operatorId() != null
+                && entry.operatorId().equals(order.getAccepterId())
+                && entry.fromStatus() == OrderStatus.IN_PROGRESS
+                && entry.toStatus() == OrderStatus.IN_PROGRESS
+                && PROVIDER_CONFIRMED_NOTE.equals(entry.note()))
+            .map(OrderStatusHistoryEntry::changedAt)
+            .findFirst()
+            .orElse(null);
+        return providerConfirmTime != null && !providerConfirmTime.plusHours(48).isAfter(now);
     }
 
     private OrderDetailResponse confirmCompletion(Long operatorId, Order order, Demand demand, UpdateOrderStatusCommand command) {

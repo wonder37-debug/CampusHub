@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import DemandHomeCard from '@/components/DemandHomeCard.vue'
@@ -45,7 +46,7 @@ describe('DemandHomeCard 视觉和隐私边界', () => {
   it('无图时显示中性占位且匿名卡片不加载发布者头像', () => {
     const wrapper = mountCard(baseDemand)
 
-    expect(wrapper.find('.home-card__image-placeholder').exists()).toBe(true)
+    expect(wrapper.find('.home-card__media-text').exists()).toBe(true)
     expect(wrapper.text()).toContain('匿名同学 07')
     expect(wrapper.find('.home-card__publisher img').exists()).toBe(false)
     expect(wrapper.find('.home-card__footer').element.closest('a')).toBeNull()
@@ -54,9 +55,24 @@ describe('DemandHomeCard 视觉和隐私边界', () => {
 
   it('需求图片加载失败时退回明确的中性失败占位', async () => {
     const wrapper = mountCard({ ...baseDemand, anonymous: false, anonymousCode: null, images: ['/demand-photo.jpg'] })
-    await wrapper.get('.home-card__image img').trigger('error')
+    await wrapper.get('.home-card__media img').trigger('error')
 
-    expect(wrapper.find('.home-card__image-placeholder').exists()).toBe(true)
-    expect(wrapper.find('.home-card__image img').exists()).toBe(false)
+    expect(wrapper.find('.home-card__media-text').exists()).toBe(true)
+    expect(wrapper.find('.home-card__media img').exists()).toBe(false)
+  })
+
+  it('同一条需求图片 URL 更换后重置失败状态，新图片重新渲染', async () => {
+    const wrapper = mountCard({ ...baseDemand, anonymous: false, anonymousCode: null, images: ['/old.jpg'] })
+    await wrapper.get('.home-card__media img').trigger('error')
+    expect(wrapper.find('.home-card__media img').exists()).toBe(false)
+
+    await wrapper.setProps({
+      demand: { ...baseDemand, id: 'd-7', anonymous: false, anonymousCode: null, images: ['/new.jpg'] }
+    })
+    await nextTick()
+
+    const img = wrapper.find('.home-card__media img')
+    expect(img.exists()).toBe(true)
+    expect(img.attributes('src')).toBe('/new.jpg')
   })
 })

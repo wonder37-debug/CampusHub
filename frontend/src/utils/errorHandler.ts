@@ -114,6 +114,12 @@ export function translateApiError(payload: any): string {
     return directMap[rawMessage]
   }
 
+  // 500 / INTERNAL_ERROR：后端常附带具体中文原因（如“AI 服务暂时不可用，请稍后重试”），
+  // 优先展示真实原因，避免笼统兜底文案盖住可操作信息；无中文 message 时才回落通用兜底
+  if ((code === 5000 || errorCode === 'INTERNAL_ERROR') && rawMessage && /[一-龥]/.test(rawMessage)) {
+    return rawMessage
+  }
+
   // BUSINESS_CONFLICT / code 1005 优先尝试根据 rawMessage 动态提取业务语义，
   // 提取不到再回退到通用兜底文案，避免所有冲突都显示为“系统状态冲突”
   if (errorCode === 'BUSINESS_CONFLICT' || code === 1005) {
@@ -132,6 +138,10 @@ export function translateApiError(payload: any): string {
       return rawMessage
     }
     return codeMap.RATE_LIMITED
+  }
+
+  if (rawMessage && !/[A-Za-z]/.test(rawMessage)) {
+    return rawMessage
   }
 
   if (errorCode && codeMap[errorCode]) {
@@ -299,8 +309,10 @@ export function handleError(err: unknown, fallback = '操作失败'): string {
       if (/failed to fetch|networkerror|network error/i.test(msg)) {
         return '网络异常，请检查网络或后端服务'
       }
-      // 已被 translateApiError 翻译过的中文消息直接返回
-      if (!/[A-Za-z]/.test(msg)) {
+      // 已被 translateApiError 或后端翻译过的中文消息直接返回。
+      // 用 CJK 字符判断而非“不含英文字母”：像“AI 服务暂时不可用”这类面向用户的中文句子
+      // 含产品名词字母，无字母判断会把它们误判为技术消息并回落到兜底文案。
+      if (/[一-龥]/.test(msg)) {
         return msg || fallback
       }
       return fallback

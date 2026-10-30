@@ -71,6 +71,7 @@ function iconFor(type: string): string {
   if (type === 'DEMAND_APPROVED') return '✅'
   if (type === 'ORDER_ARBITRATION_REQUESTED') return '⚖️'
   if (type === 'ORDER_ARBITRATION_RESOLVED') return '📘'
+  if (type === 'ORDER_DELETED') return '🗑️'
   if (type === 'DEMAND_RESPONSE_RECEIVED') return '💬'
   if (type === 'DEMAND_RESPONSE_SELECTED') return '📣'
   if (type === 'DEMAND_RESPONSE_REJECTED') return '🗒️'
@@ -140,6 +141,12 @@ async function openNotification(notification: any): Promise<void> {
   }
 
   if (type === 'RESPONSE_REVIEW_RECEIVED') {
+    router.push(`/demands/${encodeURIComponent(targetId || relatedId)}`)
+    return
+  }
+
+  // 管理员删除订单：跳转关联需求（订单已删除，需求保留取消状态）
+  if (type === 'ORDER_DELETED') {
     router.push(`/demands/${encodeURIComponent(targetId || relatedId)}`)
     return
   }

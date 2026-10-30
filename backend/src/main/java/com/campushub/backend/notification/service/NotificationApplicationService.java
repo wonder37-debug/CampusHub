@@ -38,6 +38,12 @@ public interface NotificationApplicationService {
     void notifyOrderArbitrationResolved(Long receiverId, Long orderId, String outcome, String reason);
 
     /**
+     * 管理员删除订单通知：relatedId 指向关联需求（订单本身已被删除），
+     * 双方点击后可跳转需求详情查看取消状态。
+     */
+    void notifyOrderDeletedByAdmin(Long receiverId, Long demandId, String demandTitle, String reason);
+
+    /**
      * 新留言/报名通知：其他用户在需求下提交留言/报名/回答后，通知需求发布者。
      * relatedId 语义为 demandId，前端跳转 demand 详情。本人不通知自己。
      */

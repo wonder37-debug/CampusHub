@@ -87,13 +87,16 @@ public class RecommendationController {
         Map<Long, Order> orderMap = orderRepository.findAllByDemandIdIn(demandIds).stream()
             .collect(Collectors.toMap(Order::getDemandId, o -> o));
         Map<Long, Long> selectedCountMap = demandResponseRepository.countSelectedByDemandIds(demandIds);
+        Set<Long> selectedDemandIdsByCurrentUser = currentUser == null ? Set.of()
+            : demandResponseRepository.findSelectedDemandIdsByAuthor(currentUser.userId(), demandIds);
         List<RecommendedDemandView> items = rawPage.items().stream()
             .map(item -> {
                 Demand demand = demandMap.get(item.demandId());
                 if (demand == null) {
                     return null;
                 }
-                DemandView view = apiViewMapper.toDemandView(demand, currentUser, userMap, orderMap, selectedCountMap);
+                DemandView view = apiViewMapper.toDemandView(demand, currentUser, userMap, orderMap, selectedCountMap,
+                    selectedDemandIdsByCurrentUser);
                 return new RecommendedDemandView(item.rank(), item.score(), item.reasonTags(), view);
             })
             .filter(Objects::nonNull)

@@ -31,6 +31,7 @@ const loadingDemands = ref(true)
 const refreshing = ref(false)
 const recommendationsError = ref('')
 const recommendedItems = ref<RecommendationRecord[]>([])
+// 需求数据本身的加载错误才阻塞整个列表；推荐接口失败不遮蔽已加载成功的需求流，仅降级为非阻塞提示
 const listError = computed(() => store.demandFetchError || '')
 const categoryShortcuts = computed<Array<{ value: '' | DemandCategoryValue; label: string }>>(() => [
   { value: '', label: '全部需求' },
@@ -205,7 +206,7 @@ onBeforeUnmount(() => {
     <section class="home-toolbar" aria-labelledby="home-title">
       <div class="home-heading">
         <div>
-          <p class="home-eyebrow">CAMPUS COMMUNITY</p>
+          <p class="home-eyebrow">校园社区</p>
           <h1 id="home-title">发现校园里的互助与好物</h1>
           <p>把正在发生的需求，和愿意搭把手的同学连接起来。</p>
         </div>
@@ -267,11 +268,12 @@ onBeforeUnmount(() => {
           <p v-if="!listError && !refreshing">{{ totalCount }} 条公开需求</p>
           <p v-else>更新校园里的新需求</p>
         </div>
-        <span>Demand · 同学之间的真实需求</span>
+        <span>同学之间的真实需求</span>
       </div>
 
-      <p v-if="recommendationsError && !store.demandFetchError && !refreshing" class="home-inline-notice" data-testid="recommendation-fallback" role="status">
-        推荐暂时不可用，已按发布时间排序展示需求。
+      <!-- 推荐服务降级提示：不阻塞已加载需求，排序自动回退最新发布 -->
+      <p v-if="recommendationsError && !listError && !refreshing" class="home-recommend-fallback" role="status">
+        {{ recommendationsError }}
       </p>
 
       <ErrorState
@@ -434,7 +436,21 @@ onBeforeUnmount(() => {
 }
 
 .home-filter label { color: var(--muted-foreground); font-size: 0.75rem; white-space: nowrap; }
-.home-filter select { min-width: 0; border: 0; outline: 0; background: transparent; color: var(--foreground); font: inherit; font-size: 0.79rem; }
+.home-filter select {
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  font-size: 0.79rem;
+  /* 自绘箭头占右侧空间，避免文字与箭头重叠 */
+  padding-right: 18px;
+  background-image: var(--select-arrow);
+  background-repeat: no-repeat;
+  background-position: right center;
+  background-size: 11px 7px;
+}
 .home-filter--sort { min-width: 146px; }
 .home-refresh { flex: none; gap: 6px; }
 .is-spinning { animation: spin 900ms linear infinite; }
@@ -449,10 +465,10 @@ onBeforeUnmount(() => {
 
 .home-categories button {
   flex: none;
-  padding: 7px 12px;
-  border: 1px solid transparent;
+  padding: 7px 13px;
+  border: 1px solid var(--border);
   border-radius: 999px;
-  background: transparent;
+  background: var(--card);
   color: var(--muted-foreground);
   cursor: pointer;
   font: inherit;
@@ -460,20 +476,20 @@ onBeforeUnmount(() => {
   transition: color 140ms ease, background 140ms ease, border-color 140ms ease;
 }
 
-.home-categories button:hover { background: var(--muted); color: var(--foreground); }
+.home-categories button:hover { background: var(--muted); color: var(--foreground); border-color: color-mix(in srgb, var(--primary) 22%, var(--border)); }
 .home-categories button:focus-visible { outline: 3px solid var(--ring); outline-offset: 2px; }
-.home-categories button.is-active { border-color: #dce5dc; background: #edf2ed; color: var(--primary); font-weight: 650; }
+.home-categories button.is-active { border-color: color-mix(in srgb, var(--primary) 30%, transparent); background: color-mix(in srgb, var(--primary) 8%, var(--card)); color: var(--primary); font-weight: 650; }
 
 .home-feed { padding-top: 20px; }
 
-.home-inline-notice {
+.home-recommend-fallback {
   margin: 0 0 14px;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: color-mix(in srgb, var(--muted) 55%, transparent);
+  padding: 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--primary) 24%, transparent);
+  border-radius: calc(var(--radius) * 0.85);
+  background: color-mix(in srgb, var(--primary) 7%, transparent);
   color: var(--muted-foreground);
-  font-size: 0.82rem;
+  font-size: 0.8rem;
 }
 
 .home-feed-heading {

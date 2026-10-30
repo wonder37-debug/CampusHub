@@ -51,7 +51,7 @@ const FIELD_LABELS: Record<FieldKey, string> = {
   location: '地点',
   reward: '报酬',
   targetParticipantCount: '目标人数',
-  interactionMode: '互动模式',
+  interactionMode: '参与方式',
   startTime: '开始时间',
   endTime: '结束时间'
 }
@@ -86,6 +86,19 @@ const form = reactive({
 })
 const previousCategory = ref('')
 
+// 错误提示对用户可见的时机：字段被交互过，或用户已尝试提交。
+// 避免进入表单页/选择类型后立即满屏红字，让校验反馈符合“先操作再提示”的交互预期。
+const submitAttempted = ref(false)
+const touchedFields = ref<Set<FieldKey>>(new Set())
+
+const visibleErrors = computed<Record<FieldKey, string>>(() => {
+  const result = {} as Record<FieldKey, string>
+  for (const key of FIELD_ORDER) {
+    result[key] = submitAttempted.value || touchedFields.value.has(key) ? errors[key] : ''
+  }
+  return result
+})
+
 // 保存草稿时保留字段来源，让用户区分 AI 建议、待补充字段与自己的修改。
 const aiFilledFields = ref<Set<string>>(new Set())
 const aiPendingFields = ref<Set<string>>(new Set())
@@ -96,6 +109,9 @@ function markFieldManual(field: string): void {
   aiFilledFields.value.delete(field)
   aiPendingFields.value.delete(field)
   manualFields.value.add(field)
+  if ((FIELD_ORDER as readonly string[]).includes(field)) {
+    touchedFields.value.add(field as FieldKey)
+  }
 }
 
 function aiFieldStatus(_field: string): string {
@@ -187,8 +203,8 @@ function modeForCategory(category: string, otherMode = ''): string {
 }
 
 const categoryCards = [
-  { value: 'EXPRESS', title: '快递代取', description: '取件、送件，写清地点和时间', icon: PackageOpen },
-  { value: 'ERRAND', title: '跑腿代办', description: '校园内代办与临时跑腿', icon: Footprints },
+  { value: 'EXPRESS', title: '跑腿代取', description: '取件、送件，写清地点和时间', icon: PackageOpen },
+  { value: 'ERRAND', title: '委托代办', description: '校园内代办与临时跑腿', icon: Footprints },
   { value: 'SECOND_HAND', title: '二手交易', description: '发布物品，等待同学响应', icon: ShoppingBag },
   { value: 'STUDY_TUTORING', title: '学习辅导', description: '寻找课程辅导与学习伙伴', icon: BookOpenText },
   { value: 'TEAM_UP', title: '活动组队', description: '招募成员，一起完成活动', icon: UsersRound },
@@ -203,7 +219,7 @@ function formatCampusCoins(amount: number): string {
 // 是否需要展示“目标人数”输入框（仅 SELECT_MANY 模式需要，包含 TEAM_UP 与 OTHER+SELECT_MANY）
 const showTargetParticipantCount = computed(() => effectiveInteractionMode.value === 'SELECT_MANY')
 
-// 是否需要展示“互动模式”选择框（仅 OTHER 分类需要用户手动选择）
+// 是否需要展示“参与方式”选择框（仅 OTHER 分类需要用户手动选择）
 const showInteractionMode = computed(() => form.category === 'OTHER')
 const typeFormCopy = computed(() => {
   switch (form.category) {
@@ -297,6 +313,14 @@ function runValidations(): void {
     const amount = Number(rewardText)
     if (Number.isNaN(amount) || amount < 0) {
       setFieldError('reward', '请输入有效的报酬（可为 0）')
+    } else {
+      // 余额校验纳入统一校验入口，避免提交时跳过校验、仅依赖后端 400 兜底
+      const balance = Number(store.currentUser?.balance ?? 0)
+      const frozen = Number(store.currentUser?.frozenBalance ?? 0)
+      const available = Math.max(0, balance - frozen)
+      if (amount > available) {
+        setFieldError('reward', `奖励不能超过当前可用余额 ${formatCampusCoins(available)}`)
+      }
     }
   }
 
@@ -320,9 +344,9 @@ function runValidations(): void {
 
   if (form.category === 'OTHER') {
     if (!form.interactionMode) {
-      setFieldError('interactionMode', '请选择互动模式')
+      setFieldError('interactionMode', '请选择参与方式')
     } else if (!['DIRECT_ACCEPT', 'SELECT_ONE', 'SELECT_MANY'].includes(form.interactionMode)) {
-      setFieldError('interactionMode', '互动模式无效')
+      setFieldError('interactionMode', '请选择有效的参与方式')
     }
   }
 
@@ -419,6 +443,10 @@ watch(form, () => {
   if (hasFormContent.value && !published.value) {
     saveDemandDraft(getSavedDraft())
   }
+  // 用户修改表单后清除上一轮校验摘要，避免修正后残留“请完善以下信息”提示
+  if (error.value.startsWith('请完善')) {
+    error.value = ''
+  }
 }, { deep: true })
 
 // 路由离开前询问是否保留草稿
@@ -478,6 +506,7 @@ async function submitDemand(): Promise<void> {
   error.value = ''
   message.value = ''
 
+  submitAttempted.value = true
   runValidations()
   if (!isFormValid.value) {
     const labels = missingFieldLabels.value
@@ -582,7 +611,7 @@ const AI_DIALOG_FIELD_LABELS: Record<string, string> = {
   endTime: '结束时间',
   reward: '报酬',
   tags: '标签',
-  interactionMode: '互动模式',
+  interactionMode: '参与方式',
   targetParticipantCount: '目标人数'
 }
 
@@ -875,7 +904,7 @@ async function confirmAiType(): Promise<void> {
             <label for="demand-title">{{ typeFormCopy.title }} <span class="required-mark">*</span></label>
             <p v-if="aiFieldStatus('title')" class="field-origin">{{ aiFieldStatus('title') }}</p>
             <input id="demand-title" v-model="form.title" maxlength="200" :placeholder="titlePlaceholder" @input="errors.title = ''; markFieldManual('title')" />
-            <p v-if="errors.title" class="input-help" style="color: var(--danger)">{{ errors.title }}</p>
+            <p v-if="visibleErrors.title" class="input-help" style="color: var(--danger)">{{ errors.title }}</p>
           </div>
 
           <div class="field" style="grid-column: 1 / -1;">
@@ -891,7 +920,7 @@ async function confirmAiType(): Promise<void> {
               <option value="">请选择</option>
               <option v-for="category in DEMAND_CATEGORY_OPTIONS" :key="category" :value="category">{{ formatDemandCategory(category) }}</option>
             </select>
-            <p v-if="errors.category" class="input-help" style="color: var(--danger)">{{ errors.category }}</p>
+            <p v-if="visibleErrors.category" class="input-help" style="color: var(--danger)">{{ errors.category }}</p>
           </div>
 
           <div class="field">
@@ -901,23 +930,23 @@ async function confirmAiType(): Promise<void> {
               <option value="">请选择</option>
               <option v-for="zone in campusZoneOptions()" :key="zone.value" :value="zone.value">{{ zone.label }}</option>
             </select>
-            <p v-if="errors.campusZone" class="input-help" style="color: var(--danger)">{{ errors.campusZone }}</p>
+            <p v-if="visibleErrors.campusZone" class="input-help" style="color: var(--danger)">{{ errors.campusZone }}</p>
           </div>
 
           <div class="field">
             <label for="demand-location">地点 <span class="required-mark">*</span></label>
             <p v-if="aiFieldStatus('location')" class="field-origin">{{ aiFieldStatus('location') }}</p>
             <input id="demand-location" v-model="form.location" :placeholder="locationPlaceholder" @input="errors.location = ''; markFieldManual('location')" />
-            <p v-if="errors.location" class="input-help" style="color: var(--danger)">{{ errors.location }}</p>
+            <p v-if="visibleErrors.location" class="input-help" style="color: var(--danger)">{{ errors.location }}</p>
             <p class="input-help" style="visibility: hidden;">&nbsp;</p>
           </div>
 
           <div class="field">
             <label for="demand-reward">奖励（校邻币） <span class="required-mark">*</span></label>
             <p v-if="aiFieldStatus('reward')" class="field-origin">{{ aiFieldStatus('reward') }}</p>
-            <input id="demand-reward" v-model="form.reward" type="number" min="0" step="1" @blur="checkRewardBalance" @input="errors.reward = ''; markFieldManual('reward')" />
+            <input id="demand-reward" v-model="form.reward" type="number" min="0" step="1" @blur="checkRewardBalance" @input="errors.reward = ''; rewardError = ''; markFieldManual('reward')" />
             <p class="input-help" style="margin-top:4px;">可用余额：{{ formatCampusCoins(Math.max(0, Number(store.currentUser?.balance ?? 0) - Number(store.currentUser?.frozenBalance ?? 0))) }}</p>
-            <p v-if="rewardError || errors.reward" style="color: var(--danger); margin-top: 6px">{{ rewardError || errors.reward }}</p>
+            <p v-if="rewardError || visibleErrors.reward" style="color: var(--danger); margin-top: 6px">{{ rewardError || errors.reward }}</p>
           </div>
 
           <div v-if="showTargetParticipantCount" class="field" style="grid-column: 1 / -1;">
@@ -933,11 +962,11 @@ async function confirmAiType(): Promise<void> {
               placeholder="需要几人"
               @input="errors.targetParticipantCount = ''; markFieldManual('targetParticipantCount')"
             />
-            <p v-if="errors.targetParticipantCount" class="input-help" style="color: var(--danger)">{{ errors.targetParticipantCount }}</p>
+            <p v-if="visibleErrors.targetParticipantCount" class="input-help" style="color: var(--danger)">{{ errors.targetParticipantCount }}</p>
           </div>
 
           <div v-if="showInteractionMode" class="field" style="grid-column: 1 / -1;">
-            <label for="demand-interaction-mode">互动模式 <span class="required-mark">*</span></label>
+            <label for="demand-interaction-mode">参与方式 <span class="required-mark">*</span></label>
             <p v-if="aiFieldStatus('interactionMode')" class="field-origin">{{ aiFieldStatus('interactionMode') }}</p>
             <select id="demand-interaction-mode" v-model="form.interactionMode" @change="errors.interactionMode = ''; markFieldManual('interactionMode')">
               <option value="">请选择</option>
@@ -945,7 +974,7 @@ async function confirmAiType(): Promise<void> {
               <option value="SELECT_ONE">选择一人</option>
               <option value="SELECT_MANY">组队选择</option>
             </select>
-            <p v-if="errors.interactionMode" class="input-help" style="color: var(--danger)">{{ errors.interactionMode }}</p>
+            <p v-if="visibleErrors.interactionMode" class="input-help" style="color: var(--danger)">{{ errors.interactionMode }}</p>
           </div>
 
           <div class="field">
@@ -957,7 +986,7 @@ async function confirmAiType(): Promise<void> {
               type="datetime-local"
               @change="clearStartTimeError(); markFieldManual('startTime')"
             />
-            <p v-if="errors.startTime" class="input-help" style="color: var(--danger)">{{ errors.startTime }}</p>
+            <p v-if="visibleErrors.startTime" class="input-help" style="color: var(--danger)">{{ errors.startTime }}</p>
           </div>
 
           <div class="field">
@@ -970,7 +999,7 @@ async function confirmAiType(): Promise<void> {
               :min="form.startDateTime || undefined"
               @change="clearEndTimeError(); markFieldManual('endTime')"
             />
-            <p v-if="errors.endTime" class="input-help" style="color: var(--danger)">{{ errors.endTime }}</p>
+            <p v-if="visibleErrors.endTime" class="input-help" style="color: var(--danger)">{{ errors.endTime }}</p>
           </div>
 
           <div class="field" style="grid-column: 1 / -1;">
@@ -1256,7 +1285,7 @@ input[type="datetime-local"]:hover::-webkit-calendar-picker-indicator {
 .ai-form-legend { margin: 0; padding: 10px 12px; color: #355f49; background: #edf5ef; border-radius: 9px; font-size: 12px; line-height: 1.5; }
 .field-origin { margin: 0 0 5px; color: #54735e; font-size: 11px; line-height: 1.35; }
 .ai-candidate label { margin-top: 4px; font-size: 13px; font-weight: 600; }
-.ai-candidate select { width: 100%; padding: 10px 12px; color: var(--text-strong); background: #fff; border: 1px solid #d8e0da; border-radius: 9px; }
+.ai-candidate select { width: 100%; padding: 10px 32px 10px 12px; color: var(--text-strong); background: #fff; border: 1px solid #d8e0da; border-radius: 9px; background-image: var(--select-arrow); background-repeat: no-repeat; background-position: right 10px center; background-size: 12px 8px; }
 .ai-candidate .button { justify-self: start; margin-top: 6px; }
 
 @media (min-width: 1200px) {

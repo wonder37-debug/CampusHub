@@ -15,7 +15,10 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Repository
 public class MyBatisDemandResponseRepository implements DemandResponseRepository {
@@ -114,6 +117,35 @@ public class MyBatisDemandResponseRepository implements DemandResponseRepository
             .stream()
             .map(DemandResponseEntity::toDomain)
             .toList();
+    }
+
+    @Override
+    public boolean existsSelectedByDemandIdAndAuthorId(Long demandId, Long authorId) {
+        if (demandId == null || authorId == null) {
+            return false;
+        }
+        return demandResponseMapper.selectCount(new LambdaQueryWrapper<DemandResponseEntity>()
+                .eq(DemandResponseEntity::getDemandId, demandId)
+                .eq(DemandResponseEntity::getAuthorId, authorId)
+                .eq(DemandResponseEntity::getStatus, ResponseStatus.SELECTED.name())) > 0;
+    }
+
+    @Override
+    public Set<Long> findSelectedDemandIdsByAuthor(Long authorId, Collection<Long> demandIds) {
+        if (authorId == null || demandIds == null || demandIds.isEmpty()) {
+            return Set.of();
+        }
+        // 只取 demand_id 一列，一次查询返回当前用户在这些需求中已选中的子集，避免逐条 EXISTS 产生 N+1
+        List<DemandResponseEntity> entities = demandResponseMapper.selectList(
+            new LambdaQueryWrapper<DemandResponseEntity>()
+                .select(DemandResponseEntity::getDemandId)
+                .eq(DemandResponseEntity::getAuthorId, authorId)
+                .eq(DemandResponseEntity::getStatus, ResponseStatus.SELECTED.name())
+                .in(DemandResponseEntity::getDemandId, demandIds));
+        return entities.stream()
+            .map(DemandResponseEntity::getDemandId)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toSet());
     }
 
     @Override

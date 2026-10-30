@@ -117,6 +117,21 @@ public class NotificationApplicationServiceImpl implements NotificationApplicati
     }
 
     @Override
+    public void notifyOrderDeletedByAdmin(Long receiverId, Long demandId, String demandTitle, String reason) {
+        if (receiverId == null || demandId == null) {
+            return;
+        }
+        String summary = reason != null && reason.length() > 80 ? reason.substring(0, 80) + "…" : (reason != null ? reason : "");
+        createNotification(receiverId, new NotificationDraft(
+            NotificationType.ORDER_DELETED,
+            "订单已被管理员删除",
+            "订单《" + (demandTitle != null ? demandTitle : "相关需求") + "》已被管理员删除并取消"
+                + (summary.isEmpty() ? "" : "，原因：" + summary),
+            demandId
+        ));
+    }
+
+    @Override
     public void notifyDemandResponseReceived(Long receiverId, Long demandId, String demandTitle, String responderNickname) {
         if (receiverId == null || demandId == null) {
             return;
@@ -410,7 +425,7 @@ public class NotificationApplicationServiceImpl implements NotificationApplicati
             case ORDER_ACCEPTED, STATUS_CHANGED, REVIEW_RECEIVED, PENDING_REVIEW,
                 ORDER_ARBITRATION_REQUESTED, ORDER_ARBITRATION_RESOLVED -> "ORDER";
             case REVIEW_REQUEST, DEMAND_REJECTED, DEMAND_APPROVED,
-                RESPONSE_REVIEW_RECEIVED, DEMAND_RESPONSE_RECEIVED,
+                RESPONSE_REVIEW_RECEIVED, DEMAND_RESPONSE_RECEIVED, ORDER_DELETED,
                 DEMAND_RESPONSE_SELECTED, DEMAND_RESPONSE_REJECTED, DEMAND_ANSWER_ACCEPTED,
                 TEAM_UP_COMPLETED, DEMAND_CLOSED -> "DEMAND";
         };
@@ -447,8 +462,9 @@ public class NotificationApplicationServiceImpl implements NotificationApplicati
         return switch (type) {
             case REVIEW_REQUEST -> "REVIEW_DEMAND";
             case DEMAND_REJECTED, DEMAND_APPROVED, RESPONSE_REVIEW_RECEIVED,
-                DEMAND_RESPONSE_RECEIVED, DEMAND_RESPONSE_SELECTED, DEMAND_RESPONSE_REJECTED,
-                DEMAND_ANSWER_ACCEPTED, TEAM_UP_COMPLETED, DEMAND_CLOSED -> "VIEW_DEMAND";
+                DEMAND_RESPONSE_RECEIVED, ORDER_DELETED, DEMAND_RESPONSE_SELECTED,
+                DEMAND_RESPONSE_REJECTED, DEMAND_ANSWER_ACCEPTED,
+                TEAM_UP_COMPLETED, DEMAND_CLOSED -> "VIEW_DEMAND";
             case REVIEW_RECEIVED, PENDING_REVIEW, ORDER_ACCEPTED, STATUS_CHANGED,
                 ORDER_ARBITRATION_REQUESTED, ORDER_ARBITRATION_RESOLVED ->
                 "ORDER".equals(targetType) ? "VIEW_ORDER" : "VIEW_DEMAND";

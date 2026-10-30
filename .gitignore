@@ -51,3 +51,7 @@ uploads/
 
 # Playwright MCP 测试产物
 .playwright-mcp/
+
+# 参赛材料（本地保留，不提交到代码仓库）
+参赛作品说明文档-*.docx
+*参赛作品模板.docx

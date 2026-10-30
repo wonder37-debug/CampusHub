@@ -165,6 +165,18 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
             throw new BusinessException(ErrorCode.PERMISSION_DENIED, "only publisher can edit this demand");
         }
 
+        // 履约冻结：已创建正式订单（未完成/未取消）的需求，交易条款（悬赏/分类/时间等）不允许单方修改。
+        // 订单结算使用 demand 当前 reward，若履约中仍可改悬赏会破坏双方约定；
+        // 前端不显示编辑按钮不够，后端 API 可被直接调用，必须在服务层拦截。
+        orderRepository.findByDemandId(demandId)
+            .filter(existingOrder -> existingOrder.getStatus() == OrderStatus.ACCEPTED
+                || existingOrder.getStatus() == OrderStatus.IN_PROGRESS
+                || existingOrder.getStatus() == OrderStatus.IN_ARBITRATION)
+            .ifPresent(existingOrder -> {
+                throw new BusinessException(ErrorCode.BUSINESS_CONFLICT,
+                    "demand is locked by an in-progress order; terms cannot be modified");
+            });
+
         // 锁持有期间统计 Response，避免 createResponse 并发插入导致漏判
         boolean hasResponses = demandResponseRepository.countByDemandId(demandId) > 0;
 

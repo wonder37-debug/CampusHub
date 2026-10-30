@@ -210,6 +210,8 @@ export function formatNotificationType(type: NotificationType): string {
       return '组队评价收到'
     case 'DEMAND_RESPONSE_RECEIVED':
       return '新响应'
+    case 'ORDER_DELETED':
+      return '订单删除'
     case 'DEMAND_RESPONSE_SELECTED':
       return '响应已选中'
     case 'DEMAND_RESPONSE_REJECTED':

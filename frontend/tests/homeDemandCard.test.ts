@@ -91,4 +91,43 @@ describe('首页 Demand 卡片业务信息', () => {
     expect(card.participantProgress).toBeNull()
     expect(card.statusLabel).toBe('开放中')
   })
+
+  it('同日按完整年月日压成起止时刻，跨年同月同日不误判为同日', () => {
+    const sameDay = getHomeDemandCard(demand({
+      startTime: '2026-10-12T10:00:00',
+      endTime: '2026-10-12T12:00:00'
+    }), 'viewer-2')
+    expect(sameDay.timeLabel).toBe('10/12 10:00–12:00')
+
+    const crossYear = getHomeDemandCard(demand({
+      startTime: '2025-10-12T10:00:00',
+      endTime: '2026-10-12T12:00:00'
+    }), 'viewer-2')
+    expect(crossYear.timeLabel).toBe('10/12 10:00 起')
+    expect(crossYear.timeLabel).not.toContain('–')
+  })
+
+  it('跨日、无效时间、缺起止不会错误显示压缩时段', () => {
+    const crossDay = getHomeDemandCard(demand({
+      startTime: '2026-10-12T10:00:00',
+      endTime: '2026-10-13T12:00:00'
+    }), 'viewer-2')
+    expect(crossDay.timeLabel).toBe('10/12 10:00 起')
+
+    const invalid = getHomeDemandCard(demand({
+      startTime: 'not-a-date',
+      endTime: '2026-10-12T12:00:00'
+    }), 'viewer-2')
+    expect(invalid.timeLabel).toContain('起')
+    expect(invalid.timeLabel).not.toContain('–')
+
+    const onlyStart = getHomeDemandCard(demand({ startTime: '2026-10-12T10:00:00', endTime: '' }), 'viewer-2')
+    expect(onlyStart.timeLabel).toBe('10/12 10:00')
+
+    const onlyEnd = getHomeDemandCard(demand({ startTime: '', endTime: '2026-10-12T12:00:00' }), 'viewer-2')
+    expect(onlyEnd.timeLabel).toBe('10/12 12:00')
+
+    const none = getHomeDemandCard(demand({ startTime: '', endTime: '' }), 'viewer-2')
+    expect(none.timeLabel).toBeNull()
+  })
 })

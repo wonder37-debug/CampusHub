@@ -227,7 +227,7 @@ describe('DemandPublishView - TEAM_UP 表单校验', () => {
     expect((wrapper.find('#demand-target-count').element as HTMLInputElement).value).toBe('')
   })
 
-  it('TEAM_UP 不要求 interactionMode - 互动模式选择框不渲染', async () => {
+  it('TEAM_UP 不要求 interactionMode - 参与方式选择框不渲染', async () => {
     const wrapper = mountPublishView()
     await fillCommonRequiredFields(wrapper)
     expect(wrapper.find('select#demand-interaction-mode').exists()).toBe(false)
@@ -241,6 +241,6 @@ describe('DemandPublishView - TEAM_UP 表单校验', () => {
     await submitForm(wrapper)
 
     const errorText = wrapper.find('p.hero-badge').text()
-    expect(errorText).toContain('互动模式')
+    expect(errorText).toContain('参与方式')
   })
 })

@@ -12,12 +12,18 @@ const props = defineProps<{
 }>()
 
 const imageFailed = ref(false)
+const imageLoaded = ref(false)
 const view = computed(() => getHomeDemandCard(props.demand, props.currentUserId))
 const imageUrl = computed(() => props.demand.images?.find((image) => image.trim()) ?? '')
 
-watch(() => props.demand.id, () => {
+watch([() => props.demand.id, imageUrl], () => {
   imageFailed.value = false
+  imageLoaded.value = false
 })
+
+function markImageLoaded(): void {
+  imageLoaded.value = true
+}
 
 function markImageFailed(): void {
   imageFailed.value = true
@@ -27,17 +33,24 @@ function markImageFailed(): void {
 <template>
   <article class="home-card">
     <RouterLink class="home-card__link" :to="`/demands/${demand.id}`" :aria-label="`查看需求：${demand.title}`">
-      <div class="home-card__image" :class="{ 'home-card__image--empty': !imageUrl || imageFailed }">
+      <div class="home-card__media" :class="{ 'home-card__media--text': !imageUrl || imageFailed }">
         <img
           v-if="imageUrl && !imageFailed"
           :src="imageUrl"
           :alt="`需求图片：${demand.title}`"
           loading="lazy"
           decoding="async"
+          :class="{ 'is-loaded': imageLoaded }"
+          @load="markImageLoaded"
           @error="markImageFailed"
         />
-        <div v-else class="home-card__image-placeholder" aria-hidden="true"></div>
-        <span class="home-card__image-category">{{ formatDemandCategory(demand.category) }}</span>
+        <div v-else class="home-card__media-text">
+          <span class="home-card__media-eyebrow">{{ view.focusLabel }}</span>
+          <p class="home-card__media-title">{{ demand.title }}</p>
+          <p class="home-card__media-desc">{{ truncateText(demand.description || '暂未补充详细说明', 60) }}</p>
+          <span v-if="demand.tags?.length" class="home-card__media-tags">{{ demand.tags.slice(0, 2).join(' · ') }}</span>
+        </div>
+        <span class="home-card__media-category">{{ formatDemandCategory(demand.category) }}</span>
       </div>
 
       <div class="home-card__content">
@@ -128,36 +141,92 @@ function markImageFailed(): void {
   border-radius: inherit;
 }
 
-.home-card__image {
+.home-card__media {
   position: relative;
   width: 100%;
   aspect-ratio: 4 / 3;
   overflow: hidden;
-  background: var(--muted);
+  /* 图片按原比例 contain 居中，四周留白用中性浅灰承载，避免拉伸或裁切 */
+  background: #e9ede9;
 }
 
-.home-card__image > img {
+.home-card__media > img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  transition: transform 220ms ease;
+  object-fit: contain;
+  opacity: 0;
+  transition: transform 220ms ease, opacity 220ms ease;
 }
 
-.home-card:hover .home-card__image > img {
+.home-card__media > img.is-loaded {
+  opacity: 1;
+}
+
+.home-card:hover .home-card__media > img {
   transform: scale(1.025);
 }
 
-.home-card__image--empty {
-  background: #edf1ec;
+.home-card__media--text {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(120% 100% at 12% 0%, rgb(255 255 255 / 85%) 0%, transparent 58%),
+    linear-gradient(140deg, #eef3ee 0%, #e2ebe4 100%);
 }
 
-.home-card__image-placeholder {
+.home-card__media-text {
+  display: flex;
   width: 100%;
   height: 100%;
-  background: linear-gradient(135deg, #eef3ee, #e2ebe4);
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 7px;
+  padding: 20px 17px;
 }
 
-.home-card__image-category {
+/* 无图占位即封面：分类小标 + 标题艺术字 + 摘要，替代灰块 */
+.home-card__media-eyebrow {
+  color: var(--accent);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+.home-card__media-title {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: var(--accent-strong);
+  font-family: var(--heading);
+  font-size: 1.18rem;
+  font-weight: 730;
+  letter-spacing: -0.02em;
+  line-height: 1.32;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.home-card__media-desc {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: #40514a;
+  font-size: 0.78rem;
+  font-weight: 500;
+  line-height: 1.55;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.home-card__media-tags {
+  color: var(--muted-foreground);
+  font-size: 0.7rem;
+  font-weight: 500;
+}
+
+.home-card__media-category {
   position: absolute;
   right: 12px;
   bottom: 12px;
@@ -170,11 +239,18 @@ function markImageFailed(): void {
   font-weight: 650;
 }
 
+.home-card__media--text .home-card__media-category {
+  border-color: rgba(43, 107, 93, 0.18);
+  background: rgba(255, 255, 255, 0.88);
+}
+
 .home-card__content {
   display: flex;
-  min-height: 245px;
-  flex: 1;
+  /* 固定内容区高度：所有卡片等高，不随描述行数/标签有无波动 */
+  height: 246px;
+  flex: none;
   flex-direction: column;
+  overflow: hidden;
   padding: 15px 17px 14px;
 }
 
@@ -237,10 +313,12 @@ function markImageFailed(): void {
 .home-card__highlights {
   display: flex;
   min-height: 29px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 6px 13px;
   margin-top: 10px;
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 .home-card__reward,
@@ -251,6 +329,7 @@ function markImageFailed(): void {
 }
 
 .home-card__meta {
+  min-width: 0;
   overflow: hidden;
   color: var(--muted-foreground);
   font-size: 0.75rem;
@@ -271,8 +350,8 @@ function markImageFailed(): void {
   overflow: hidden;
   padding: 3px 7px;
   border-radius: 999px;
-  background: var(--muted);
-  color: var(--muted-foreground);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
   font-size: 0.68rem;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -290,7 +369,7 @@ function markImageFailed(): void {
   justify-content: space-between;
   gap: 8px;
   margin-top: auto;
-  padding-top: 11px;
+  padding: 11px 17px 14px;
   border-top: 1px solid var(--border);
 }
 
@@ -339,8 +418,13 @@ function markImageFailed(): void {
 
 @media (prefers-reduced-motion: reduce) {
   .home-card,
-  .home-card__image > img {
+  .home-card__media > img {
     transition: none;
   }
+}
+
+/* 图片淡入就绪前保持占位底色，避免加载瞬间的白闪 */
+.home-card__media > img:not(.is-loaded) {
+  background: #e9ede9;
 }
 </style>

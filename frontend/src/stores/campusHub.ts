@@ -1082,8 +1082,9 @@ export const useCampusHubStore = defineStore('campusHub', {
         this.publicUserReviewsError = null
       }
       try {
+        // direction=received：公开信任档案只统计与展示“收到的评价”，避免把本人发出的评价混入
         const payload = await requestJson<any>(
-          `/users/${encodeURIComponent(userId)}/reviews?page=${page}&size=${size}`, {}, this.token)
+          `/users/${encodeURIComponent(userId)}/reviews?page=${page}&size=${size}&direction=received`, {}, this.token)
         const items = Array.isArray(payload?.items) ? payload.items : (Array.isArray(payload) ? payload : [])
         const mapped = items.map((item: any) => mapReviewRecord(item))
         // 仅当仍是最新请求且目标用户未切换时才写入，防止旧请求覆盖新用户数据
@@ -1562,7 +1563,8 @@ export const useCampusHubStore = defineStore('campusHub', {
           categoryDistribution: Array.isArray(payload?.categoryDistribution)
             ? payload.categoryDistribution.map((item: any) => ({
                 category: String(item.category ?? ''),
-                total: Number(item.total ?? 0)
+                // 后端 AdminCategoryStatResponse 字段名为 count，兼容读取 total 避免旧字段名导致恒为 0
+                total: Number(item.count ?? item.total ?? 0)
               }))
             : []
         }

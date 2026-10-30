@@ -12,7 +12,6 @@ import com.campushub.backend.common.security.CurrentUser;
 import com.campushub.backend.demand.domain.Demand;
 import com.campushub.backend.demand.domain.DemandStatus;
 import com.campushub.backend.demand.domain.InteractionMode;
-import com.campushub.backend.demand.domain.ResponseStatus;
 import com.campushub.backend.demand.repository.DemandRepository;
 import com.campushub.backend.demand.repository.DemandResponseRepository;
 import com.campushub.backend.order.domain.ArbitrationSubmission;
@@ -65,10 +64,19 @@ public class ApiViewMapper {
     }
 
     public DemandView toDemandView(Demand demand, CurrentUser currentUser, Map<Long, User> userMap, Map<Long, Order> orderMap, Map<Long, Long> selectedCountMap) {
+        return toDemandView(demand, currentUser, userMap, orderMap, selectedCountMap, null);
+    }
+
+    public DemandView toDemandView(Demand demand, CurrentUser currentUser, Map<Long, User> userMap, Map<Long, Order> orderMap,
+            Map<Long, Long> selectedCountMap, Set<Long> selectedDemandIdsByCurrentUser) {
         boolean canSeePublisher = canSeeDemandPublisher(demand, currentUser);
         User publisherUser = demand.getPublisherId() == null ? null : resolveUser(demand.getPublisherId(), userMap);
         Long publisherId = canSeePublisher ? demand.getPublisherId() : null;
-        String publisherDisplayName = canSeePublisher ? demand.getPublisherDisplayName() : demand.getAnonymousCode();
+        // publisher_display_name 是发布时的反范式快照，用户改昵称后会过期；
+        // 统一优先使用 users 表的实时昵称，仅在用户无法解析时回退快照值，避免列表与详情昵称不一致。
+        String publisherDisplayName = canSeePublisher
+            ? resolveLivePublisherDisplayName(publisherUser, demand.getPublisherDisplayName())
+            : demand.getAnonymousCode();
         PublicUserSummaryView publisher = publisherUser == null
             ? null
             : canSeePublisher
@@ -126,7 +134,7 @@ public class ApiViewMapper {
             canViewAcceptNote(relatedOrder, currentUser),
             canSubmitAcceptNote(relatedOrder, currentUser),
             demand.getImages(),
-            resolveContactInfo(demand, relatedOrder, currentUser),
+            resolveContactInfo(demand, relatedOrder, currentUser, selectedDemandIdsByCurrentUser),
             demand.getCreatedAt(),
             demand.getUpdatedAt()
         );
@@ -136,6 +144,16 @@ public class ApiViewMapper {
         if (id == null) return null;
         if (map != null) return map.get(id);
         return userRepository.findById(id).orElse(null);
+    }
+
+    /**
+     * 解析发布者显示名：优先取 users 表实时昵称，用户不存在或昵称为空时回退需求快照。
+     */
+    private String resolveLivePublisherDisplayName(User publisherUser, String snapshotDisplayName) {
+        if (publisherUser != null && publisherUser.getNickname() != null && !publisherUser.getNickname().isBlank()) {
+            return publisherUser.getNickname();
+        }
+        return snapshotDisplayName;
     }
 
     private Order resolveOrder(Long demandId, Map<Long, Order> map) {
@@ -226,7 +244,9 @@ public class ApiViewMapper {
             resolvePendingReviewTarget(order, currentUser, currentUserReviewed, canSeePublisher),
             resolveCompletionHint(order, currentUser),
             demand == null ? List.of() : demand.getImages(),
-            resolveContactInfo(demand, order, currentUser),
+            // SELECT_MANY 组队与 HELP 采纳不创建正式 Order，被选中参与者通过 DemandResponse(SELECTED) 授权；
+            // 订单视图不存在这类需求，传 null 让 fallback 分支永不触发。
+            resolveContactInfo(demand, order, currentUser, null),
             canSeeOrderPrivate ? resolveArbitrationResult(order) : null,
             arbitrationSubmissions,
             canSubmitArbitrationResponse
@@ -389,9 +409,13 @@ public class ApiViewMapper {
     }
 
     /**
-     * 联系方式仅对接单人、发布者和管理员可见。
+     * 联系方式仅对接单人、发布者、已选中的组队/采纳参与者和管理员可见。
+     *
+     * <p>SELECT_MANY 组队与 HELP 采纳不创建正式 Order，被选中参与者通过 DemandResponse(SELECTED) 授权；
+     * 未选中的报名者、游客与普通第三方仍不可见。</p>
      */
-    private String resolveContactInfo(Demand demand, Order relatedOrder, CurrentUser currentUser) {
+    private String resolveContactInfo(Demand demand, Order relatedOrder, CurrentUser currentUser,
+            Set<Long> selectedDemandIdsByCurrentUser) {
         if (demand == null || demand.getContactInfo() == null) {
             return null;
         }
@@ -408,16 +432,32 @@ public class ApiViewMapper {
             && relatedOrder.getAccepterId().equals(currentUser.userId())) {
             return demand.getContactInfo();
         }
-        // SELECT_MANY has no formal Order: selected group members need the publisher contact.
-        if (demand.getInteractionMode() == InteractionMode.SELECT_MANY
-            && demand.getId() != null
-            && demandResponseRepository != null
-            && demandResponseRepository.findSelectedByDemandId(demand.getId()).stream()
-                .anyMatch(response -> currentUser.userId().equals(response.getAuthorId())
-                    && response.getStatus() == ResponseStatus.SELECTED)) {
+        if (demand.getId() != null && demandResponseRepository != null
+            && isSelectedResponder(demand.getId(), currentUser.userId(), selectedDemandIdsByCurrentUser)) {
             return demand.getContactInfo();
         }
         return null;
+    }
+
+    /**
+     * 判断当前用户是否为该需求的已选中参与者（SELECTED 响应）。
+     * 覆盖 SELECT_MANY 被选中的组队成员与 HELP 被采纳的回答者——
+     * 这两类流程不创建正式 Order，需要独立的授权依据。
+     *
+     * <p>列表场景传入 selectedDemandIdsByCurrentUser（batch 预加载）避免 N+1；
+     * 单条场景 fallback 到 existsSelectedByDemandIdAndAuthorId。</p>
+     */
+    private boolean isSelectedResponder(Long demandId, Long userId, Set<Long> selectedDemandIdsByCurrentUser) {
+        if (demandId == null || userId == null) {
+            return false;
+        }
+        if (selectedDemandIdsByCurrentUser != null) {
+            return selectedDemandIdsByCurrentUser.contains(demandId);
+        }
+        if (demandResponseRepository == null) {
+            return false;
+        }
+        return demandResponseRepository.existsSelectedByDemandIdAndAuthorId(demandId, userId);
     }
 
     /**

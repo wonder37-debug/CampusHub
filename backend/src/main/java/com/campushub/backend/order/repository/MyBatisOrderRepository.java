@@ -132,6 +132,16 @@ public class MyBatisOrderRepository implements OrderRepository {
     }
 
     @Override
+    public List<Order> findAllByStatus(OrderStatus status) {
+        if (status == null) {
+            return List.of();
+        }
+        return assembleWithBatchHistory(orderMapper.selectList(new LambdaQueryWrapper<OrderEntity>()
+            .eq(OrderEntity::getStatus, status.name())
+            .orderByAsc(OrderEntity::getId)));
+    }
+
+    @Override
     public List<Order> findArbitrationPage(int page, int size) {
         LambdaQueryWrapper<OrderEntity> wrapper = new LambdaQueryWrapper<OrderEntity>()
             .eq(OrderEntity::getStatus, OrderStatus.IN_ARBITRATION.name())

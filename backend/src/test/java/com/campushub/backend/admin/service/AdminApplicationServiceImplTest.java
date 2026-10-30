@@ -331,6 +331,12 @@ class AdminApplicationServiceImplTest {
             new RequestOrderArbitrationCommand("存在争议")
         );
 
+        // 仲裁中的订单禁止直接删除：不能绕过正式裁决并销毁争议证据
+        BusinessException inArbitrationBlocked = assertThrows(BusinessException.class, () ->
+            adminApplicationService.deleteOrder(adminId, order.orderId(), "尝试绕过仲裁删除"));
+        assertEquals(ErrorCode.BUSINESS_CONFLICT, inArbitrationBlocked.getErrorCode());
+        assertTrue(orderRepository.findById(order.orderId()).isPresent(), "仲裁中订单不应被删除");
+
         OrderDetailResponse resolved = adminApplicationService.resolveOrderArbitration(
             adminId,
             order.orderId(),
@@ -338,8 +344,47 @@ class AdminApplicationServiceImplTest {
         );
         assertEquals("COMPLETED", resolved.status());
 
-        adminApplicationService.deleteOrder(adminId, order.orderId(), "清理测试数据");
+        // 已完成订单包含结算与评价记录，不允许物理删除
+        BusinessException completedBlocked = assertThrows(BusinessException.class, () ->
+            adminApplicationService.deleteOrder(adminId, order.orderId(), "尝试删除已完成订单"));
+        assertEquals(ErrorCode.BUSINESS_CONFLICT, completedBlocked.getErrorCode());
+        assertTrue(orderRepository.findById(order.orderId()).isPresent(), "已完成订单不应被删除");
+    }
+
+    @Test
+    void shouldRejectDeleteWithoutReasonAndDeleteCancelledOrderWithNotifications() {
+        DemandDetailResponse demand = createDemand("仲裁取消需求", "OTHER");
+        demandRepository.findById(demand.id()).ifPresent(saved -> {
+            saved.setStatus(DemandStatus.PENDING);
+            demandRepository.save(saved);
+        });
+        OrderDetailResponse order = orderApplicationService.accept(accepterId, demand.id(), new AcceptOrderCommand("接单"));
+        orderApplicationService.requestArbitration(
+            publisherId,
+            order.orderId(),
+            new RequestOrderArbitrationCommand("存在争议")
+        );
+        adminApplicationService.resolveOrderArbitration(
+            adminId,
+            order.orderId(),
+            new AdminOrderArbitrationCommand("cancel", "核实后取消")
+        );
+
+        // 删除原因必填（可追溯，用于通知双方）
+        assertThrows(BusinessException.class, () ->
+            adminApplicationService.deleteOrder(adminId, order.orderId(), null));
+
+        // 已取消订单允许处置式删除（解冻幂等，不会重复退款）
+        adminApplicationService.deleteOrder(adminId, order.orderId(), "违规订单清理");
         assertTrue(orderRepository.findById(order.orderId()).isEmpty());
+
+        // 双方均收到 ORDER_DELETED 通知，relatedId 指向关联需求
+        List<String> publisherTypes = notificationRepository.findByUserId(publisherId).stream()
+            .map(notification -> notification.getType().name()).toList();
+        List<String> accepterTypes = notificationRepository.findByUserId(accepterId).stream()
+            .map(notification -> notification.getType().name()).toList();
+        assertTrue(publisherTypes.contains("ORDER_DELETED"), "发布者应收到订单删除通知");
+        assertTrue(accepterTypes.contains("ORDER_DELETED"), "接单方应收到订单删除通知");
     }
 
     @Test

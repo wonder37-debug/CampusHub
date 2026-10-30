@@ -3,7 +3,6 @@ package com.campushub.backend.demand.service;
 import com.campushub.backend.auth.domain.User;
 import com.campushub.backend.auth.domain.UserRole;
 import com.campushub.backend.auth.domain.UserStatus;
-import com.campushub.backend.auth.domain.UserRole;
 import com.campushub.backend.auth.repository.UserRepository;
 import com.campushub.backend.common.exception.BusinessException;
 import com.campushub.backend.common.exception.ErrorCode;
@@ -89,6 +88,8 @@ public class DemandResponseApplicationServiceImpl implements DemandResponseAppli
         if (!demand.getIsApproved() || demand.getStatus() != DemandStatus.PENDING) {
             throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "demand is not open for responses");
         }
+        // 过期调度器有 5 分钟窗口：锁内直接校验 endTime，避免过期后仍接受新留言/报名/回答
+        requireDemandNotExpired(demand);
         if (demand.getPublisherId() != null && demand.getPublisherId().equals(operatorId)) {
             throw new BusinessException(ErrorCode.PERMISSION_DENIED, "publisher cannot respond to own demand");
         }
@@ -395,6 +396,15 @@ public class DemandResponseApplicationServiceImpl implements DemandResponseAppli
         if (demand.getStatus() != DemandStatus.PENDING) {
             throw new BusinessException(ErrorCode.BUSINESS_CONFLICT,
                 "only PENDING demand can be selected, current status: " + demand.getStatus());
+        }
+        // 过期调度器有 5 分钟窗口：锁内直接校验 endTime，避免“已过截止但状态尚未刷新”时仍可选人/采纳
+        requireDemandNotExpired(demand);
+    }
+
+    private void requireDemandNotExpired(Demand demand) {
+        if (demand.getEndTime() != null && demand.getEndTime().isBefore(LocalDateTime.now())) {
+            throw new BusinessException(ErrorCode.BUSINESS_CONFLICT,
+                "demand has passed its endTime and can no longer accept new actions");
         }
     }
 
