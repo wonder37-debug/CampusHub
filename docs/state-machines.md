@@ -81,7 +81,7 @@ stateDiagram-v2
 | 5 | `REVIEWING`/`PENDING` → `CANCELLED` | 发布者 | `POST /demands/{id}/withdraw` | 状态 ∈ {`REVIEWING`,`PENDING`} | **解冻**；通知 `PENDING`/`SELECTED` 响应者 | `DemandApplicationServiceImpl.java:304`（状态 `:314`） |
 | 6 | `PENDING` → `IN_PROGRESS` | 接单方 | `POST /demands/{id}/accept` | 模式 = `DIRECT_ACCEPT`；状态 = `PENDING`；未过期；非发布者；非 admin；无既有 Order | 创建 `Order=ACCEPTED` | `order/service/OrderApplicationServiceImpl.java:97`（状态 `:141`） |
 | 7 | `PENDING` → `IN_PROGRESS` | 发布者 | `POST /demands/{id}/responses/{rid}/select` | 模式 = `SELECT_ONE`；响应为 `PENDING`；响应者非 admin | 创建 `Order=ACCEPTED`；该响应 `SELECTED`；其余 `PENDING`→`REJECTED` | `demand/service/DemandResponseApplicationServiceImpl.java:156` → `OrderApplicationServiceImpl.java:153`（状态 `:201`） |
-| 8 | `PENDING` → `COMPLETED` | 发布者 | `POST /demands/{id}/responses/select` | 模式 = `SELECT_MANY`；累计已选 ≥ `targetParticipantCount`；响应者非 admin | **平分结算**；无 Order；通知全员「组队已完成」 | `DemandResponseApplicationServiceImpl.java:186` → `completeTeamUpDemand :326`（状态 `:331`） |
+| 8 | `PENDING` → `COMPLETED` | 发布者 | `POST /demands/{id}/responses/select` | 模式 = `SELECT_MANY`；累计已选 ≥ `targetParticipantCount`；响应者非 admin | **平分结算**；无 Order；其余 `PENDING`→`REJECTED`；通知全员「组队已完成」 | `DemandResponseApplicationServiceImpl.java:186` → `completeTeamUpDemand :326`（状态 `:331`） |
 | 9 | `PENDING` → `COMPLETED` | 发布者 | `POST /demands/{id}/responses/{rid}/accept-answer` | 模式 = `HELP`；响应为 `PENDING`；响应者非 admin | **全额结算**；无 Order；通知「回答已采纳」 | `DemandResponseApplicationServiceImpl.java:236`（状态 `:257`） |
 | 10 | `IN_PROGRESS` → `COMPLETED` | 双方 | `PUT /orders/{id}` | 双方均已确认 | 转账；通知双方 | `order/service/OrderApplicationServiceImpl.java:447`（`confirmCompletion`，Demand 状态 `:502`，Order 状态 `:488`） |
 | 11 | `IN_PROGRESS` → `COMPLETED` | **系统** | `@Scheduled(fixedRate=300000)` | 接单方已确认且**超过 48 小时**发布者仍未确认 | 转账；通知双方；历史记录 `SYSTEM_AUTO_COMPLETED` | `order/service/OrderAutoCompletionScheduler.java:48` → `OrderApplicationServiceImpl.java:402`（`autoCompleteOverdueOrder`，Demand 状态 `:422`，Order 状态 `:418`，48h 判定 `:444`） |
@@ -238,9 +238,10 @@ stateDiagram-v2
                                                                     │
                                     发布者分批选人 ◄─────────────────┘
                                           │
-                                          ├─ 未满员：通知「响应已选中」，
-                                          │          其余 PENDING→REJECTED，
-                                          │          Demand 保持 PENDING，可继续选
+                                          ├─ 未满员：选中的响应标 SELECTED 并通知本人，
+                                          │          其余响应保持 PENDING 供后续选择，
+                                          │          Demand 保持 PENDING，可继续选人，
+                                          │          也可整体撤回（悬赏解冻）
                                           │
                                           └─ 累计达到 targetParticipantCount：
                                                  Demand=COMPLETED（跳过 IN_PROGRESS）
@@ -285,29 +286,32 @@ stateDiagram-v2
 
 ---
 
-## 7. 已知设计边界
+## 7. 设计边界
 
-以下是代码与设计一致、但设计本身留下的缺口，记录在此以免误认为缺陷。
+以下几条是代码的有意设计，但容易与流程 A/B 混淆，单列说明。
 
-### 7.1 `SELECT_MANY` 与 `HELP` 没有履约与争议解决机制
+### 7.1 `SELECT_MANY` 与 `HELP` 不创建 Order
 
-这两种模式**不创建 Order**，选中/采纳即终态，悬赏在那一刻已经转出。
+这两种模式没有 Order 实体，因此不经过凭证提交、双方确认、48 小时自动完成与仲裁链路，
+由 `Demand` 与 `DemandResponse` 两个实体承载全部状态。
 
 | 能力 | 流程 A/B（有 Order） | 流程 C/D（无 Order） |
 |---|---|---|
 | 凭证提交 | ✅ 1-3 张私密图片 | ❌ |
-| 双方确认完成 | ✅ 双确认 | ❌ 选人即终态 |
+| 双方确认完成 | ✅ 双确认 | ❌ 无确认环节 |
 | 48h 超时自动完成 | ✅ | ❌ |
 | 仲裁 | ✅ 管理员裁决 | ❌ |
-| 取消 / 退款 | ✅ 接单方可取消 | ❌ 选中不可撤销 |
-| 资金保护 | 完成才转账 | **选人瞬间全额转出** |
+| 取消 / 退款 | ✅ 接单方可取消 | 见下 |
 
-**影响**：组队发布者选中 3 人、悬赏 90 元，这 90 元在「点选择」这一刻就平分转出。
-若组队成员后续不履约，发布者**没有任何追回途径**。问答模式同理，采纳即全额转出。
+两者的结算时机不同：
 
-**这是一个待决策项，不是缺陷。** 可选缓解：为 `SELECT_MANY` 增加「组队未开始前发布者可解散并退款」的窗口。
+- **`SELECT_MANY`**：累计选中数达到 `targetParticipantCount` 时需求转为 `COMPLETED`，
+  悬赏按选中人数平分（余数由最后一人承担，保证总和等于总悬赏，`RewardSettlementServiceImpl:40`）。
+  未达目标人数前需求保持 `PENDING`，悬赏仍处于冻结状态，发布者可撤回需求取回。
+- **`HELP`**：发布者采纳某一回答时需求转为 `COMPLETED`，悬赏全额结算给被采纳者（`:262`）。
+  此后需求不可撤回。
 
-### 7.2 `DemandStatus.IN_PROGRESS` 对流程 C/D 是死状态
+### 7.2 `DemandStatus.IN_PROGRESS` 对流程 C/D 不可达
 
 只有流程 A/B 能到达 `IN_PROGRESS`。前端对组队/问答需求永远不会显示「进行中」。
 
