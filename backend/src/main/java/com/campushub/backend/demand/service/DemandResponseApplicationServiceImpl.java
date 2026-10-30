@@ -77,6 +77,9 @@ public class DemandResponseApplicationServiceImpl implements DemandResponseAppli
         }
 
         User author = findActiveUser(operatorId);
+        if (author.getRole() == UserRole.ADMIN) {
+            throw new BusinessException(ErrorCode.PERMISSION_DENIED, "admin cannot respond to demands");
+        }
         Demand demand = findDemandForUpdate(demandId);
 
         if (demand.getInteractionMode() == InteractionMode.DIRECT_ACCEPT) {
@@ -161,6 +164,7 @@ public class DemandResponseApplicationServiceImpl implements DemandResponseAppli
         if (response.getStatus() != ResponseStatus.PENDING) {
             throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "only pending response can be selected");
         }
+        requireNonAdminResponder(response.getAuthorId());
 
         // 创建 Order 进入履约（复用现有 Order 状态机、评价、仲裁体系）
         OrderDetailResponse orderDetail = orderApplicationService.createOrderForSelectedResponse(
@@ -172,7 +176,7 @@ public class DemandResponseApplicationServiceImpl implements DemandResponseAppli
         response.setUpdatedAt(LocalDateTime.now());
         demandResponseRepository.save(response);
 
-        // 拒绝其他 PENDING Response
+        // formal Order creation already notifies both parties; only notify other applicants that they were not selected.
         rejectOtherPendingResponses(demandId, List.of(responseId));
 
         return orderDetail;
@@ -202,24 +206,29 @@ public class DemandResponseApplicationServiceImpl implements DemandResponseAppli
 
         // 校验所有 responseId 属于该 Demand 且状态 PENDING
         LocalDateTime now = LocalDateTime.now();
+        List<Long> newlySelectedAuthorIds = new java.util.ArrayList<>();
         for (Long responseId : responseIds) {
             DemandResponse response = findResponse(responseId);
             requireResponseBelongsToDemand(response, demandId);
             if (response.getStatus() != ResponseStatus.PENDING) {
                 throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "response " + responseId + " is not pending");
             }
+            requireNonAdminResponder(response.getAuthorId());
             response.setStatus(ResponseStatus.SELECTED);
             response.setUpdatedAt(now);
             demandResponseRepository.save(response);
+            newlySelectedAuthorIds.add(response.getAuthorId());
         }
 
         long totalSelected = alreadySelected + responseIds.size();
         if (totalSelected >= demand.getTargetParticipantCount()) {
-            // 达到目标人数，立即完成并平分 reward
+            // 达到目标人数，立即完成并平分 reward；completeTeamUpDemand 会通知全部成员
             return completeTeamUpDemand(demand, now);
         }
 
-        // 未达目标人数，保留其他 PENDING Response 供后续分批选择
+        for (Long authorId : newlySelectedAuthorIds) {
+            notificationApplicationService.notifyDemandResponseSelected(authorId, demandId);
+        }
         return DemandDetailResponse.from(demand);
     }
 
@@ -235,6 +244,7 @@ public class DemandResponseApplicationServiceImpl implements DemandResponseAppli
         if (response.getStatus() != ResponseStatus.PENDING) {
             throw new BusinessException(ErrorCode.BUSINESS_CONFLICT, "only pending response can be accepted");
         }
+        requireNonAdminResponder(response.getAuthorId());
 
         LocalDateTime now = LocalDateTime.now();
         response.setStatus(ResponseStatus.SELECTED);
@@ -250,6 +260,7 @@ public class DemandResponseApplicationServiceImpl implements DemandResponseAppli
 
         BigDecimal reward = demand.getReward() == null ? BigDecimal.ZERO : demand.getReward();
         rewardSettlementService.settleToAccepter(demand.getPublisherId(), response.getAuthorId(), reward);
+        notificationApplicationService.notifyDemandAnswerAccepted(response.getAuthorId(), demandId);
 
         return DemandDetailResponse.from(demand);
     }
@@ -324,6 +335,9 @@ public class DemandResponseApplicationServiceImpl implements DemandResponseAppli
         List<Long> accepterIds = selected.stream().map(DemandResponse::getAuthorId).toList();
         BigDecimal reward = demand.getReward() == null ? BigDecimal.ZERO : demand.getReward();
         rewardSettlementService.settleToMultipleAccepters(demand.getPublisherId(), accepterIds, reward);
+        for (Long accepterId : accepterIds) {
+            notificationApplicationService.notifyTeamUpCompleted(accepterId, demand.getId());
+        }
 
         // 拒绝剩余 PENDING Response
         rejectOtherPendingResponses(demand.getId(), selected.stream().map(DemandResponse::getId).toList());
@@ -332,12 +346,17 @@ public class DemandResponseApplicationServiceImpl implements DemandResponseAppli
 
     private void rejectOtherPendingResponses(Long demandId, List<Long> excludedResponseIds) {
         List<DemandResponse> pending = demandResponseRepository.findByDemandIdAndStatusIn(demandId, List.of(ResponseStatus.PENDING));
+        List<Long> selectedAuthorIds = demandResponseRepository.findByIdIn(excludedResponseIds).stream()
+            .map(DemandResponse::getAuthorId).toList();
         LocalDateTime now = LocalDateTime.now();
         for (DemandResponse r : pending) {
             if (!excludedResponseIds.contains(r.getId())) {
                 r.setStatus(ResponseStatus.REJECTED);
                 r.setUpdatedAt(now);
                 demandResponseRepository.save(r);
+                if (!selectedAuthorIds.contains(r.getAuthorId())) {
+                    notificationApplicationService.notifyDemandResponseRejected(r.getAuthorId(), demandId);
+                }
             }
         }
     }
@@ -395,6 +414,13 @@ public class DemandResponseApplicationServiceImpl implements DemandResponseAppli
         }
         return demandResponseRepository.findById(responseId)
             .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "response not found"));
+    }
+
+    private void requireNonAdminResponder(Long responderId) {
+        User responder = findActiveUser(responderId);
+        if (responder.getRole() == UserRole.ADMIN) {
+            throw new BusinessException(ErrorCode.PERMISSION_DENIED, "admin cannot be selected as responder");
+        }
     }
 
     private User findActiveUser(Long userId) {

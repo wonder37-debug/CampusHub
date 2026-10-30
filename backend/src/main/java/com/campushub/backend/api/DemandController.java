@@ -160,10 +160,13 @@ public class DemandController {
         Map<Long, Order> orderMap = orderRepository.findAllByDemandIdIn(demandIds).stream()
             .collect(Collectors.toMap(Order::getDemandId, o -> o));
         Map<Long, Long> selectedCountMap = demandResponseRepository.countSelectedByDemandIds(demandIds);
+        Set<Long> selectedDemandIdsByCurrentUser = currentUser == null ? Set.of()
+            : demandResponseRepository.findSelectedDemandIdsByAuthor(currentUser.userId(), demandIds);
         List<DemandView> items = demandIds.stream()
             .map(demandMap::get)
             .filter(Objects::nonNull)
-            .map(demand -> apiViewMapper.toDemandView(demand, currentUser, userMap, orderMap, selectedCountMap))
+            .map(demand -> apiViewMapper.toDemandView(demand, currentUser, userMap, orderMap, selectedCountMap,
+                selectedDemandIdsByCurrentUser))
             .toList();
         return ApiResponse.success(new PageResponse<>(items, rawPage.page(), rawPage.size(), rawPage.total()));
     }

@@ -73,6 +73,11 @@ function iconFor(type: string): string {
   if (type === 'ORDER_ARBITRATION_RESOLVED') return '📘'
   if (type === 'ORDER_DELETED') return '🗑️'
   if (type === 'DEMAND_RESPONSE_RECEIVED') return '💬'
+  if (type === 'DEMAND_RESPONSE_SELECTED') return '📣'
+  if (type === 'DEMAND_RESPONSE_REJECTED') return '🗒️'
+  if (type === 'DEMAND_ANSWER_ACCEPTED') return '✅'
+  if (type === 'TEAM_UP_COMPLETED') return '🎉'
+  if (type === 'DEMAND_CLOSED') return '🔒'
   if (type === 'PENDING_REVIEW') return '📝'
   return '🔔'
 }

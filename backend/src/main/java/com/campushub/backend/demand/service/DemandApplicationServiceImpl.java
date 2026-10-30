@@ -12,6 +12,7 @@ import com.campushub.backend.demand.domain.Demand;
 import com.campushub.backend.demand.domain.DemandCategory;
 import com.campushub.backend.demand.domain.DemandStatus;
 import com.campushub.backend.demand.domain.InteractionMode;
+import com.campushub.backend.demand.domain.ResponseStatus;
 import com.campushub.backend.demand.dto.DemandDetailResponse;
 import com.campushub.backend.demand.dto.DemandQuery;
 import com.campushub.backend.demand.dto.DemandSummaryResponse;
@@ -314,6 +315,12 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
         demand.setUpdatedAt(LocalDateTime.now());
         unfreezeBalanceForDemand(demand);
         demandRepository.save(demand);
+        demandResponseRepository.findByDemandId(demandId).stream()
+            .filter(response -> response.getStatus() == ResponseStatus.PENDING
+                || response.getStatus() == ResponseStatus.SELECTED)
+            .map(com.campushub.backend.demand.domain.DemandResponse::getAuthorId)
+            .distinct()
+            .forEach(responderId -> notificationApplicationService.notifyDemandClosed(responderId, demandId));
         recordCancelAction(operatorId, demand);
         return DemandDetailResponse.from(demand);
     }

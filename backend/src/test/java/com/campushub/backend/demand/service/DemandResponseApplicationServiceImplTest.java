@@ -1270,6 +1270,80 @@ class DemandResponseApplicationServiceImplTest {
         return demandId;
     }
 
+    @Test
+    void shouldRejectAdminResponseEvenWhenCallingBackendDirectly() {
+        Long demandId = createTeamUpDemand(2);
+        Long adminId = userRepository.save(new User(
+            null, "response-admin@example.edu.cn", "20269999", "hash", "管理员", null,
+            UserRole.ADMIN, UserStatus.ACTIVE, 100, new BigDecimal("100.00"), BigDecimal.ZERO,
+            LocalDateTime.now(), LocalDateTime.now()
+        )).getId();
+
+        BusinessException exception = assertThrows(BusinessException.class,
+            () -> demandResponseApplicationService.createResponse(adminId, demandId,
+                new CreateDemandResponseCommand("管理员尝试报名")));
+
+        assertEquals(ErrorCode.PERMISSION_DENIED, exception.getErrorCode());
+        assertTrue(demandResponseRepository.findByDemandId(demandId).isEmpty());
+    }
+
+    @Test
+    void shouldExposeTeamUpContactOnlyToSelectedParticipants() {
+        Long demandId = demandApplicationService.publish(
+            publisherId,
+            new PublishDemandCommand(
+                "组队打球", "找队友", null, "TEAM_UP", "XIANLIN", "操场",
+                LocalDateTime.now().plusHours(1), LocalDateTime.now().plusHours(3),
+                new BigDecimal("10.00"), List.of("篮球"), null, "微信：组队联系", false, 2, null
+            )
+        ).id();
+        approveDemand(demandId);
+
+        DemandResponseDetail first = demandResponseApplicationService.createResponse(
+            responder1Id, demandId, new CreateDemandResponseCommand("我可以参加"));
+        demandResponseApplicationService.createResponse(
+            responder2Id, demandId, new CreateDemandResponseCommand("我也可以参加"));
+        demandResponseApplicationService.selectResponses(
+            publisherId, demandId, new SelectResponsesCommand(List.of(first.id())));
+
+        Demand demand = demandRepository.findById(demandId).orElseThrow();
+        DemandView selected = apiViewMapper.toDemandView(demand, new CurrentUser(responder1Id, UserRole.USER));
+        DemandView unselected = apiViewMapper.toDemandView(demand, new CurrentUser(responder2Id, UserRole.USER));
+        DemandView outsider = apiViewMapper.toDemandView(demand, new CurrentUser(outsiderId, UserRole.USER));
+
+        assertEquals("微信：组队联系", selected.contactInfo());
+        assertNull(unselected.contactInfo());
+        assertNull(outsider.contactInfo());
+    }
+
+    @Test
+    void shouldNotifySelectedAndCompletedTeamUpParticipants() {
+        Long demandId = createTeamUpDemand(3);
+        DemandResponseDetail first = demandResponseApplicationService.createResponse(
+            responder1Id, demandId, new CreateDemandResponseCommand("报名一"));
+        DemandResponseDetail second = demandResponseApplicationService.createResponse(
+            responder2Id, demandId, new CreateDemandResponseCommand("报名二"));
+        DemandResponseDetail third = demandResponseApplicationService.createResponse(
+            outsiderId, demandId, new CreateDemandResponseCommand("报名三"));
+
+        demandResponseApplicationService.selectResponses(
+            publisherId, demandId, new SelectResponsesCommand(List.of(first.id())));
+        assertTrue(notificationRepository.findPage(responder1Id,
+            new com.campushub.backend.notification.dto.NotificationQuery(
+                false, new com.campushub.backend.common.model.PageQuery(1, 50))).stream()
+            .anyMatch(n -> n.getType().name().equals("DEMAND_RESPONSE_SELECTED")));
+
+        DemandDetailResponse completed = demandResponseApplicationService.selectResponses(
+            publisherId, demandId, new SelectResponsesCommand(List.of(second.id(), third.id())));
+        assertEquals("COMPLETED", completed.status());
+        for (Long participantId : List.of(responder1Id, responder2Id, outsiderId)) {
+            assertTrue(notificationRepository.findPage(participantId,
+                new com.campushub.backend.notification.dto.NotificationQuery(
+                    false, new com.campushub.backend.common.model.PageQuery(1, 50))).stream()
+                .anyMatch(n -> n.getType().name().equals("TEAM_UP_COMPLETED")));
+        }
+    }
+
     private Long createTeamUpDemand(int targetCount) {
         Long demandId = demandApplicationService.publish(
             publisherId,

@@ -20,7 +20,14 @@ describe('首页需求列表错误状态', () => {
     let attempt = 0
     mockStore.value = reactive({
       currentUser: null,
-      demands: [],
+      demands: [{
+        id: 'demand-1', title: '正常展示的需求', description: '推荐服务不可用时仍能浏览',
+        category: 'EXPRESS', campusZone: 'GULOU', location: '图书馆', status: 'PENDING', reward: 0,
+        interactionMode: 'DIRECT_ACCEPT', targetParticipantCount: null, selectedParticipantCount: null,
+        anonymous: false, anonymousCode: null, publisherId: 'publisher-1', publisherName: '发布者', publisherAvatar: '',
+        createdAt: '2026-10-01T10:00:00', updatedAt: '2026-10-01T10:00:00', startTime: '2026-10-02T10:00:00',
+        endTime: '2026-10-02T12:00:00', tags: [], images: [], canAccept: false
+      }],
       demandFetchError: null,
       fetchDemands: vi.fn().mockImplementation(async () => {
         attempt++

@@ -64,6 +64,11 @@ public class ApiViewMapper {
     }
 
     public DemandView toDemandView(Demand demand, CurrentUser currentUser, Map<Long, User> userMap, Map<Long, Order> orderMap, Map<Long, Long> selectedCountMap) {
+        return toDemandView(demand, currentUser, userMap, orderMap, selectedCountMap, null);
+    }
+
+    public DemandView toDemandView(Demand demand, CurrentUser currentUser, Map<Long, User> userMap, Map<Long, Order> orderMap,
+            Map<Long, Long> selectedCountMap, Set<Long> selectedDemandIdsByCurrentUser) {
         boolean canSeePublisher = canSeeDemandPublisher(demand, currentUser);
         User publisherUser = demand.getPublisherId() == null ? null : resolveUser(demand.getPublisherId(), userMap);
         Long publisherId = canSeePublisher ? demand.getPublisherId() : null;
@@ -129,7 +134,7 @@ public class ApiViewMapper {
             canViewAcceptNote(relatedOrder, currentUser),
             canSubmitAcceptNote(relatedOrder, currentUser),
             demand.getImages(),
-            resolveContactInfo(demand, relatedOrder, currentUser),
+            resolveContactInfo(demand, relatedOrder, currentUser, selectedDemandIdsByCurrentUser),
             demand.getCreatedAt(),
             demand.getUpdatedAt()
         );
@@ -201,7 +206,9 @@ public class ApiViewMapper {
             && currentUser != null
             && order.isParticipant(currentUser.userId())
             && !arbitrationSubmissions.stream()
-                .anyMatch(s -> "INITIATOR".equals(s.role()) && currentUser.userId().equals(s.submitterId()));
+                .anyMatch(s -> "INITIATOR".equals(s.role()) && currentUser.userId().equals(s.submitterId()))
+            && !arbitrationSubmissions.stream()
+                .anyMatch(s -> "RESPONDER".equals(s.role()) && currentUser.userId().equals(s.submitterId()));
 
         List<ReviewView> reviews = resolveReviews(order.getId(), reviewByOrderIdMap).stream()
             .map(review -> toReviewView(review, canSeePublisher, order.getPublisherId(), anonymousCode,
@@ -237,7 +244,9 @@ public class ApiViewMapper {
             resolvePendingReviewTarget(order, currentUser, currentUserReviewed, canSeePublisher),
             resolveCompletionHint(order, currentUser),
             demand == null ? List.of() : demand.getImages(),
-            resolveContactInfo(demand, order, currentUser),
+            // SELECT_MANY 组队与 HELP 采纳不创建正式 Order，被选中参与者通过 DemandResponse(SELECTED) 授权；
+            // 订单视图不存在这类需求，传 null 让 fallback 分支永不触发。
+            resolveContactInfo(demand, order, currentUser, null),
             canSeeOrderPrivate ? resolveArbitrationResult(order) : null,
             arbitrationSubmissions,
             canSubmitArbitrationResponse
@@ -405,7 +414,8 @@ public class ApiViewMapper {
      * <p>SELECT_MANY 组队与 HELP 采纳不创建正式 Order，被选中参与者通过 DemandResponse(SELECTED) 授权；
      * 未选中的报名者、游客与普通第三方仍不可见。</p>
      */
-    private String resolveContactInfo(Demand demand, Order relatedOrder, CurrentUser currentUser) {
+    private String resolveContactInfo(Demand demand, Order relatedOrder, CurrentUser currentUser,
+            Set<Long> selectedDemandIdsByCurrentUser) {
         if (demand == null || demand.getContactInfo() == null) {
             return null;
         }
@@ -423,10 +433,31 @@ public class ApiViewMapper {
             return demand.getContactInfo();
         }
         if (demand.getId() != null && demandResponseRepository != null
-            && demandResponseRepository.existsSelectedByDemandIdAndAuthorId(demand.getId(), currentUser.userId())) {
+            && isSelectedResponder(demand.getId(), currentUser.userId(), selectedDemandIdsByCurrentUser)) {
             return demand.getContactInfo();
         }
         return null;
+    }
+
+    /**
+     * 判断当前用户是否为该需求的已选中参与者（SELECTED 响应）。
+     * 覆盖 SELECT_MANY 被选中的组队成员与 HELP 被采纳的回答者——
+     * 这两类流程不创建正式 Order，需要独立的授权依据。
+     *
+     * <p>列表场景传入 selectedDemandIdsByCurrentUser（batch 预加载）避免 N+1；
+     * 单条场景 fallback 到 existsSelectedByDemandIdAndAuthorId。</p>
+     */
+    private boolean isSelectedResponder(Long demandId, Long userId, Set<Long> selectedDemandIdsByCurrentUser) {
+        if (demandId == null || userId == null) {
+            return false;
+        }
+        if (selectedDemandIdsByCurrentUser != null) {
+            return selectedDemandIdsByCurrentUser.contains(demandId);
+        }
+        if (demandResponseRepository == null) {
+            return false;
+        }
+        return demandResponseRepository.existsSelectedByDemandIdAndAuthorId(demandId, userId);
     }
 
     /**

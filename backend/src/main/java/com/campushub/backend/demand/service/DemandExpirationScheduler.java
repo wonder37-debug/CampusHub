@@ -2,7 +2,11 @@ package com.campushub.backend.demand.service;
 
 import com.campushub.backend.demand.domain.Demand;
 import com.campushub.backend.demand.domain.DemandStatus;
+import com.campushub.backend.demand.domain.DemandResponse;
+import com.campushub.backend.demand.domain.ResponseStatus;
 import com.campushub.backend.demand.repository.DemandRepository;
+import com.campushub.backend.demand.repository.DemandResponseRepository;
+import com.campushub.backend.notification.service.NotificationApplicationService;
 import com.campushub.backend.order.service.RewardSettlementService;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -33,15 +37,21 @@ public class DemandExpirationScheduler {
     private static final Logger log = LoggerFactory.getLogger(DemandExpirationScheduler.class);
 
     private final DemandRepository demandRepository;
+    private final DemandResponseRepository demandResponseRepository;
+    private final NotificationApplicationService notificationApplicationService;
     private final RewardSettlementService rewardSettlementService;
     private final TransactionTemplate transactionTemplate;
 
     public DemandExpirationScheduler(
         DemandRepository demandRepository,
+        DemandResponseRepository demandResponseRepository,
+        NotificationApplicationService notificationApplicationService,
         RewardSettlementService rewardSettlementService,
         PlatformTransactionManager transactionManager
     ) {
         this.demandRepository = demandRepository;
+        this.demandResponseRepository = demandResponseRepository;
+        this.notificationApplicationService = notificationApplicationService;
         this.rewardSettlementService = rewardSettlementService;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
@@ -81,5 +91,11 @@ public class DemandExpirationScheduler {
         // 释放尚未结算的冻结悬赏，与 withdraw/reject/deleteOrder 路径对齐
         rewardSettlementService.refundToPublisher(demand.getPublisherId(), demand.getReward());
         demandRepository.save(demand);
+        demandResponseRepository.findByDemandId(demandId).stream()
+            .filter(response -> response.getStatus() == ResponseStatus.PENDING
+                || response.getStatus() == ResponseStatus.SELECTED)
+            .map(DemandResponse::getAuthorId)
+            .distinct()
+            .forEach(responderId -> notificationApplicationService.notifyDemandClosed(responderId, demandId));
     }
 }

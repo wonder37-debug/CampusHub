@@ -7,6 +7,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 public interface DemandResponseRepository {
 
@@ -28,6 +29,16 @@ public interface DemandResponseRepository {
      * 这两类流程不创建正式 Order，需要独立的授权依据。
      */
     boolean existsSelectedByDemandIdAndAuthorId(Long demandId, Long authorId);
+
+    /**
+     * 批量查询某用户在这些 Demand 中作为已选中参与者（SELECTED 响应）的 demandId 集合，
+     * 用于列表场景的联系方式授权判定，避免逐条 existsSelectedByDemandIdAndAuthorId 产生 N+1。
+     *
+     * @param authorId   当前用户 ID
+     * @param demandIds  需求 ID 集合，为空时返回空 Set
+     * @return 该用户已选中的 demandId 集合；无匹配时返回空 Set
+     */
+    Set<Long> findSelectedDemandIdsByAuthor(Long authorId, Collection<Long> demandIds);
 
     long countSelectedByDemandId(Long demandId);
 

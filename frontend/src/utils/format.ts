@@ -212,6 +212,16 @@ export function formatNotificationType(type: NotificationType): string {
       return '新响应'
     case 'ORDER_DELETED':
       return '订单删除'
+    case 'DEMAND_RESPONSE_SELECTED':
+      return '响应已选中'
+    case 'DEMAND_RESPONSE_REJECTED':
+      return '响应未选中'
+    case 'DEMAND_ANSWER_ACCEPTED':
+      return '回答已采纳'
+    case 'TEAM_UP_COMPLETED':
+      return '组队已完成'
+    case 'DEMAND_CLOSED':
+      return '需求已关闭'
   }
 }
 

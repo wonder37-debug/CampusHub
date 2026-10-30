@@ -283,6 +283,17 @@ const myRejectedResponse = computed(() => {
 const myResponseStatusHint = computed(() => {
   const resp = myActiveResponse.value
   if (!resp) return ''
+  if (demand.value?.status === 'CANCELLED' || demand.value?.status === 'EXPIRED') {
+    return interactionMode.value === 'SELECT_MANY' && resp.status === 'SELECTED'
+      ? '需求已关闭，组队未达到目标人数，奖励未结算。'
+      : '需求已关闭，当前响应不再继续处理。'
+  }
+  if (demand.value?.status === 'COMPLETED' && interactionMode.value === 'SELECT_MANY' && resp.status === 'SELECTED') {
+    return '组队已完成，奖励已结算。'
+  }
+  if (demand.value?.status === 'COMPLETED' && interactionMode.value === 'HELP' && resp.status === 'SELECTED') {
+    return '你的回答已被采纳，问题已解决。'
+  }
   switch (interactionMode.value) {
     case 'HELP':
       return resp.status === 'SELECTED'
@@ -300,7 +311,7 @@ const myResponseStatusHint = computed(() => {
 })
 
 // 当前用户的 Response 是否允许撤回（仅 PENDING 状态可撤回，SELECTED 已进入履约不能撤回）
-const canWithdrawMyResponse = computed(() => myActiveResponse.value?.status === 'PENDING')
+const canWithdrawMyResponse = computed(() => myActiveResponse.value?.status === 'PENDING' && demand.value?.status === 'PENDING')
 
 // 提交过程中禁用按钮，防止连续点击产生重复请求
 const responseSubmitting = ref(false)
@@ -640,7 +651,8 @@ onMounted(() => { void refreshDemand() })
               :disabled="responseSubmitting"
               @click="withdrawResponse(myActiveResponse.id)"
             >{{ responseSubmitting ? '撤回中...' : '撤回' }}</button>
-            <span v-else class="chip is-warning">已进入履约，无法撤回</span>
+            <!-- 仅 SELECTED 表示已进入履约；REJECTED/WITHDRAWN 与需求已关闭等状态由上方 myResponseStatusHint 说明 -->
+            <span v-else-if="myActiveResponse.status === 'SELECTED'" class="chip is-warning">已进入履约，无法撤回</span>
           </div>
         </div>
 
@@ -654,7 +666,7 @@ onMounted(() => { void refreshDemand() })
             </div>
             <div class="card-actions" style="gap: 8px;">
               <button
-                v-if="r.authorId === store.currentUser?.id && r.status === 'PENDING'"
+                v-if="r.authorId === store.currentUser?.id && r.status === 'PENDING' && demand.status === 'PENDING'"
                 type="button"
                 class="button secondary"
                 :disabled="responseSubmitting"

@@ -296,6 +296,11 @@ describe('workbenchRules - 通知分类', () => {
     expect(categorizeNotification('DEMAND_RESPONSE_RECEIVED')).toBe('interaction')
     expect(categorizeNotification('REVIEW_RECEIVED')).toBe('interaction')
     expect(categorizeNotification('RESPONSE_REVIEW_RECEIVED')).toBe('interaction')
+    expect(categorizeNotification('DEMAND_RESPONSE_SELECTED')).toBe('interaction')
+    expect(categorizeNotification('DEMAND_RESPONSE_REJECTED')).toBe('interaction')
+    expect(categorizeNotification('DEMAND_ANSWER_ACCEPTED')).toBe('interaction')
+    expect(categorizeNotification('TEAM_UP_COMPLETED')).toBe('interaction')
+    expect(categorizeNotification('DEMAND_CLOSED')).toBe('interaction')
   })
 
   it('订单履约通知：接单、状态变更、仲裁、待评价', () => {
