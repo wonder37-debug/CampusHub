@@ -6,9 +6,9 @@
 -- 由 DBA 手动执行。
 --
 -- 最低 MySQL 版本：8.0.16（CHECK 约束强制执行 + DROP CHECK 语法支持）。
--- MySQL 删除 CHECK 约束的语法是 DROP CHECK symbol：不支持 DROP CONSTRAINT，也不支持 IF EXISTS
--- （DROP CONSTRAINT ... IF EXISTS 是 MariaDB 的写法，在 MySQL 上是语法错误），
--- 因此按 information_schema 判定存在性后再条件执行。
+-- MySQL 8.0.16+ 删除 CHECK 约束可用 DROP CHECK symbol 或 DROP CONSTRAINT symbol（两者均实测可删除 CHECK），
+-- 但都不支持 IF EXISTS：DROP CHECK IF EXISTS 与 DROP CONSTRAINT IF EXISTS 均报 ERROR 1064 语法错误
+-- （带 IF EXISTS 的写法是 MariaDB 的语法），因此按 information_schema 判定存在性后再条件执行。
 -- 幂等：可安全重复执行（先检查 constraint_type='CHECK' 的约束是否存在，再决定 DROP 或跳过）。
 -- 安全：仅匹配 constraint_type='CHECK' 的约束，避免误删 FOREIGN KEY / UNIQUE 等其他约束。
 SET @constraint_exists = (SELECT COUNT(*) FROM information_schema.table_constraints
