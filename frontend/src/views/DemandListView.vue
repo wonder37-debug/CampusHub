@@ -132,7 +132,7 @@ async function refreshList(): Promise<void> {
       } catch {
         if (sequence === refreshSequence) {
           recommendedItems.value = []
-          recommendationsError.value = '推荐暂时不可用，已按发布时间排序展示需求。'
+          recommendationsError.value = '推荐排序暂时不可用，请重试或切换排序方式。'
         }
       }
     } else {
