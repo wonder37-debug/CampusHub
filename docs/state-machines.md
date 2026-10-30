@@ -3,7 +3,7 @@
 > 本文档描述需求（Demand）、订单（Order）、响应（Response）三条状态机的**完整转换规则**，
 > 以及七类需求各自的业务流程与资金流转路径。
 >
-> **基线**：`dab1caf`（2026-10-26，PR #29 合并后的 main）
+> **基线**：`ed7e7e7`（2026-10-30，PR #26 合并后的 main）
 > **维护原则**：以代码为唯一事实来源。每条转换均标注代码位置，核对方式见文末[「如何核对本文档」](#8-如何核对本文档)。
 
 ---
@@ -29,18 +29,18 @@
 | `HELP` | 互助问答 | `HELP` | ❌ |
 | `OTHER` | 其他 | **用户自选** `DIRECT_ACCEPT` / `SELECT_ONE` / `SELECT_MANY`（禁止 `HELP`） | 视选择 |
 
-`OTHER` 的取值约束见 `DemandApplicationServiceImpl.resolveInteractionMode()`（`demand/service/DemandApplicationServiceImpl.java:437`）。
+`OTHER` 的取值约束见 `DemandApplicationServiceImpl.resolveInteractionMode()`（`demand/service/DemandApplicationServiceImpl.java:444`）。
 
 **结论：实际只有 4 条流程，7 个分类是这 4 条流程的入口别名。**
 
-数据库层由三个 CHECK 约束兜底（`backend/src/main/resources/init_schema.sql`）：
+数据库层由五个 CHECK 约束兜底（`backend/src/main/resources/init_schema.sql`）：
 
 ```
 :101  chk_demand_category     7 值（含 HELP）
 :102  chk_demand_status       6 值（含 EXPIRED）
 :103  chk_demand_interaction  4 值
 :126  chk_order_status        5 值（含 IN_ARBITRATION）
-:214  chk_notify_type         12 值
+:214  chk_notify_type         17 值
 ```
 
 ---
@@ -74,17 +74,17 @@ stateDiagram-v2
 
 | # | 从 → 到 | 触发者 | 入口 | 前置条件 | 副作用 | 代码位置 |
 |---|---|---|---|---|---|---|
-| 1 | — → `REVIEWING` | 发布者 | `POST /demands` | 余额 ≥ 悬赏；敏感词通过 | 冻结悬赏；通知管理员 | `demand/service/DemandApplicationServiceImpl.java:79`（冻结 `:87`，状态 `:118`） |
+| 1 | — → `REVIEWING` | 发布者 | `POST /demands` | 余额 ≥ 悬赏；敏感词通过 | 冻结悬赏；通知管理员 | `demand/service/DemandApplicationServiceImpl.java:80`（冻结 `:88`，状态 `:119`） |
 | 2 | `REVIEWING` → `PENDING` | 管理员 | `POST /admin/demands/{id}/review` | 状态为 `REVIEWING` 且未过期 | `isApproved=true`；通知发布者 | `admin/service/AdminApplicationServiceImpl.java:188`（状态 `:209`） |
 | 3 | `REVIEWING` → `CANCELLED` | 管理员 | 同上 | 需填驳回原因 | `isApproved=false` + `reviewReason`；**解冻**；通知 | `AdminApplicationServiceImpl.java:215` |
-| 4 | `REVIEWING`/`PENDING` → `EXPIRED` | **定时任务** | `@Scheduled(fixedRate=300000)` | `endTime < now` | **解冻**；通知 `PENDING`/`SELECTED` 响应者「需求已关闭」 | `demand/service/DemandExpirationScheduler.java:51`（`expireOne` `:67`，状态 `:79`） |
-| 5 | `REVIEWING`/`PENDING` → `CANCELLED` | 发布者 | `POST /demands/{id}/withdraw` | 状态 ∈ {`REVIEWING`,`PENDING`} | **解冻**；通知 `PENDING`/`SELECTED` 响应者 | `DemandApplicationServiceImpl.java:303`（状态 `:313`） |
-| 6 | `PENDING` → `IN_PROGRESS` | 接单方 | `POST /demands/{id}/accept` | 模式 = `DIRECT_ACCEPT`；状态 = `PENDING`；未过期；非发布者；无既有 Order | 创建 `Order=ACCEPTED` | `order/service/OrderApplicationServiceImpl.java:97`（状态 `:141`） |
-| 7 | `PENDING` → `IN_PROGRESS` | 发布者 | `POST /demands/{id}/responses/{rid}/select` | 模式 = `SELECT_ONE`；响应为 `PENDING`；响应者非 admin | 创建 `Order=ACCEPTED`；该响应 `SELECTED`；其余 `PENDING`→`REJECTED` | `demand/service/DemandResponseApplicationServiceImpl.java:153` → `OrderApplicationServiceImpl.java:153`（状态 `:201`） |
-| 8 | `PENDING` → `COMPLETED` | 发布者 | `POST /demands/{id}/responses/select` | 模式 = `SELECT_MANY`；累计已选 ≥ `targetParticipantCount` | **平分结算**；无 Order；通知全员「组队已完成」 | `DemandResponseApplicationServiceImpl.java:182` → `completeTeamUpDemand :315`（状态 `:320`） |
-| 9 | `PENDING` → `COMPLETED` | 发布者 | `POST /demands/{id}/responses/{rid}/accept-answer` | 模式 = `HELP`；响应为 `PENDING` | **全额结算**；无 Order；通知「回答已采纳」 | `DemandResponseApplicationServiceImpl.java:227`（状态 `:247`） |
-| 10 | `IN_PROGRESS` → `COMPLETED` | 双方 | `PUT /orders/{id}` | 双方均已确认 | 转账；通知双方 | `order/service/OrderApplicationServiceImpl.java:442`（`confirmCompletion`，Demand 状态 `:497`，Order 状态 `:483`） |
-| 11 | `IN_PROGRESS` → `COMPLETED` | **系统** | `@Scheduled(fixedRate=300000)` | 接单方已确认且**超过 48 小时**发布者仍未确认 | 转账；通知双方；历史记录 `SYSTEM_AUTO_COMPLETED` | `order/service/OrderAutoCompletionScheduler.java:48` → `OrderApplicationServiceImpl.java:397`（`autoCompleteOverdueOrder`，Demand 状态 `:417`，Order 状态 `:413`，48h 判定 `:439`） |
+| 4 | `REVIEWING`/`PENDING` → `EXPIRED` | **定时任务** | `@Scheduled(fixedRate=300000)` | `endTime < now` | **解冻**；通知 `PENDING`/`SELECTED` 响应者「需求已关闭」 | `demand/service/DemandExpirationScheduler.java:61`（`expireOne` `:77`，状态 `:89`） |
+| 5 | `REVIEWING`/`PENDING` → `CANCELLED` | 发布者 | `POST /demands/{id}/withdraw` | 状态 ∈ {`REVIEWING`,`PENDING`} | **解冻**；通知 `PENDING`/`SELECTED` 响应者 | `DemandApplicationServiceImpl.java:304`（状态 `:314`） |
+| 6 | `PENDING` → `IN_PROGRESS` | 接单方 | `POST /demands/{id}/accept` | 模式 = `DIRECT_ACCEPT`；状态 = `PENDING`；未过期；非发布者；非 admin；无既有 Order | 创建 `Order=ACCEPTED` | `order/service/OrderApplicationServiceImpl.java:97`（状态 `:141`） |
+| 7 | `PENDING` → `IN_PROGRESS` | 发布者 | `POST /demands/{id}/responses/{rid}/select` | 模式 = `SELECT_ONE`；响应为 `PENDING`；响应者非 admin | 创建 `Order=ACCEPTED`；该响应 `SELECTED`；其余 `PENDING`→`REJECTED` | `demand/service/DemandResponseApplicationServiceImpl.java:156` → `OrderApplicationServiceImpl.java:153`（状态 `:201`） |
+| 8 | `PENDING` → `COMPLETED` | 发布者 | `POST /demands/{id}/responses/select` | 模式 = `SELECT_MANY`；累计已选 ≥ `targetParticipantCount`；响应者非 admin | **平分结算**；无 Order；通知全员「组队已完成」 | `DemandResponseApplicationServiceImpl.java:186` → `completeTeamUpDemand :326`（状态 `:331`） |
+| 9 | `PENDING` → `COMPLETED` | 发布者 | `POST /demands/{id}/responses/{rid}/accept-answer` | 模式 = `HELP`；响应为 `PENDING`；响应者非 admin | **全额结算**；无 Order；通知「回答已采纳」 | `DemandResponseApplicationServiceImpl.java:236`（状态 `:257`） |
+| 10 | `IN_PROGRESS` → `COMPLETED` | 双方 | `PUT /orders/{id}` | 双方均已确认 | 转账；通知双方 | `order/service/OrderApplicationServiceImpl.java:447`（`confirmCompletion`，Demand 状态 `:502`，Order 状态 `:488`） |
+| 11 | `IN_PROGRESS` → `COMPLETED` | **系统** | `@Scheduled(fixedRate=300000)` | 接单方已确认且**超过 48 小时**发布者仍未确认 | 转账；通知双方；历史记录 `SYSTEM_AUTO_COMPLETED` | `order/service/OrderAutoCompletionScheduler.java:48` → `OrderApplicationServiceImpl.java:402`（`autoCompleteOverdueOrder`，Demand 状态 `:422`，Order 状态 `:418`，48h 判定 `:444`） |
 | 12 | `IN_PROGRESS` → `COMPLETED` | 管理员 | `POST /admin/orders/{id}/arbitration/resolve` | `outcome=complete` | 转账 | `AdminApplicationServiceImpl.java:267`（状态 `:285`） |
 | 13 | `IN_PROGRESS` → `CANCELLED` | 接单方 | `PUT /orders/{id}` | 当前 = `ACCEPTED`；操作者为接单方 | **解冻**；通知双方 | `OrderApplicationServiceImpl.java:213`（状态 `:237`） |
 | 14 | `IN_PROGRESS` → `CANCELLED` | 管理员 | `DELETE /admin/orders/{id}` | 非 `IN_ARBITRATION`、非 `COMPLETED`；原因必填 | **解冻**；物理删订单；通知双方 | `AdminApplicationServiceImpl.java:230`（状态 `:251`） |
@@ -95,8 +95,10 @@ stateDiagram-v2
 ### 编辑窗口
 
 `Demand.isEditableBy()`（`demand/domain/Demand.java:98`）允许在 `PENDING` / `REVIEWING` / `IN_PROGRESS` 下编辑，
-但 `update()`（`DemandApplicationServiceImpl.java:155`）额外拦截：存在 `ACCEPTED`/`IN_PROGRESS`/`IN_ARBITRATION` 订单时锁死交易条款。
+但 `update()`（`DemandApplicationServiceImpl.java:156`）额外拦截：存在 `ACCEPTED`/`IN_PROGRESS`/`IN_ARBITRATION` 订单时锁死交易条款。
 因此 `IN_PROGRESS` 实际不可编辑（该状态必然伴随活跃订单）。
+
+悬赏变更按差额冻结/解冻（`update()` 内 `:254` / `:256`）。
 
 已有响应后禁止修改 `category` / `interactionMode`（`update()` 内 `hasResponses` 判断）。
 
@@ -132,18 +134,18 @@ stateDiagram-v2
 | # | 从 → 到 | 触发者 | 前置条件 | 代码位置 |
 |---|---|---|---|---|
 | 1 | — → `ACCEPTED` | 接单方 / 发布者 | 见 DemandStatus #6 / #7 | `OrderApplicationServiceImpl.java:127` / `:187` |
-| 2 | `ACCEPTED` → `IN_PROGRESS` | 接单方 | 当前 = `ACCEPTED`；操作者为接单方 | `OrderApplicationServiceImpl.java:231`，校验 `validateTransition :592` |
+| 2 | `ACCEPTED` → `IN_PROGRESS` | 接单方 | 当前 = `ACCEPTED`；操作者为接单方 | `OrderApplicationServiceImpl.java:231`，校验 `validateTransition :597` |
 | 3 | `ACCEPTED` → `CANCELLED` | 接单方 | 当前 = `ACCEPTED`；操作者为接单方 | 同上（状态 `:237`） |
-| 4 | `IN_PROGRESS` → `IN_PROGRESS`（自环） | 任一方 | 接单方需提交 1-3 张凭证图片 | `confirmCompletion :442` |
-| 5 | `IN_PROGRESS` → `COMPLETED` | 另一方 | 双方均已确认 | `confirmCompletion :442`（Order 状态 `:483`，Demand 状态 `:497`） |
-| 6 | `IN_PROGRESS` → `COMPLETED` | 系统 | 接单方已确认 + 48h | `autoCompleteOverdueOrder :397`（Order 状态 `:413`，Demand 状态 `:417`） |
-| 7 | `IN_PROGRESS` → `IN_ARBITRATION` | 任一方 | 状态 = `IN_PROGRESS` | `requestArbitration :255`（状态 `:271`） |
+| 4 | `IN_PROGRESS` → `IN_PROGRESS`（自环） | 任一方 | 接单方需提交 1-3 张凭证图片 | `confirmCompletion :447` |
+| 5 | `IN_PROGRESS` → `COMPLETED` | 另一方 | 双方均已确认 | `confirmCompletion :447`（Order 状态 `:488`，Demand 状态 `:502`） |
+| 6 | `IN_PROGRESS` → `COMPLETED` | 系统 | 接单方已确认 + 48h | `autoCompleteOverdueOrder :402`（Order 状态 `:418`，Demand 状态 `:422`） |
+| 7 | `IN_PROGRESS` → `IN_ARBITRATION` | 任一方 | 状态 = `IN_PROGRESS`；非发起方重复提交 | `requestArbitration :255`（状态 `:271`）；重复提交校验 `submitArbitrationResponse :292` |
 | 8 | `IN_ARBITRATION` → `COMPLETED` | 管理员 | `outcome=complete` | `AdminApplicationServiceImpl.java:283` |
 | 9 | `IN_ARBITRATION` → `CANCELLED` | 管理员 | `outcome=cancel` | `AdminApplicationServiceImpl.java:288` |
 
 ### 双确认规则
 
-`confirmCompletion()`（`OrderApplicationServiceImpl.java:442`）的关键约束：
+`confirmCompletion()`（`OrderApplicationServiceImpl.java:447`）的关键约束：
 
 - **接单方不能缺席**：发布者先确认会报错 `accepter has not submitted completion proof yet`
 - **首次确认不改变 Order 状态**：只置 `proofSubmitted=true` 并写入一条 `IN_PROGRESS → IN_PROGRESS` 的历史记录
@@ -173,12 +175,15 @@ stateDiagram-v2
 
 | # | 从 → 到 | 触发者 | 前置条件 | 代码位置 |
 |---|---|---|---|---|
-| 1 | — → `PENDING` | 任一非 admin 用户 | 模式 ≠ `DIRECT_ACCEPT`；需求已审核通过且 `PENDING`；未过期；非发布者；`SELECT_ONE`/`SELECT_MANY` 下一人仅一个 active 响应（`HELP` 允许多条） | `DemandResponseApplicationServiceImpl.java:70` |
-| 2 | `PENDING` → `SELECTED` | 发布者 | `SELECT_ONE` 单选 | `:153`（状态 `:171`） |
-| 3 | `PENDING` → `SELECTED` | 发布者 | `SELECT_MANY` 批量选 | `:182`（状态 `:211`） |
-| 4 | `PENDING` → `SELECTED` | 发布者 | `HELP` 采纳 | `:227`（状态 `:240`） |
-| 5 | `PENDING` → `REJECTED` | 发布者（间接） | 选中/采纳他人时，其余 `PENDING` 自动驳回并通知 | `rejectOtherPendingResponses :333`（状态 `:338`） |
-| 6 | `PENDING` → `WITHDRAWN` | 响应作者 | 状态 = `PENDING` | `:258`（状态 `:271`） |
+| 1 | — → `PENDING` | 任一非 admin 用户 | 模式 ≠ `DIRECT_ACCEPT`；需求已审核通过且 `PENDING`；未过期；非发布者；**非 admin**；`SELECT_ONE`/`SELECT_MANY` 下一人仅一个 active 响应（`HELP` 允许多条） | `DemandResponseApplicationServiceImpl.java:70` |
+| 2 | `PENDING` → `SELECTED` | 发布者 | `SELECT_ONE` 单选；响应者非 admin | `:156`（状态 `:175`，admin 校验 `requireNonAdminResponder :419`） |
+| 3 | `PENDING` → `SELECTED` | 发布者 | `SELECT_MANY` 批量选；响应者非 admin | `:186`（状态 `:217`） |
+| 4 | `PENDING` → `SELECTED` | 发布者 | `HELP` 采纳；响应者非 admin | `:236`（状态 `:250`） |
+| 5 | `PENDING` → `REJECTED` | 发布者（间接） | 选中/采纳他人时，其余 `PENDING` 自动驳回并通知 | `rejectOtherPendingResponses :347`（状态 `:354`） |
+| 6 | `PENDING` → `WITHDRAWN` | 响应作者 | 状态 = `PENDING` | `:269`（状态 `:282`） |
+
+> **admin 禁止成为响应者**：`createResponse`（`:70`）与三条选中路径均通过 `requireNonAdminResponder()`（`:419`）拦截，
+> 覆盖「直接调后端 API」这一绕过前端的路径。
 
 ---
 
@@ -271,8 +276,8 @@ stateDiagram-v2
 
 | 操作 | 实现 | 触发场景 |
 |---|---|---|
-| 冻结 | `DemandApplicationServiceImpl.freezeBalance()` `:467` | 发布需求（`:87`）、修改悬赏差额（`:253`） |
-| 解冻 | `DemandApplicationServiceImpl.unfreezeBalanceForDemand()` `:330`；公开入口 `unfreezePublisherBalance()` `:288` | 管理员驳回、发布者撤回、接单方取消、管理员删单、仲裁判取消、需求过期 |
+| 冻结 | `DemandApplicationServiceImpl.freezeBalance()` `:474` | 发布需求（`:88`）、修改悬赏差额（`:254`） |
+| 解冻 | `DemandApplicationServiceImpl.unfreezeBalanceForDemand()` `:337`；公开入口 `unfreezePublisherBalance()` `:289` | 管理员驳回、发布者撤回、接单方取消、管理员删单、仲裁判取消、需求过期 |
 | 全额转移 | `RewardSettlementServiceImpl.settleToAccepter()` `:24` | 流程 A/B 订单完成、流程 D 采纳回答 |
 | 平分转移 | `RewardSettlementServiceImpl.settleToMultipleAccepters()` `:40` | 流程 C 组队满员（余数由最后一人承担，保证总和等于总悬赏） |
 
@@ -334,7 +339,7 @@ grep -rn 'setStatus(OrderStatus\.'    backend/src/main/java
 grep -rn 'setStatus(ResponseStatus\.' backend/src/main/java
 
 # 2. 核对枚举值与 DB CHECK 约束是否一致
-grep -n 'chk_demand_status\|chk_demand_category\|chk_demand_interaction\|chk_order_status' \
+grep -n 'chk_demand_status\|chk_demand_category\|chk_demand_interaction\|chk_order_status\|chk_notify_type' \
   backend/src/main/resources/init_schema.sql
 
 # 3. 核对分类 → 互动模式映射
@@ -347,7 +352,7 @@ sed -n '33,45p' backend/src/main/java/com/campushub/backend/demand/domain/Intera
 
 | 测试类 | 数量 | 覆盖 |
 |---|---|---|
-| `DemandResponseApplicationServiceImplTest` | 73 | 响应流转、四种互动模式 |
+| `DemandResponseApplicationServiceImplTest` | 73 | 响应流转、四种互动模式、admin 禁为响应者 |
 | `OrderApplicationServiceImplTest` | 44 | 订单状态机、双确认、仲裁 |
 | `DemandApplicationServiceImplTest` | 10 | 发布、编辑、撤回 |
 | `DemandExpirationSchedulerTest` | 8 | 过期流转与资金解冻 |
