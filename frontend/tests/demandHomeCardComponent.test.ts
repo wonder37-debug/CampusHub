@@ -115,4 +115,26 @@ describe('DemandHomeCard 视觉和隐私边界', () => {
 
     expect(wrapper.get('.home-card__media').classes()).toContain('home-card__media--tone-second-hand')
   })
+
+  it('非匿名发布者渲染可访问的主页入口按钮', () => {
+    const wrapper = mountCard({
+      ...baseDemand,
+      anonymous: false,
+      anonymousCode: null,
+      publisherId: 'publisher-1',
+      publisherName: '小林',
+      images: []
+    })
+
+    const entry = wrapper.get('.home-card__publisher--link')
+    expect(entry.element.tagName).toBe('BUTTON')
+    expect(entry.attributes('type')).toBe('button')
+    expect(entry.attributes('aria-label')).toBe('查看 小林 的公开主页')
+  })
+
+  it('匿名卡片不提供主页入口', () => {
+    const wrapper = mountCard({ ...baseDemand, publisherId: 'publisher-1' })
+
+    expect(wrapper.find('.home-card__publisher--link').exists()).toBe(false)
+  })
 })

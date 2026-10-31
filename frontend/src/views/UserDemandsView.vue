@@ -25,6 +25,10 @@ let requestVersion = 0
 
 const hasMore = computed(() => localDemands.value.length < totalCount.value)
 const allLoaded = computed(() => !hasMore.value && localDemands.value.length > 0)
+// 匿名需求只对发布者本人可见；非本人浏览时即使后端返回也不能渲染（双保险）
+const visibleDemands = computed(() => localDemands.value.filter(
+  (demand) => !demand.anonymous || demand.publisherId === store.currentUser?.id
+))
 
 async function loadDemands(): Promise<void> {
   const version = ++requestVersion
@@ -87,7 +91,7 @@ async function refresh(): Promise<void> {
 }
 
 function backToProfile(): void {
-  router.push(`/users/${userId.value}`)
+  router.push(`/users/${userId.value}/profile`)
 }
 
 watch(() => route.params.id, (newId) => {
@@ -130,7 +134,7 @@ onMounted(() => {
       </div>
     </section>
 
-    <section v-else-if="!localDemands.length" class="panel">
+    <section v-else-if="!visibleDemands.length" class="panel">
       <div class="empty-state" style="--empty-icon:'📋'">
         <strong>暂无公开需求</strong>
         <p>该用户还没有发布公开需求，或需求尚在审核中。</p>
@@ -138,9 +142,9 @@ onMounted(() => {
       </div>
     </section>
 
-    <section v-else class="home-grid">
+    <section v-else class="home-grid home-grid--dense">
       <DemandHomeCard
-        v-for="demand in localDemands"
+        v-for="demand in visibleDemands"
         :key="demand.id"
         :demand="demand"
         :current-user-id="store.currentUser?.id ?? ''"

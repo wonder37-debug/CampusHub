@@ -8,6 +8,7 @@ import { formatMoney, formatRelativeTime, formatScore, formatUserRole, formatUse
 import { handleError } from '@/utils/errorHandler'
 import { useAlert } from '@/composables/useDialog'
 import { useModalA11y } from '@/composables/useModalA11y'
+import { useUserProfileLink } from '@/composables/useUserProfileLink'
 import AvatarCropper from '@/components/AvatarCropper.vue'
 
 const store = useCampusHubStore()
@@ -20,6 +21,12 @@ const changePasswordMessage = ref('')
 const changePasswordError = ref('')
 const changing = ref(false)
 const passwordDialogRef = ref<HTMLElement | null>(null)
+const { openUserProfile } = useUserProfileLink()
+
+// 匿名评价无法定位到具体用户，不提供主页跳转
+function canOpenReviewUser(displayName?: string | null): boolean {
+  return !!displayName && !displayName.startsWith('匿名')
+}
 
 // 改密弹窗：Esc 关闭、焦点锁在弹窗内、关闭后归还原位
 useModalA11y(showChangePassword, passwordDialogRef, { onClose: closeChangePassword })
@@ -217,7 +224,14 @@ onMounted(() => {
             <span class="meta">{{ formatRelativeTime(review.createdAt) }}</span>
           </div>
           <div class="review-item-body">
-            <span class="review-partner">{{ review.reviewerName }}</span>
+            <button
+              v-if="review.reviewerId && canOpenReviewUser(review.reviewerName)"
+              type="button"
+              class="link-button review-partner"
+              :aria-label="`查看 ${review.reviewerName} 的公开主页`"
+              @click="openUserProfile(review.reviewerId, review.reviewerName)"
+            >{{ review.reviewerName }}</button>
+            <span v-else class="review-partner">{{ review.reviewerName }}</span>
             <p class="review-comment">{{ review.comment || '暂无评价内容' }}</p>
           </div>
         </div>
@@ -249,7 +263,14 @@ onMounted(() => {
             <span class="meta">{{ formatRelativeTime(review.createdAt) }}</span>
           </div>
           <div class="review-item-body">
-            <span class="review-partner">{{ review.targetName }}</span>
+            <button
+              v-if="review.targetId && canOpenReviewUser(review.targetName)"
+              type="button"
+              class="link-button review-partner"
+              :aria-label="`查看 ${review.targetName} 的公开主页`"
+              @click="openUserProfile(review.targetId, review.targetName)"
+            >{{ review.targetName }}</button>
+            <span v-else class="review-partner">{{ review.targetName }}</span>
             <p class="review-comment">{{ review.comment || '暂无评价内容' }}</p>
           </div>
         </div>

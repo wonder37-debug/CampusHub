@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router'
 import { useCampusHubStore } from '@/stores/campusHub'
 import type { OrderRecord } from '@/types/campushub'
 import { formatRelativeTime, formatMoney, formatDateTime, formatDemandCategory, formatDemandStatus, statusToneClass, formatInteractionMode } from '@/utils/format'
+import { useUserProfileLink } from '@/composables/useUserProfileLink'
 import { handleError } from '@/utils/errorHandler'
 import {
   generateOrderTodos,
@@ -138,6 +139,17 @@ const allLoaded = computed(() => !hasMore.value && totalCount.value > 0)
 
 function loadMore(): void {
   page.value++
+}
+
+const { openUserProfile } = useUserProfileLink()
+
+function counterpartyId(order: any, role: string): string | null {
+  const id = role === 'requester' ? order?.serviceProviderId : order?.requesterId
+  return id ? String(id) : null
+}
+
+function counterpartyName(order: any, role: string): string {
+  return role === 'requester' ? (order?.serviceProviderName ?? '对方') : (order?.requesterName ?? '对方')
 }
 
 function todoCategoryLabel(cat: string): string {
@@ -364,7 +376,16 @@ onMounted(() => {
             </span>
             <span v-if="item.order.demandLocation" style="display:block;margin-top:6px">地点：{{ item.order.demandLocation }}</span>
           </div>
-          <div class="meta">对方：{{ item.role === 'requester' ? item.order.serviceProviderName : item.order.requesterName }}</div>
+          <div class="meta">对方：
+            <button
+              v-if="!item.order.anonymous && counterpartyId(item.order, item.role)"
+              type="button"
+              class="link-button"
+              :aria-label="`查看 ${counterpartyName(item.order, item.role)} 的公开主页`"
+              @click.stop="openUserProfile(counterpartyId(item.order, item.role), counterpartyName(item.order, item.role))"
+            >{{ counterpartyName(item.order, item.role) }}</button>
+            <span v-else>{{ counterpartyName(item.order, item.role) }}</span>
+          </div>
           <div v-if="item.hint" class="meta" style="margin-top:8px">
             <span class="chip is-warning">{{ item.hint }}</span>
           </div>

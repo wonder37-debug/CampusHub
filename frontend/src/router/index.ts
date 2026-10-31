@@ -67,6 +67,14 @@ const routes: RouteRecordRaw[] = [
     props: true
   },
   {
+    // 规范路径：全站头像/昵称跳转统一走 /users/:id/profile
+    path: '/users/:id/profile',
+    name: 'UserPublicProfile',
+    component: () => import('@/views/UserProfileView.vue'),
+    meta: { requiresAuth: true },
+    props: true
+  },
+  {
     path: '/users/:id/demands',
     name: 'UserDemands',
     component: () => import('@/views/UserDemandsView.vue'),
@@ -152,6 +160,7 @@ const pageTitle: Record<string, string> = {
   Profile: '个人中心',
   ProfileEdit: '编辑资料',
   UserProfile: '用户主页',
+  UserPublicProfile: '用户主页',
   UserDemands: '用户需求',
   Admin: '管理后台',
   About: '关于',

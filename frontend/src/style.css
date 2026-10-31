@@ -2062,3 +2062,52 @@ button.load-more-panel:disabled {
     position: static;
   }
 }
+
+/* ========== 用户主页链接与紧凑列表 ========== */
+/* 头像/昵称按钮：外观等同文本，保留 hover 与键盘焦点态 */
+.link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.link-button:hover {
+  color: var(--accent-strong);
+  text-decoration: underline;
+}
+
+.link-button:focus-visible {
+  outline: 3px solid rgba(43, 107, 93, 0.34);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* 详情页发布者区块用 button 实现可点击，去掉浏览器默认按钮外观 */
+button.avatar-row--link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* 高密度列表：卡片更矮，一屏展示更多需求 */
+.home-grid--dense {
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+}
+
+.home-grid--dense .home-card__media {
+  aspect-ratio: 16 / 10;
+}
+
+.home-grid--dense .home-card__content {
+  height: 208px;
+  padding: 12px 14px;
+}

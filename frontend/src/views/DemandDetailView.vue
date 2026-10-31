@@ -10,12 +10,18 @@ import ErrorState from '@/components/ErrorState.vue'
 import ImageViewer from '@/components/ImageViewer.vue'
 import { formatAcceptDisabledReason, formatCampusZone, formatDateTime, formatDemandCategory, formatDemandStatus, formatResponseStatus, formatScore, statusToneClass } from '@/utils/format'
 import { useConfirm, useAlert } from '@/composables/useDialog'
+import { useUserProfileLink } from '@/composables/useUserProfileLink'
 import { canRespondToDemand, canSelectResponse, canViewSelectedResponse, getDemandDetailMode } from '@/utils/detailRules'
 
 const route = useRoute()
 const router = useRouter()
 const store = useCampusHubStore()
 const note = ref('')
+const { openUserProfile } = useUserProfileLink()
+function openPublisherProfile(): void {
+  if (!demand.value) return
+  void openUserProfile(demand.value.publisherId, demand.value.publisher?.nickname ?? demand.value.publisherName)
+}
 const message = ref('')
 const error = ref('')
 const loadState = ref<'loading' | 'ready' | 'not-found' | 'forbidden' | 'error'>('loading')
@@ -534,14 +540,20 @@ onMounted(() => { void refreshDemand() })
       </div>
 
       <!-- 发布者信息 -->
-      <RouterLink v-if="!demand.anonymous && demand.publisherId" :to="`/users/${demand.publisherId}`" class="avatar-row avatar-row--link">
+      <button
+        v-if="!demand.anonymous && demand.publisherId"
+        type="button"
+        class="avatar-row avatar-row--link"
+        :aria-label="`查看 ${demand.publisher?.nickname ?? demand.publisherName} 的公开主页`"
+        @click="openPublisherProfile"
+      >
         <img :src="demand.publisher?.avatarUrl ?? demand.publisherAvatar" :alt="demand.publisher?.nickname ?? demand.publisherName" class="avatar large" />
         <div>
           <strong>{{ demand.publisher?.nickname ?? demand.publisherName }}</strong>
           <p class="subtle">信用分：{{ demand.publisher ? formatScore(demand.publisher.creditScore) : '未知' }}</p>
           <p class="meta">发布于 {{ formatDateTime(demand.createdAt) }}</p>
         </div>
-      </RouterLink>
+      </button>
       <div v-else class="avatar-row">
         <div class="avatar large anonymous-avatar" aria-hidden="true">匿</div>
         <div>

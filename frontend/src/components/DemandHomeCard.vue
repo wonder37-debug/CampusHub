@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge'
 import type { DemandRecord, RecommendationRecord } from '@/types/campushub'
 import { formatCampusZone, formatDemandCategory, formatRelativeTime, statusToneClass, truncateText } from '@/utils/format'
 import { demandCoverUrl, normalizeCoverCategory } from '@/utils/demandCover'
+import { useUserProfileLink } from '@/composables/useUserProfileLink'
 import { getHomeDemandCard } from '@/lib/home-demand-card'
 
 const props = defineProps<{
@@ -27,6 +28,11 @@ const coverUrl = computed(() =>
   demandCoverUrl(props.demand.category, props.demand.id, props.demand.campusZone, props.demand.location)
 )
 const categoryTone = computed(() => normalizeCoverCategory(props.demand.category).toLowerCase().replace('_', '-'))
+const { openUserProfile } = useUserProfileLink()
+
+function openPublisherProfile(): void {
+  void openUserProfile(props.demand.publisherId, view.value.publisherName)
+}
 
 /** 图源优先级：用户上传图 → 后端生成封面 → 空（文字占位） */
 const imageSource = computed<'uploaded' | 'cover' | ''>(() => {
@@ -132,16 +138,17 @@ function markImageFailed(): void {
     </RouterLink>
 
     <div class="home-card__footer">
-      <RouterLink
-        v-if="demand.publisherId && !demand.anonymous && !demand.anonymousCode"
-        :to="`/users/${demand.publisherId}`"
-        class="home-card__publisher"
-        :aria-label="`查看 ${view.publisherName} 的公开主页`"
-      >
-        <img v-if="view.publisherAvatar" :src="view.publisherAvatar" alt="" loading="lazy" />
-        <span v-else class="home-card__avatar-placeholder" aria-hidden="true">{{ view.publisherName.slice(0, 1) }}</span>
-        <span class="home-card__publisher-name">{{ view.publisherName }}</span>
-      </RouterLink>
+        <button
+          v-if="demand.publisherId && !demand.anonymous && !demand.anonymousCode"
+          type="button"
+          class="home-card__publisher home-card__publisher--link"
+          :aria-label="`查看 ${view.publisherName} 的公开主页`"
+          @click="openPublisherProfile"
+        >
+          <img v-if="view.publisherAvatar" :src="view.publisherAvatar" alt="" loading="lazy" />
+          <span v-else class="home-card__avatar-placeholder" aria-hidden="true">{{ view.publisherName.slice(0, 1) }}</span>
+          <span class="home-card__publisher-name">{{ view.publisherName }}</span>
+        </button>
       <div v-else class="home-card__publisher" :class="{ 'home-card__publisher--anonymous': demand.anonymous || demand.anonymousCode }">
         <img v-if="view.publisherAvatar" :src="view.publisherAvatar" alt="" loading="lazy" />
         <span v-else class="home-card__avatar-placeholder" aria-hidden="true">{{ view.publisherName.slice(0, 1) }}</span>
@@ -441,6 +448,26 @@ function markImageFailed(): void {
   min-width: 0;
   align-items: center;
   gap: 8px;
+}
+
+/* 发布者头像/昵称可点击查看公开主页：外观保持原样，只补交互态 */
+.home-card__publisher--link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.home-card__publisher--link:hover .home-card__publisher-name {
+  text-decoration: underline;
+}
+
+.home-card__publisher--link:focus-visible {
+  outline: 3px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: 999px;
 }
 
 .home-card__publisher img,
