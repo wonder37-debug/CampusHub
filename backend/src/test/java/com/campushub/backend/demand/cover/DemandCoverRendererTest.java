@@ -122,6 +122,13 @@ class DemandCoverRendererTest {
     }
 
     @Test
+    @DisplayName("运行主机必须提供中文字形，否则封面会退化为无文字版本")
+    void hostProvidesChineseGlyphs() {
+        assertTrue(DemandCoverRenderer.supportsChineseText(),
+            "当前主机没有可用的中文字体（Linux 请安装 fonts-noto-cjk），封面无法绘制中文");
+    }
+
+    @Test
     @DisplayName("无文字环境下不同地点仍产生不同封面（地形级回归：CI 无中文字体）")
     void renderWithoutTextStillVariesByLocation() {
         byte[] library = DemandCoverRenderer.render(DemandCategory.EXPRESS, CampusZone.XIANLIN, "图书馆", 11L, false);

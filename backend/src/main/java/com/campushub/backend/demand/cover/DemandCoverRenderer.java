@@ -163,6 +163,18 @@ public final class DemandCoverRenderer {
     }
 
     /**
+     * 供测试断言当前主机确实具备中文字形：没有字体时封面会静默退化为无文字版本，
+     * 必须让 CI/本地环境“响亮地”失败，而不是静默通过。
+     */
+    static boolean supportsChineseText() {
+        StringBuilder sample = new StringBuilder();
+        for (DemandCategory category : DemandCategory.values()) {
+            sample.append(category.getLabel());
+        }
+        return hasGlyphCoverage(sample.toString());
+    }
+
+    /**
      * 按「短校区 · 地点」规则生成副标题。
      *
      * <p>location 本身可能已经带校区前缀（如 {@code "仙林校区 · 菜鸟驿站（三栋楼下）"}），
