@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { Badge } from '@/components/ui/badge'
 import type { DemandRecord, RecommendationRecord } from '@/types/campushub'
 import { formatCampusZone, formatDemandCategory, formatRelativeTime, statusToneClass, truncateText } from '@/utils/format'
+import { demandCoverUrl, normalizeCoverCategory } from '@/utils/demandCover'
 import { getHomeDemandCard } from '@/lib/home-demand-card'
 
 const props = defineProps<{
@@ -11,14 +12,42 @@ const props = defineProps<{
   recommendation?: RecommendationRecord
 }>()
 
-const imageFailed = ref(false)
-const imageLoaded = ref(false)
-const view = computed(() => getHomeDemandCard(props.demand, props.currentUserId))
-const imageUrl = computed(() => props.demand.images?.find((image) => image.trim()) ?? '')
+/** 图片失败后的重试次数：重试耗尽才逐级降级为分类色块与文字占位 */
+const MAX_RETRY = 2
 
-watch([() => props.demand.id, imageUrl], () => {
-  imageFailed.value = false
+const imageLoaded = ref(false)
+const retryCount = ref(0)
+const retryToken = ref(0)
+const uploadedImageFailed = ref(false)
+const coverFailed = ref(false)
+
+const view = computed(() => getHomeDemandCard(props.demand, props.currentUserId))
+const uploadedImageUrl = computed(() => props.demand.images?.find((image) => image.trim()) ?? '')
+const coverUrl = computed(() =>
+  demandCoverUrl(props.demand.category, props.demand.id, props.demand.campusZone, props.demand.location)
+)
+const categoryTone = computed(() => normalizeCoverCategory(props.demand.category).toLowerCase().replace('_', '-'))
+
+/** 图源优先级：用户上传图 → 后端生成封面 → 空（文字占位） */
+const imageSource = computed<'uploaded' | 'cover' | ''>(() => {
+  if (uploadedImageUrl.value && !uploadedImageFailed.value) return 'uploaded'
+  return coverFailed.value ? '' : 'cover'
+})
+
+const imageUrl = computed(() => {
+  if (!imageSource.value) return ''
+  const base = imageSource.value === 'uploaded' ? uploadedImageUrl.value : coverUrl.value
+  if (!base || retryToken.value === 0) return base
+  // 重试时追加一次性参数，绕过浏览器对失败请求的缓存；后端会忽略该参数
+  return `${base}${base.includes('?') ? '&' : '?'}retry=${retryToken.value}`
+})
+
+watch([() => props.demand.id, uploadedImageUrl], () => {
   imageLoaded.value = false
+  retryCount.value = 0
+  retryToken.value = 0
+  uploadedImageFailed.value = false
+  coverFailed.value = false
 })
 
 function markImageLoaded(): void {
@@ -26,18 +55,31 @@ function markImageLoaded(): void {
 }
 
 function markImageFailed(): void {
-  imageFailed.value = true
+  imageLoaded.value = false
+  if (retryCount.value < MAX_RETRY) {
+    retryCount.value += 1
+    retryToken.value += 1
+    return
+  }
+  retryCount.value = 0
+  retryToken.value = 0
+  if (imageSource.value === 'uploaded') {
+    // 上传图彻底失败：先降级为生成封面，封面再失败才退到文字占位
+    uploadedImageFailed.value = true
+    return
+  }
+  coverFailed.value = true
 }
 </script>
 
 <template>
   <article class="home-card">
     <RouterLink class="home-card__link" :to="`/demands/${demand.id}`" :aria-label="`查看需求：${demand.title}`">
-      <div class="home-card__media" :class="{ 'home-card__media--text': !imageUrl || imageFailed }">
+      <div class="home-card__media" :class="[`home-card__media--tone-${categoryTone}`, { 'home-card__media--text': !imageUrl }]">
         <img
-          v-if="imageUrl && !imageFailed"
+          v-if="imageUrl"
           :src="imageUrl"
-          :alt="`需求图片：${demand.title}`"
+          alt=""
           loading="lazy"
           decoding="async"
           :class="{ 'is-loaded': imageLoaded }"
@@ -166,6 +208,16 @@ function markImageFailed(): void {
   transform: scale(1.025);
 }
 
+/* 图片加载中/重试期间的分类色块，配色与后端封面保持一致 */
+.home-card__media--tone-express { background: linear-gradient(180deg, #1e5fd1 0% 50%, #2f7bcb 50% 100%); }
+.home-card__media--tone-errand { background: linear-gradient(180deg, #7c3aed 0% 50%, #9061f9 50% 100%); }
+.home-card__media--tone-study-tutoring { background: linear-gradient(180deg, #1f9d6b 0% 50%, #35a87c 50% 100%); }
+.home-card__media--tone-second-hand { background: linear-gradient(180deg, #d2490c 0% 50%, #f0661a 50% 100%); }
+.home-card__media--tone-team-up { background: linear-gradient(180deg, #0e7490 0% 50%, #1197b8 50% 100%); }
+.home-card__media--tone-help { background: linear-gradient(180deg, #c2185b 0% 50%, #e0357b 50% 100%); }
+.home-card__media--tone-other { background: linear-gradient(180deg, #4b5c6b 0% 50%, #64748b 50% 100%); }
+
+/* 文字占位是最终降级态，必须写在 tone 之后才能盖住分类色块 */
 .home-card__media--text {
   display: flex;
   align-items: center;
