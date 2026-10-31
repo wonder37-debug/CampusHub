@@ -404,6 +404,7 @@ async function cancelOrder(): Promise<void> {
 function openArbitrationDialog(): void {
   arbitrationReason.value = ''
   arbitrationImages.value = []
+  error.value = ''
   arbitrationDialogOpen.value = true
 }
 
@@ -416,6 +417,7 @@ function closeArbitrationDialog(): void {
 function openArbitrationResponseDialog(): void {
   arbitrationResponseReason.value = ''
   arbitrationResponseImages.value = []
+  error.value = ''
   arbitrationResponseDialogOpen.value = true
 }
 
@@ -772,6 +774,8 @@ async function submitReview(): Promise<void> {
           <ImageUploader v-model="arbitrationImages" :max-count="5" purpose="proof" />
         </div>
 
+        <p v-if="error" class="hero-badge" role="alert" style="background: rgba(181, 71, 71, 0.14); color: var(--danger)">{{ error }}</p>
+
         <div class="card-actions" style="justify-content: flex-end;">
           <button type="button" class="button secondary" @click="closeArbitrationDialog">取消</button>
           <button type="button" class="button primary" :disabled="!arbitrationReason.trim() || submitting" @click="submitArbitration">{{ submitting ? '处理中...' : '提交仲裁' }}</button>
@@ -808,6 +812,8 @@ async function submitReview(): Promise<void> {
           <label>证据图片（可选，最多5张）</label>
           <ImageUploader v-model="arbitrationResponseImages" :max-count="5" purpose="proof" />
         </div>
+
+        <p v-if="error" class="hero-badge" role="alert" style="background: rgba(181, 71, 71, 0.14); color: var(--danger)">{{ error }}</p>
 
         <div class="card-actions" style="justify-content: flex-end;">
           <button type="button" class="button secondary" @click="closeArbitrationResponseDialog">取消</button>

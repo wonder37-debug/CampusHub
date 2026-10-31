@@ -72,6 +72,26 @@ describe('全局确认框无障碍行为', () => {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
     await expect(pending).resolves.toBe(false)
   })
+
+  it('队列中的第二个确认框会自动接管焦点', async () => {
+    const first = useConfirm('第一个确认', '先处理这个', { danger: true })
+    const second = useConfirm('第二个确认', '再处理这个', { danger: true })
+    await nextTick()
+    await nextTick()
+
+    const firstCancel = document.body.querySelector<HTMLButtonElement>('[data-autofocus]')
+    firstCancel?.click()
+    await expect(first).resolves.toBe(false)
+    await nextTick()
+    await nextTick()
+
+    expect(document.getElementById('confirm-dialog-title')?.textContent).toContain('第二个确认')
+    const secondCancel = document.body.querySelector<HTMLButtonElement>('[data-autofocus]')
+    expect(document.activeElement).toBe(secondCancel)
+
+    secondCancel?.click()
+    await expect(second).resolves.toBe(false)
+  })
 })
 
 describe('图片预览层无障碍行为', () => {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { getPendingDialogs, handleDialogResponse } from '@/composables/useDialog'
 import { useModalA11y } from '@/composables/useModalA11y'
 
@@ -17,8 +17,15 @@ function respond(confirmed: boolean): void {
   }
 }
 
-// 全局确认框：Esc 等于取消、打开即聚焦（危险操作用例聚焦「取消」更安全）、关闭后焦点归还原位
+// 全局确认框：Esc 等于取消、打开即聚焦（危险操作用例聚焦『取消』更安全）、关闭后焦点归还原位
 useModalA11y(isOpen, dialogRef, { onClose: () => respond(false) })
+
+// 队列中第一个弹框结束后 isOpen 不变，需手动把焦点交给新弹框
+watch(() => current.value?.id, async () => {
+  if (!current.value) return
+  await nextTick()
+  dialogRef.value?.querySelector<HTMLElement>('[data-autofocus]')?.focus()
+})
 </script>
 
 <template>

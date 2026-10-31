@@ -1333,10 +1333,15 @@ export const useCampusHubStore = defineStore('campusHub', {
       }
 
       // 后端提供批量接口（单条 UPDATE），避免逐条发 N 个请求
+      const requestToken = this.token
       await requestJson<void>('/notifications/read-all', {
         method: 'POST'
-      }, this.token)
+      }, requestToken)
 
+      // 请求期间可能切换账号：不要用旧请求结果污染新账号的本地状态
+      if (this.token !== requestToken) {
+        return
+      }
       this.notifications.forEach((notification) => {
         notification.isRead = true
       })

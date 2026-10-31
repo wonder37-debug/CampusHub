@@ -383,6 +383,8 @@ onMounted(() => {
               class="link-button"
               :aria-label="`查看 ${counterpartyName(item.order, item.role)} 的公开主页`"
               @click.stop="openUserProfile(counterpartyId(item.order, item.role), counterpartyName(item.order, item.role))"
+              @keydown.enter.stop
+              @keydown.space.stop
             >{{ counterpartyName(item.order, item.role) }}</button>
             <span v-else>{{ counterpartyName(item.order, item.role) }}</span>
           </div>

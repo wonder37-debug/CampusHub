@@ -229,7 +229,8 @@ onMounted(() => {
               type="button"
               class="link-button review-partner"
               :aria-label="`查看 ${review.reviewerName} 的公开主页`"
-              @click="openUserProfile(review.reviewerId, review.reviewerName)"
+              @click.stop="openUserProfile(review.reviewerId, review.reviewerName)"
+              @keydown.enter.stop
             >{{ review.reviewerName }}</button>
             <span v-else class="review-partner">{{ review.reviewerName }}</span>
             <p class="review-comment">{{ review.comment || '暂无评价内容' }}</p>
@@ -268,7 +269,8 @@ onMounted(() => {
               type="button"
               class="link-button review-partner"
               :aria-label="`查看 ${review.targetName} 的公开主页`"
-              @click="openUserProfile(review.targetId, review.targetName)"
+              @click.stop="openUserProfile(review.targetId, review.targetName)"
+              @keydown.enter.stop
             >{{ review.targetName }}</button>
             <span v-else class="review-partner">{{ review.targetName }}</span>
             <p class="review-comment">{{ review.comment || '暂无评价内容' }}</p>

@@ -24,6 +24,11 @@ export function useUserProfileLink() {
     const store = useCampusHubStore()
     try {
       await store.fetchPublicUserProfile(id)
+      // 重复查询失败时 store 会保留上一次的 profile，必须看错误标记
+      if (store.publicUserProfileError) {
+        await useAlert('无法查看主页', store.publicUserProfileError)
+        return false
+      }
       if (!store.publicUserProfile || store.publicUserProfile.id !== id) {
         await useAlert('无法查看主页', `用户${displayName ? `「${displayName}」` : ''}不存在或已注销。`)
         return false
