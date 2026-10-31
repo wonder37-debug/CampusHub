@@ -307,3 +307,75 @@ describe('DemandDetailView - 重复留言/报名 UX', () => {
     expect(wrapper.text()).not.toContain('暂无需求')
   })
 })
+
+describe('DemandDetailView - 分类型详情页布局', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    localStorage.clear()
+  })
+
+  it('互助问答按论坛式展示：回答列表在问题下方，输入区有明确标签', async () => {
+    mockStore.value = createMockStore({
+      demand: buildDemand({ interactionMode: 'HELP', category: 'HELP' }),
+      responses: [buildResponse({ id: 'r1', authorId: 'other-user', authorName: '回答者', content: '先复习极限定义' })]
+    })
+    const { wrapper } = await mountDetailView()
+    await flushPromises()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('全部回答')
+    expect(wrapper.text()).toContain('先复习极限定义')
+    // 输入区不再是只有 placeholder 的裸 textarea
+    expect(wrapper.find('label[for="response-content"]').text()).toBe('写回答')
+    expect(wrapper.find('[data-testid="submit-response"]').text()).toBe('提交回答')
+    // 旧的“在此需求内回答与采纳”引导文案与符号已移除
+    expect(wrapper.text()).not.toContain('在此需求内回答与采纳')
+  })
+
+  it('发布者在问答需求下可以对回答执行采纳', async () => {
+    mockStore.value = createMockStore({
+      currentUserId: 'publisher-1',
+      demand: buildDemand({ interactionMode: 'HELP', category: 'HELP', publisherId: 'publisher-1' }),
+      responses: [buildResponse({ id: 'r1', authorId: 'other-user', authorName: '回答者', content: '试试换元法' })]
+    })
+    const { wrapper } = await mountDetailView()
+    await flushPromises()
+    await flushPromises()
+
+    const acceptButton = wrapper.findAll('button').find((button) => button.text() === '采纳')
+    expect(acceptButton).toBeDefined()
+  })
+
+  it('二手交易突出价格与买家留言，而非通用响应文案', async () => {
+    mockStore.value = createMockStore({
+      demand: buildDemand({ category: 'SECOND_HAND', interactionMode: 'SELECT_ONE', reward: 45 })
+    })
+    const { wrapper } = await mountDetailView()
+    await flushPromises()
+    await flushPromises()
+
+    expect(wrapper.find('.detail-rail-reward').text()).toBe('45 校邻币')
+    expect(wrapper.text()).toContain('价格')
+    expect(wrapper.text()).toContain('买家留言')
+    expect(wrapper.text()).toContain('留言咨询')
+  })
+
+  it('组队需求突出报名成员与固定操作入口', async () => {
+    mockStore.value = createMockStore({})
+    const { wrapper } = await mountDetailView()
+    await flushPromises()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('报名成员')
+    expect(wrapper.find('.detail-action-rail').exists()).toBe(true)
+
+    const railCta = wrapper.findAll('button').find((button) => button.text() === '立即报名')
+    expect(railCta).toBeDefined()
+
+    // 固定操作入口把焦点送到输入框，键盘用户无需手动滚动查找
+    const composer = wrapper.find('#response-content').element as HTMLTextAreaElement
+    const focusSpy = vi.spyOn(composer, 'focus')
+    await railCta!.trigger('click')
+    expect(focusSpy).toHaveBeenCalled()
+  })
+})

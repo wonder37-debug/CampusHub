@@ -101,4 +101,18 @@ describe('DemandHomeCard 视觉和隐私边界', () => {
 
     expect(wrapper.get('.home-card__media img').attributes('src')).toBe('/new.jpg')
   })
+
+  it('上传图未占满封面时使用纯白底色，不叠分类色块', () => {
+    const wrapper = mountCard({ ...baseDemand, anonymous: false, anonymousCode: null, images: ['/photo.png'] })
+
+    const media = wrapper.get('.home-card__media')
+    expect(media.classes()).toContain('home-card__media--upload')
+    expect(media.classes().some((name) => name.startsWith('home-card__media--tone-'))).toBe(false)
+  })
+
+  it('无上传图时保留分类色块作为生成封面底色', () => {
+    const wrapper = mountCard(baseDemand)
+
+    expect(wrapper.get('.home-card__media').classes()).toContain('home-card__media--tone-second-hand')
+  })
 })

@@ -1922,3 +1922,143 @@ button.load-more-panel:disabled {
   line-height: 1;
   content: var(--empty-icon, '📭');
 }
+
+/* ========== 需求详情：分类型布局与固定操作区 ========== */
+.demand-detail-layout {
+  align-items: start;
+}
+
+/* 侧栏主操作固定在视口内，长页面滚动时仍可见 */
+.detail-action-rail {
+  position: sticky;
+  top: 16px;
+  display: grid;
+  gap: 14px;
+}
+
+.detail-rail-reward {
+  margin: 0;
+  color: var(--accent-strong);
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.detail-rail-facts {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.detail-rail-facts div {
+  display: grid;
+  gap: 2px;
+}
+
+.detail-rail-facts dt {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.detail-rail-facts dd {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: 14px;
+}
+
+.detail-rail-cta {
+  width: 100%;
+  min-height: 44px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+/* 问答类：问题区用强调边框与正文区分 */
+.detail-question {
+  border-left: 4px solid var(--accent);
+  padding-left: 16px;
+}
+
+.detail-responses {
+  display: grid;
+  gap: 14px;
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid var(--panel-border);
+}
+
+.responses-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.responses-head .section-title {
+  margin: 0;
+}
+
+.answer-composer {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  background: #fff;
+}
+
+.response-composer-label {
+  color: var(--text-strong);
+  font-weight: 700;
+}
+
+.answer-list {
+  display: grid;
+  gap: 12px;
+}
+
+.answer-card {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  background: var(--bg-soft);
+}
+
+.answer-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.answer-author {
+  color: var(--text-strong);
+}
+
+.answer-time {
+  margin-left: auto;
+  font-size: 12px;
+}
+
+.answer-card-content {
+  margin: 0;
+  color: var(--text);
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.answer-card-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.answer-card-actions:empty {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .detail-action-rail {
+    position: static;
+  }
+}

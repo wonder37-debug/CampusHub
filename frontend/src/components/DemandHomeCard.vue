@@ -75,7 +75,13 @@ function markImageFailed(): void {
 <template>
   <article class="home-card">
     <RouterLink class="home-card__link" :to="`/demands/${demand.id}`" :aria-label="`查看需求：${demand.title}`">
-      <div class="home-card__media" :class="[`home-card__media--tone-${categoryTone}`, { 'home-card__media--text': !imageUrl }]">
+      <div
+        class="home-card__media"
+        :class="[
+          imageSource === 'cover' ? `home-card__media--tone-${categoryTone}` : 'home-card__media--upload',
+          { 'home-card__media--text': !imageUrl }
+        ]"
+      >
         <img
           v-if="imageUrl"
           :src="imageUrl"
@@ -206,6 +212,11 @@ function markImageFailed(): void {
 
 .home-card:hover .home-card__media > img {
   transform: scale(1.025);
+}
+
+/* 上传图按 contain 展示，未占满的留白用纯白，与大厅底色一致 */
+.home-card__media--upload {
+  background: #fff;
 }
 
 /* 图片加载中/重试期间的分类色块，配色与后端封面保持一致 */
@@ -475,8 +486,8 @@ function markImageFailed(): void {
   }
 }
 
-/* 图片淡入就绪前保持占位底色，避免加载瞬间的白闪 */
+/* 图片淡入就绪前保持白底，避免加载瞬间的白闪 */
 .home-card__media > img:not(.is-loaded) {
-  background: #e9ede9;
+  background: #fff;
 }
 </style>
