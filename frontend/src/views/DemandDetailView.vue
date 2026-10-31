@@ -296,8 +296,9 @@ const railRewardText = computed(() => (demand.value?.reward ?? 0) > 0 ? `${deman
 // 侧栏主操作：固定位置，不随长页面滚走
 const primaryActionLabel = computed(() => {
   if (!demand.value) return ''
+  // 接单按钮已经固定在提交卡里，侧栏不再重复一个主按钮
+  if (canAccept.value) return ''
   if (hasOrderAccess.value && relatedOrder.value) return '查看正式订单'
-  if (canAccept.value) return '立即接单'
   if (composerVisible.value) {
     if (layoutKind.value === 'help') return '写回答'
     if (layoutKind.value === 'team') return '立即报名'
@@ -652,9 +653,6 @@ onMounted(() => { void refreshDemand() })
           >
             登录后接单
           </button>
-          <button v-if="hasOrderAccess && relatedOrder" type="button" class="button primary" @click="router.push({ name: 'OrderDetail', params: { id: relatedOrder.id } })">
-            查看正式订单
-          </button>
         </div>
       </div>
 
@@ -837,9 +835,6 @@ onMounted(() => { void refreshDemand() })
 
       <button v-if="primaryActionLabel" type="button" class="button primary detail-rail-cta" @click="runRailAction">
         {{ primaryActionLabel }}
-      </button>
-      <button v-if="hasOrderAccess && relatedOrder" type="button" class="button secondary" @click="router.push({ name: 'OrderDetail', params: { id: relatedOrder.id } })">
-        前往订单详情
       </button>
     </aside>
   </div>

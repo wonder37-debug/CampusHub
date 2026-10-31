@@ -164,8 +164,13 @@ function removeImage(index: number) {
   <div class="image-uploader">
     <div
       class="upload-zone"
+      role="button"
+      tabindex="0"
+      aria-label="上传图片：支持点击、拖拽或按回车选择文件"
       :class="{ 'drag-over': dragOver }"
       @click="triggerFileInput"
+      @keydown.enter.prevent="triggerFileInput"
+      @keydown.space.prevent="triggerFileInput"
       @dragover="onDragOver"
       @dragleave="onDragLeave"
       @drop="onDrop"

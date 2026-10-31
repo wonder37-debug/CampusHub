@@ -342,8 +342,11 @@ function goBack(): void {
 async function startOrder(): Promise<void> {
   if (!order.value || submitting.value) return
   submitting.value = true
+  message.value = ''
+  error.value = ''
   try {
     await store.startOrder(order.value.id)
+    message.value = '订单已进入进行中。'
   } catch (e) {
     error.value = handleError(e, '操作失败')
   } finally {
