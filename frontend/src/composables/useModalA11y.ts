@@ -83,6 +83,10 @@ export function useModalA11y(
     const preferred = root.querySelector<HTMLElement>('[data-autofocus]')
     const target = preferred ?? focusables()[0] ?? root
     target.focus()
+    // 由 select/input 触发的弹窗，焦点可能被控件抢回去；检测失败时再补一次
+    if (!root.contains(document.activeElement)) {
+      root.focus()
+    }
   }
 
   function deactivate(): void {
