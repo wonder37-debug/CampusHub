@@ -147,8 +147,8 @@ onMounted(() => {
       />
 
       <button v-if="hasMore" type="button" class="list-card load-more-panel" :disabled="loadingMore" @click="loadMore">
-        <h3>{{ loadingMore ? '加载中...' : '加载更多' }}</h3>
-        <p class="subtle">当前显示 {{ localDemands.length }} / {{ totalCount }} 条</p>
+        <span class="load-more-title">{{ loadingMore ? '加载中...' : '加载更多' }}</span>
+        <span class="load-more-count">当前显示 {{ localDemands.length }} / {{ totalCount }} 条</span>
       </button>
       <div v-if="allLoaded" class="load-more-done">📋 已展示全部 {{ totalCount }} 条公开需求</div>
     </section>

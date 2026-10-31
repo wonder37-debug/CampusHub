@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, onUnmounted } from 'vue'
+import { useModalA11y } from '@/composables/useModalA11y'
 
 const props = withDefaults(defineProps<{
   modelValue: string
@@ -30,6 +31,10 @@ const previewCanvasRef = ref<HTMLCanvasElement | null>(null)
 const showCropModal = ref(false)
 const uploading = ref(false)
 const errorMsg = ref('')
+const cropDialogRef = ref<HTMLElement | null>(null)
+
+// 裁剪弹窗：Esc 关闭、焦点锁在弹窗内、关闭后归还原位
+useModalA11y(showCropModal, cropDialogRef, { onClose: closeCropModal })
 const pendingFile = ref<File | null>(null)
 
 /* ── 图像状态 ── */
@@ -513,11 +518,17 @@ onUnmounted(() => {
     <!-- 裁剪模态框 -->
     <Teleport to="body">
       <div v-if="showCropModal" class="crop-modal-backdrop" @click.self="closeCropModal">
-        <div class="crop-modal-card">
+        <div
+          ref="cropDialogRef"
+          class="crop-modal-card"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="crop-dialog-title"
+        >
           <!-- 头部 -->
           <div class="crop-modal-head">
-            <h3>裁剪头像</h3>
-            <button type="button" class="crop-close-btn" @click="closeCropModal" title="关闭">
+            <h3 id="crop-dialog-title">裁剪头像</h3>
+            <button type="button" class="crop-close-btn" aria-label="关闭裁剪" title="关闭" @click="closeCropModal">
               <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
           </div>
@@ -555,17 +566,18 @@ onUnmounted(() => {
               <div class="zoom-section">
                 <span class="zoom-label">缩放</span>
                 <div class="zoom-controls">
-                  <button type="button" class="zoom-btn" @click="zoomOut" :disabled="scale <= minScale">−</button>
+                  <button type="button" class="zoom-btn" aria-label="缩小" @click="zoomOut" :disabled="scale <= minScale">−</button>
                   <input
                     type="range"
                     class="zoom-slider"
+                    aria-label="缩放比例"
                     :min="minScale"
                     :max="maxScale"
                     :step="0.01"
                     :value="scale"
                     @input="onSliderInput"
                   />
-                  <button type="button" class="zoom-btn" @click="zoomIn" :disabled="scale >= maxScale">+</button>
+                  <button type="button" class="zoom-btn" aria-label="放大" @click="zoomIn" :disabled="scale >= maxScale">+</button>
                 </div>
                 <span class="zoom-percent">{{ zoomPercent }}%</span>
               </div>
@@ -574,10 +586,10 @@ onUnmounted(() => {
 
           <!-- 底部操作 -->
           <div class="crop-modal-footer">
-            <p v-if="errorMsg" class="crop-error">{{ errorMsg }}</p>
+            <p v-if="errorMsg" class="crop-error" role="alert">{{ errorMsg }}</p>
             <div class="crop-actions">
               <button type="button" class="button secondary" @click="closeCropModal" :disabled="uploading">取消</button>
-              <button type="button" class="button primary crop-confirm-btn" :disabled="uploading" @click="confirmCrop">
+              <button type="button" class="button primary crop-confirm-btn" data-autofocus :disabled="uploading" @click="confirmCrop">
                 <span v-if="uploading" class="loading-spinner"></span>
                 {{ uploading ? '上传中…' : '确认裁剪' }}
               </button>

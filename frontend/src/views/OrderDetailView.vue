@@ -11,6 +11,7 @@ import PrivateImage from '@/components/PrivateImage.vue'
 import ErrorState from '@/components/ErrorState.vue'
 import { formatOrderStatus, formatRelativeTime, formatScore, formatCampusZone, statusToneClass } from '@/utils/format'
 import { useConfirm, useAlert } from '@/composables/useDialog'
+import { useModalA11y } from '@/composables/useModalA11y'
 import { canCancelOrder, getOrderFlowKind } from '@/utils/detailRules'
 
 const route = useRoute()
@@ -37,6 +38,12 @@ const arbitrationResponseDialogOpen = ref(false)
 const arbitrationResponseReason = ref('')
 const arbitrationResponseImages = ref<string[]>([])
 const proofImages = ref<string[]>([])
+const arbitrationDialogRef = ref<HTMLElement | null>(null)
+const arbitrationResponseDialogRef = ref<HTMLElement | null>(null)
+
+// 仲裁弹窗：Esc 关闭、焦点锁在弹窗内、关闭后归还原位
+useModalA11y(arbitrationDialogOpen, arbitrationDialogRef, { onClose: closeArbitrationDialog })
+useModalA11y(arbitrationResponseDialogOpen, arbitrationResponseDialogRef, { onClose: closeArbitrationResponseDialog })
 // 关键操作（开始执行/提交完成/取消/评价/仲裁）防重复点击 loading
 const submitting = ref(false)
 
@@ -736,11 +743,17 @@ async function submitReview(): Promise<void> {
 
   <teleport to="body">
     <div v-if="arbitrationDialogOpen" class="modal-backdrop" @click.self="closeArbitrationDialog">
-      <div class="modal-card panel">
+      <div
+        ref="arbitrationDialogRef"
+        class="modal-card panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="arbitration-dialog-title"
+      >
         <div class="modal-head">
           <div>
             <p class="eyebrow">订单仲裁</p>
-            <h3 class="section-title">提交争议说明</h3>
+            <h3 id="arbitration-dialog-title" class="section-title">提交争议说明</h3>
           </div>
           <button type="button" class="modal-close" @click="closeArbitrationDialog" title="关闭" aria-label="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
@@ -748,10 +761,10 @@ async function submitReview(): Promise<void> {
         <p class="page-summary" style="margin-top: 0;">提交后订单会进入仲裁中状态，双方暂时无法继续推进订单，管理员会根据说明做出处理。</p>
         <div class="field">
           <label for="arbitration-reason">仲裁原因</label>
-          <textarea id="arbitration-reason" v-model="arbitrationReason" rows="5" placeholder="请简要说明争议点、当前情况和希望管理员关注的信息"></textarea>
+          <textarea id="arbitration-reason" v-model="arbitrationReason" rows="5" data-autofocus placeholder="请简要说明争议点、当前情况和希望管理员关注的信息"></textarea>
         </div>
 
-        <div class="field">
+        <div class="field" role="group" aria-label="证据图片（可选，最多5张）">
           <label>证据图片（可选，最多5张）</label>
           <ImageUploader v-model="arbitrationImages" :max-count="5" purpose="proof" />
         </div>
@@ -767,11 +780,17 @@ async function submitReview(): Promise<void> {
   <!-- 补充说明对话框 -->
   <teleport to="body">
     <div v-if="arbitrationResponseDialogOpen" class="modal-backdrop" @click.self="closeArbitrationResponseDialog">
-      <div class="modal-card panel">
+      <div
+        ref="arbitrationResponseDialogRef"
+        class="modal-card panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="arbitration-response-dialog-title"
+      >
         <div class="modal-head">
           <div>
             <p class="eyebrow">仲裁补充说明</p>
-            <h3 class="section-title">提交补充说明</h3>
+            <h3 id="arbitration-response-dialog-title" class="section-title">提交补充说明</h3>
           </div>
           <button type="button" class="modal-close" @click="closeArbitrationResponseDialog" title="关闭" aria-label="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
@@ -779,10 +798,10 @@ async function submitReview(): Promise<void> {
         <p class="page-summary" style="margin-top: 0;">作为另一方，您可以提交补充说明和证据图片，管理员将根据双方材料做出裁决。</p>
         <div class="field">
           <label for="arbitration-response-reason">补充说明</label>
-          <textarea id="arbitration-response-reason" v-model="arbitrationResponseReason" rows="5" placeholder="请补充您的说明和理由"></textarea>
+          <textarea id="arbitration-response-reason" v-model="arbitrationResponseReason" rows="5" data-autofocus placeholder="请补充您的说明和理由"></textarea>
         </div>
 
-        <div class="field">
+        <div class="field" role="group" aria-label="证据图片（可选，最多5张）">
           <label>证据图片（可选，最多5张）</label>
           <ImageUploader v-model="arbitrationResponseImages" :max-count="5" purpose="proof" />
         </div>
