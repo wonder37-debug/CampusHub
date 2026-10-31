@@ -23,6 +23,9 @@ import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 
@@ -41,6 +44,8 @@ import java.util.concurrent.TimeUnit;
  *   <li>{@code loc} 先按 code point 截断到 40 字，再参与渲染与缓存 key，避免被构造出无限多缓存文件。</li>
  *   <li>缓存文件名包含 {@code (zone, location)} 的内容哈希：地点改了 URL 就换图，不会命中旧缓存。</li>
  *   <li>URL 已带内容哈希，因此可以安全地下发 7 天强缓存。</li>
+ *   <li>公开接口可被任意 seed/loc 组合命中，因此磁盘缓存有文件数上限（{@code app.cover.cache.max-files}），
+ *       超出后按最后修改时间淘汰旧文件，避免被构造请求写满磁盘。</li>
  * </ul>
  */
 @RestController
@@ -50,13 +55,21 @@ public class DemandCoverController {
     /** 地点原文参与渲染与哈希前的长度上限（code point）。 */
     private static final int LOCATION_MAX_CODE_POINTS = 40;
 
+    /** 磁盘缓存文件数默认上限，约对应 512 × 45KB ≈ 23MB。 */
+    private static final int DEFAULT_MAX_CACHE_FILES = 512;
+
     private static final CacheControl COVER_CACHE_CONTROL =
         CacheControl.maxAge(7, TimeUnit.DAYS).cachePublic().immutable();
 
     private final Path cacheRoot;
+    private final int maxCacheFiles;
 
-    public DemandCoverController(@Value("${app.upload.dir:uploads}") String uploadDir) {
+    public DemandCoverController(
+            @Value("${app.upload.dir:uploads}") String uploadDir,
+            @Value("${app.cover.cache.max-files:" + DEFAULT_MAX_CACHE_FILES + "}") int maxCacheFiles) {
         this.cacheRoot = Paths.get(uploadDir).toAbsolutePath().normalize().resolve("covers");
+        // 上限至少为 1：配置成 0 或负数时只降级为“每次重绘”，不能变成非法状态
+        this.maxCacheFiles = Math.max(1, maxCacheFiles);
         try {
             Files.createDirectories(this.cacheRoot);
         } catch (IOException e) {
@@ -177,6 +190,7 @@ public class DemandCoverController {
             } catch (AtomicMoveNotSupportedException e) {
                 Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING);
             }
+            trimCache();
         } catch (IOException e) {
             if (temp != null) {
                 try {
@@ -185,6 +199,43 @@ public class DemandCoverController {
                     // 清理失败不影响本次响应
                 }
             }
+        }
+    }
+
+    /**
+     * 把缓存文件数收敛到上限内：按最后修改时间从旧到新淘汰。
+     *
+     * <p>并发场景下可能有多个请求同时裁剪，最终文件数略多于或略少于上限都无害；
+     * 删除失败的条目留到下一轮处理。
+     */
+    private void trimCache() {
+        String suffix = "." + DemandCoverRenderer.FILE_EXTENSION;
+        List<Path> entries = new ArrayList<>();
+        try (var files = Files.list(cacheRoot)) {
+            files.filter(path -> path.getFileName().toString().endsWith(suffix)).forEach(entries::add);
+        } catch (IOException e) {
+            return;
+        }
+
+        int overflow = entries.size() - maxCacheFiles;
+        if (overflow <= 0) {
+            return;
+        }
+        entries.sort(Comparator.comparingLong(DemandCoverController::lastModifiedMillis));
+        for (int index = 0; index < overflow; index++) {
+            try {
+                Files.deleteIfExists(entries.get(index));
+            } catch (IOException ignored) {
+                // 删除失败不影响本次响应
+            }
+        }
+    }
+
+    private static long lastModifiedMillis(Path path) {
+        try {
+            return Files.getLastModifiedTime(path).toMillis();
+        } catch (IOException e) {
+            return Long.MAX_VALUE;
         }
     }
 }

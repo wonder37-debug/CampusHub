@@ -11,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,15 +28,37 @@ import org.springframework.test.web.servlet.MvcResult;
 @WebMvcTest(
     controllers = DemandCoverController.class,
     excludeAutoConfiguration = {SecurityAutoConfiguration.class, UserDetailsServiceAutoConfiguration.class},
-    properties = "app.upload.dir=target/test-covers"
+    properties = {
+        "app.upload.dir=target/test-covers",
+        "app.cover.cache.max-files=3"
+    }
 )
 @AutoConfigureMockMvc(addFilters = false)
 class DemandCoverControllerTest {
 
     private static final String COVER_BASE = "/api/v1/covers";
 
+    private static final Path CACHE_DIR = Path.of("target/test-covers/covers");
+
     @Autowired
     private MockMvc mockMvc;
+
+    /** 每个用例从空缓存开始，避免上一个用例留下的文件干扰限额断言。 */
+    @BeforeEach
+    void cleanCache() throws Exception {
+        if (!Files.isDirectory(CACHE_DIR)) {
+            return;
+        }
+        try (var files = Files.list(CACHE_DIR)) {
+            files.forEach(path -> {
+                try {
+                    Files.deleteIfExists(path);
+                } catch (Exception ignored) {
+                    // 删不掉就让后续断言自己暴露问题
+                }
+            });
+        }
+    }
 
     @Test
     @DisplayName("带校区与地点时返回 800×600 JPEG，并下发 7 天强缓存")
@@ -110,6 +133,19 @@ class DemandCoverControllerTest {
                 "应写入 other-99-{hash}.jpg，实际: " + names);
             assertTrue(names.stream().allMatch(name -> name.length() <= 32),
                 "缓存文件名不应随 loc 长度增长，实际: " + names);
+        }
+    }
+
+    @Test
+    @DisplayName("缓存文件数超过上限时淘汰旧文件，不会无限增长")
+    void trimsCacheWhenOverLimit() throws Exception {
+        for (int seed = 1; seed <= 6; seed++) {
+            mockMvc.perform(get(COVER_BASE + "/HELP/" + seed + ".jpg").param("loc", "地点" + seed))
+                .andExpect(status().isOk());
+        }
+
+        try (var files = Files.list(CACHE_DIR)) {
+            assertTrue(files.count() <= 3, "缓存文件数应收敛到上限 3 以内");
         }
     }
 }
