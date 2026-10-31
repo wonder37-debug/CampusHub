@@ -75,13 +75,13 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven-
 
-      # 封面渲染器依赖 CJK 字体把中文画进 JPEG；runner 默认不带中文字体，
+      # 封面渲染器依赖 CJK 字体把中文画进 JPEG；runner 默认不带中文字体。
+      # fonts-noto-cjk 已包含 Noto Serif CJK SC（衬线），是渲染器的首选字体；
       # 不装的话用例会静默退化到「无文字封面」路径（DemandCoverRendererTest 会显式失败提醒）。
       - name: Install CJK fonts
         run: |
           sudo apt-get update
           sudo apt-get install -y fonts-noto-cjk
-          sudo apt-get install -y fonts-noto-serif-cjk || true
           fc-list :lang=zh | head -n 5
 
       - name: Run unit tests
