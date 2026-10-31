@@ -6,6 +6,7 @@ import { useCampusHubStore } from '@/stores/campusHub'
 import { validateLoginForm, validateRegisterForm } from '@/utils/validators'
 import { formatUserRole, formatUserStatus } from '@/utils/format'
 import { handleError } from '@/utils/errorHandler'
+import { useModalA11y } from '@/composables/useModalA11y'
 import AvatarCropper from '@/components/AvatarCropper.vue'
 
 const store = useCampusHubStore()
@@ -64,6 +65,19 @@ const forgotPasswordForm = reactive({
   newPassword: ''
 })
 const showForgotPasswordValue = ref(false)
+const forgotDialogRef = ref<HTMLElement | null>(null)
+// 弹窗是 Teleport 到 body 的浮层，错误/成功提示必须写弹窗自己的状态，
+// 否则会渲染在遮罩背后的主面板上，用户点了没反应也看不到原因
+const forgotError = ref('')
+
+// 找回密码弹窗：Esc 关闭、焦点锁在弹窗内、关闭后归还原位
+useModalA11y(showForgotPassword, forgotDialogRef, { onClose: () => { showForgotPassword.value = false } })
+
+function openForgotPassword(): void {
+  forgotError.value = ''
+  forgotCodeMessage.value = ''
+  showForgotPassword.value = true
+}
 
 const currentUser = computed(() => store.currentUser)
 
@@ -255,8 +269,7 @@ async function submitRegister(): Promise<void> {
 }
 
 async function sendForgotPasswordCode(): Promise<void> {
-  error.value = ''
-  message.value = ''
+  forgotError.value = ''
   forgotCodeMessage.value = ''
 
   if (forgotCodeSending.value || forgotCodeCountdown.value > 0) {
@@ -264,7 +277,7 @@ async function sendForgotPasswordCode(): Promise<void> {
   }
 
   if (!forgotPasswordForm.email.trim()) {
-    error.value = '请输入注册邮箱'
+    forgotError.value = '请输入注册邮箱'
     return
   }
 
@@ -291,28 +304,27 @@ async function sendForgotPasswordCode(): Promise<void> {
       forgotCodeCountdown.value -= 1
     }, 1000)
   } catch (sendError) {
-    error.value = handleError(sendError, '验证码发送失败')
+    forgotError.value = handleError(sendError, '验证码发送失败')
   } finally {
     forgotCodeSending.value = false
   }
 }
 
 async function submitForgotPassword(): Promise<void> {
-  error.value = ''
-  message.value = ''
+  forgotError.value = ''
 
   if (!forgotPasswordForm.email.trim()) {
-    error.value = '请输入注册邮箱'
+    forgotError.value = '请输入注册邮箱'
     return
   }
 
   if (!forgotPasswordForm.verificationCode.trim()) {
-    error.value = '请输入邮箱验证码'
+    forgotError.value = '请输入邮箱验证码'
     return
   }
 
   if (!forgotPasswordForm.newPassword.trim()) {
-    error.value = '请输入新密码'
+    forgotError.value = '请输入新密码'
     return
   }
 
@@ -323,13 +335,14 @@ async function submitForgotPassword(): Promise<void> {
       forgotPasswordForm.verificationCode,
       forgotPasswordForm.newPassword
     )
+    // resetPassword 成功后关闭弹窗，提示回写到主面板（弹窗已不可见）
     message.value = '密码已重置，请使用新密码登录。'
     showForgotPassword.value = false
     forgotPasswordForm.verificationCode = ''
     forgotPasswordForm.newPassword = ''
     activeTab.value = 'login'
   } catch (resetError) {
-    error.value = handleError(resetError, '密码重置失败')
+    forgotError.value = handleError(resetError, '密码重置失败')
   } finally {
     forgotPasswordSubmitting.value = false
   }
@@ -375,7 +388,7 @@ async function submitForgotPassword(): Promise<void> {
           </div>
         </div>
         <p style="text-align:right; margin:-4px 0 8px 0;">
-          <a href="#" @click.prevent="showForgotPassword = true" style="color:var(--muted);font-size:13px;">忘记密码？</a>
+          <a href="#" @click.prevent="openForgotPassword" style="color:var(--muted);font-size:13px;">忘记密码？</a>
         </p>
         <button type="submit" class="button primary">登录到平台</button>
       </form>
@@ -456,8 +469,8 @@ async function submitForgotPassword(): Promise<void> {
         <button type="submit" class="button primary" style="grid-column: 1 / -1;">注册并进入平台</button>
       </form>
 
-      <p v-if="message" class="hero-badge">{{ message }}</p>
-      <p v-if="error" class="hero-badge" style="background: rgba(181, 71, 71, 0.14); color: var(--danger)">{{ error }}</p>
+      <p v-if="message" class="hero-badge" role="status">{{ message }}</p>
+      <p v-if="error" class="hero-badge" role="alert" style="background: rgba(181, 71, 71, 0.14); color: var(--danger)">{{ error }}</p>
     </section>
 
     <section class="panel">
@@ -497,10 +510,16 @@ async function submitForgotPassword(): Promise<void> {
   <!-- 忘记密码提示 -->
   <Teleport to="body">
     <div v-if="showForgotPassword" class="modal-backdrop">
-      <div class="modal-card panel">
+      <div
+        ref="forgotDialogRef"
+        class="modal-card panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="forgot-password-title"
+      >
         <div class="panel-head">
           <div>
-            <h3 class="section-title">找回密码</h3>
+            <h3 id="forgot-password-title" class="section-title">找回密码</h3>
             <p class="eyebrow">使用注册邮箱验证</p>
           </div>
           <button type="button" class="modal-close" @click="showForgotPassword = false" title="关闭" aria-label="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
@@ -509,7 +528,7 @@ async function submitForgotPassword(): Promise<void> {
         <form class="field-grid" @submit.prevent="submitForgotPassword">
           <div class="field">
             <label for="forgot-email">注册邮箱</label>
-            <input id="forgot-email" v-model="forgotPasswordForm.email" placeholder="请输入账号绑定邮箱" />
+            <input id="forgot-email" v-model="forgotPasswordForm.email" placeholder="请输入账号绑定邮箱" data-autofocus />
           </div>
           <div class="field">
             <label for="forgot-code">邮箱验证码</label>
@@ -545,7 +564,8 @@ async function submitForgotPassword(): Promise<void> {
               </button>
             </div>
           </div>
-          <p v-if="forgotCodeMessage" class="hero-badge" style="margin: 0;">{{ forgotCodeMessage }}</p>
+          <p v-if="forgotCodeMessage" class="hero-badge" role="status" style="margin: 0;">{{ forgotCodeMessage }}</p>
+          <p v-if="forgotError" class="hero-badge" role="alert" style="margin: 0; background: rgba(181, 71, 71, 0.14); color: var(--danger);">{{ forgotError }}</p>
           <p class="input-help">系统会向账号绑定邮箱发送验证码，验证通过后可直接设置新密码。</p>
           <div class="card-actions" style="justify-content: flex-end;">
             <button type="button" class="button secondary" @click="showForgotPassword = false">取消</button>

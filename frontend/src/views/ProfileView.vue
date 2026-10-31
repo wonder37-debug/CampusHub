@@ -7,6 +7,7 @@ import type { ReviewRecord } from '@/types/campushub'
 import { formatMoney, formatRelativeTime, formatScore, formatUserRole, formatUserStatus } from '@/utils/format'
 import { handleError } from '@/utils/errorHandler'
 import { useAlert } from '@/composables/useDialog'
+import { useModalA11y } from '@/composables/useModalA11y'
 import AvatarCropper from '@/components/AvatarCropper.vue'
 
 const store = useCampusHubStore()
@@ -18,6 +19,10 @@ const newPassword = ref('')
 const changePasswordMessage = ref('')
 const changePasswordError = ref('')
 const changing = ref(false)
+const passwordDialogRef = ref<HTMLElement | null>(null)
+
+// 改密弹窗：Esc 关闭、焦点锁在弹窗内、关闭后归还原位
+useModalA11y(showChangePassword, passwordDialogRef, { onClose: closeChangePassword })
 
 // 头像更新（AvatarCropper 裁剪上传后回调）
 async function handleAvatarUpdate(url: string): Promise<void> {
@@ -196,7 +201,16 @@ onMounted(() => {
       <h2 class="section-title">别人对我的评价</h2>
 
       <div v-if="reviewsReceived.length" class="review-list">
-        <div v-for="review in reviewsReceived" :key="review.id" class="review-item" @click="navigateToReviewTarget(review)">
+        <div
+          v-for="review in reviewsReceived"
+          :key="review.id"
+          class="review-item"
+          role="link"
+          tabindex="0"
+          :aria-label="`查看评价关联的${review.orderId ? '订单' : '需求'}：${getReviewTitle(review)}`"
+          @click="navigateToReviewTarget(review)"
+          @keydown.enter="navigateToReviewTarget(review)"
+        >
           <div class="review-item-header">
             <span class="chip is-success">{{ review.rating }} 星</span>
             <span class="review-order-title">{{ getReviewTitle(review) }}</span>
@@ -219,7 +233,16 @@ onMounted(() => {
       <h2 class="section-title">我对别人的评价</h2>
 
       <div v-if="reviewsGiven.length" class="review-list">
-        <div v-for="review in reviewsGiven" :key="review.id" class="review-item" @click="navigateToReviewTarget(review)">
+        <div
+          v-for="review in reviewsGiven"
+          :key="review.id"
+          class="review-item"
+          role="link"
+          tabindex="0"
+          :aria-label="`查看评价关联的${review.orderId ? '订单' : '需求'}：${getReviewTitle(review)}`"
+          @click="navigateToReviewTarget(review)"
+          @keydown.enter="navigateToReviewTarget(review)"
+        >
           <div class="review-item-header">
             <span class="chip is-success">{{ review.rating }} 星</span>
             <span class="review-order-title">{{ getReviewTitle(review) }}</span>
@@ -255,21 +278,27 @@ onMounted(() => {
   <!-- 修改密码弹窗 -->
   <Teleport to="body">
     <div v-if="showChangePassword" class="modal-backdrop" @click.self="closeChangePassword">
-      <div class="modal-card panel">
+      <div
+        ref="passwordDialogRef"
+        class="modal-card panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="change-password-title"
+      >
         <div class="modal-head">
-          <h3 class="section-title">修改密码</h3>
+          <h3 id="change-password-title" class="section-title">修改密码</h3>
           <button type="button" class="modal-close" @click="closeChangePassword" title="关闭" aria-label="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
         <div class="field">
-          <label>当前密码</label>
-          <input v-model="oldPassword" type="password" placeholder="请输入当前密码" />
+          <label for="profile-old-password">当前密码</label>
+          <input id="profile-old-password" v-model="oldPassword" type="password" placeholder="请输入当前密码" data-autofocus />
         </div>
         <div class="field">
-          <label>新密码</label>
-          <input v-model="newPassword" type="password" placeholder="至少 6 个字符" />
+          <label for="profile-new-password">新密码</label>
+          <input id="profile-new-password" v-model="newPassword" type="password" placeholder="至少 6 个字符" />
         </div>
-        <p v-if="changePasswordMessage" class="hero-badge">{{ changePasswordMessage }}</p>
-        <p v-if="changePasswordError" class="hero-badge" style="background: rgba(181,71,71,0.14);color:var(--danger)">{{ changePasswordError }}</p>
+        <p v-if="changePasswordMessage" class="hero-badge" role="status">{{ changePasswordMessage }}</p>
+        <p v-if="changePasswordError" class="hero-badge" role="alert" style="background: rgba(181,71,71,0.14);color:var(--danger)">{{ changePasswordError }}</p>
         <div class="card-actions" style="justify-content:flex-end">
           <button type="button" class="button secondary" @click="closeChangePassword">取消</button>
           <button type="button" class="button primary" :disabled="changing" @click="submitChangePassword">确认修改</button>
