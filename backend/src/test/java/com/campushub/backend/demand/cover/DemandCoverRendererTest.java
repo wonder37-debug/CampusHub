@@ -10,6 +10,7 @@ import com.campushub.backend.demand.domain.CampusZone;
 import com.campushub.backend.demand.domain.DemandCategory;
 
 import java.io.ByteArrayInputStream;
+import java.util.Objects;
 
 import javax.imageio.ImageIO;
 
@@ -46,6 +47,27 @@ class DemandCoverRendererTest {
     void buildSubtitleStripsPrefixWithoutSeparator() {
         assertEquals("仙林 · 菜鸟驿站", DemandCoverRenderer.buildSubtitle(CampusZone.XIANLIN, "仙林校区菜鸟驿站"));
         assertEquals("鼓楼", DemandCoverRenderer.buildSubtitle(CampusZone.GULOU, "鼓楼校区"));
+    }
+
+    @Test
+    @DisplayName("多段地点只剥掉开头的校区标记，不丢中间细节")
+    void buildSubtitleKeepsDetailAfterCampusSegment() {
+        assertEquals("鼓楼 · 行政楼 · 302",
+            DemandCoverRenderer.buildSubtitle(CampusZone.GULOU, "鼓楼校区 · 行政楼 · 302"));
+        assertEquals("仙林 · 五栋宿舍路口",
+            DemandCoverRenderer.buildSubtitle(CampusZone.XIANLIN, "仙林 · 五栋宿舍路口"));
+        assertEquals("仙林 · 三栋楼下 · 菜鸟驿站",
+            DemandCoverRenderer.buildSubtitle(CampusZone.XIANLIN, "三栋楼下 · 菜鸟驿站"));
+    }
+
+    @Test
+    @DisplayName("圆环播种用稳定的枚举名，而不是身份哈希")
+    void ringSeedUsesStableZoneName() {
+        long expected = 42L * 0x9E3779B97F4A7C15L
+            + DemandCategory.HELP.ordinal() * 7919L
+            + Objects.hash("GULOU", "图书馆");
+
+        assertEquals(expected, DemandCoverRenderer.ringSeed(DemandCategory.HELP, CampusZone.GULOU, "图书馆", 42L));
     }
 
     @Test

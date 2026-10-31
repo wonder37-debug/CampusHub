@@ -105,6 +105,11 @@ public final class DemandCoverRenderer {
      */
     public static byte[] render(DemandCategory category, CampusZone zone, String location, long seed) {
         DemandCategory safeCategory = category == null ? DemandCategory.OTHER : category;
+        String title = safeCategory.getLabel();
+        // 主机没有任何中文字形时，宁可不画文字，也不要缓存一张“豆腐块”封面（URL 带 immutable 强缓存，脏图会长期驻留）
+        if (!hasGlyphCoverage(title)) {
+            return renderFallback(safeCategory);
+        }
         try {
             BufferedImage image = new BufferedImage(WIDTH, HEIGHT, BufferedImage.TYPE_INT_RGB);
             Graphics2D g = image.createGraphics();
@@ -113,7 +118,7 @@ public final class DemandCoverRenderer {
                 Palette palette = paletteOf(safeCategory);
                 paintBase(g, palette);
                 paintRings(g, ringRandom(safeCategory, zone, location, seed));
-                paintTitle(g, safeCategory.getLabel());
+                paintTitle(g, title);
                 paintSubtitle(g, buildSubtitle(zone, location));
             } finally {
                 g.dispose();
@@ -125,6 +130,21 @@ public final class DemandCoverRenderer {
     }
 
     /**
+     * 中文字形覆盖探测。
+     *
+     * <p>只探测主标题（固定中文分类名）：分类名都画不出来，说明主机没有任何中文字体，
+     * 此时文字只会渲染为方块。副标题参差不参与探测——地点是用户自由输入，
+     * 只要一个 emoji 不在字体覆盖范围内，整张封面就会丢掉分类标题，得不偿失。
+     */
+    private static boolean hasGlyphCoverage(String text) {
+        if (text == null || text.isEmpty()) {
+            return true;
+        }
+        Font probe = new Font(SERIF_FAMILY, Font.PLAIN, SUBTITLE_SIZE);
+        return probe.canDisplayUpTo(text) == -1;
+    }
+
+    /**
      * 按「短校区 · 地点」规则生成副标题。
      *
      * <p>location 本身可能已经带校区前缀（如 {@code "仙林校区 · 菜鸟驿站（三栋楼下）"}），
@@ -132,7 +152,7 @@ public final class DemandCoverRenderer {
      */
     static String buildSubtitle(CampusZone zone, String location) {
         String shortZone = shortZoneOf(zone);
-        String place = normalizePlace(location);
+        String place = normalizePlace(zone, location);
 
         String subtitle;
         if (place.isEmpty()) {
@@ -159,8 +179,14 @@ public final class DemandCoverRenderer {
         };
     }
 
-    /** 地点规范化：去空白 → 取最后一个「·」之后 → 剥掉「XX校区」前缀。 */
-    private static String normalizePlace(String location) {
+    /**
+     * 地点规范化：只剥掉开头的校区标记，保留其余地点细节。
+     *
+     * <p>不能用「取最后一个 · 之后」：{@code "鼓楼校区 · 行政楼 · 302"} 会退化成「302」，
+     * 丢掉楼名。这里的规则是首段是校区标记（等于短校区名或以「校区」结尾）时才剥掉，
+     * 其余情况原样保留，宁可多显示也不丢信息。
+     */
+    private static String normalizePlace(CampusZone zone, String location) {
         if (location == null) {
             return "";
         }
@@ -168,12 +194,16 @@ public final class DemandCoverRenderer {
         if (trimmed.isEmpty()) {
             return "";
         }
-        int lastSeparator = trimmed.lastIndexOf('·');
-        if (lastSeparator >= 0) {
-            return trimmed.substring(lastSeparator + 1).trim();
+        int firstSeparator = trimmed.indexOf('·');
+        if (firstSeparator >= 0) {
+            String head = trimmed.substring(0, firstSeparator).trim();
+            if (head.equals(shortZoneOf(zone)) || head.endsWith("校区")) {
+                return trimmed.substring(firstSeparator + 1).trim();
+            }
+            return trimmed;
         }
-        for (CampusZone zone : CampusZone.values()) {
-            String prefix = shortZoneOf(zone) + "校区";
+        for (CampusZone candidate : CampusZone.values()) {
+            String prefix = shortZoneOf(candidate) + "校区";
             if (trimmed.startsWith(prefix)) {
                 return trimmed.substring(prefix.length()).trim();
             }
@@ -284,12 +314,20 @@ public final class DemandCoverRenderer {
     /**
      * 固定公式播种：同一输入在任何机器、任何时间都得到相同的圆环布局。
      * 不使用 currentTimeMillis / Math.random / HashMap 遍历顺序等不稳定输入。
+     *
+     * <p>校区必须用 {@code zone.name()}：Enum 的 hashCode 是身份哈希，
+     * 具体取值不在 JVM 规范保证范围内（不同 JVM 实现/参数可能不同），
+     * 直接哈希枚举实例会破坏跨机器、跨重启的确定性。
      */
     private static Random ringRandom(DemandCategory category, CampusZone zone, String location, long seed) {
-        long mixed = seed * 0x9E3779B97F4A7C15L
+        return new Random(ringSeed(category, zone, location, seed));
+    }
+
+    /** 圆环播种值，单独暴露给单元测试防止回退到不稳定的枚举身份哈希。 */
+    static long ringSeed(DemandCategory category, CampusZone zone, String location, long seed) {
+        return seed * 0x9E3779B97F4A7C15L
             + category.ordinal() * 7919L
-            + Objects.hash(zone, location);
-        return new Random(mixed);
+            + Objects.hash(zone == null ? null : zone.name(), location);
     }
 
     private static Palette paletteOf(DemandCategory category) {
