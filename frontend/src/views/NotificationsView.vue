@@ -15,6 +15,7 @@ const loading = ref(false)
 const loadError = ref(false)
 const refreshing = ref(false)
 const markingAllRead = ref(false)
+const actionError = ref('')
 const activeCategory = ref<'all' | NotificationCategory>('all')
 
 const allNotifications = computed(() => store.currentUserNotifications)
@@ -57,8 +58,11 @@ async function refreshNotifications(): Promise<void> {
 
 async function markAllRead(): Promise<void> {
   markingAllRead.value = true
+  actionError.value = ''
   try {
     await store.markAllNotificationsRead()
+  } catch {
+    actionError.value = '标记已读失败，请稍后重试。'
   } finally {
     markingAllRead.value = false
   }
@@ -193,6 +197,8 @@ onMounted(() => {
         </button>
       </div>
 
+      <p v-if="actionError" class="hero-badge" role="alert" style="background: rgba(181,71,71,0.14); color: var(--danger);">{{ actionError }}</p>
+
       <div v-if="store.currentUser" class="segment-row">
         <button
           v-for="tab in categoryTabs"
@@ -284,8 +290,8 @@ onMounted(() => {
       </article>
 
       <button v-if="hasMore" type="button" class="list-card load-more-panel" @click="loadMore">
-        <h3>加载更多通知</h3>
-        <p class="subtle">当前显示 {{ visibleNotifications.length }} / {{ filteredNotifications.length }} 条</p>
+        <span class="load-more-title">加载更多通知</span>
+        <span class="load-more-count">当前显示 {{ visibleNotifications.length }} / {{ filteredNotifications.length }} 条</span>
       </button>
       <div v-if="allLoaded" class="load-more-done">📋 已展示全部 {{ filteredNotifications.length }} 条通知</div>
     </section>
