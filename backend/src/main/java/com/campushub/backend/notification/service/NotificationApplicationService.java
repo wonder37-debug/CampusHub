@@ -58,4 +58,10 @@ public interface NotificationApplicationService {
     PageResponse<NotificationResponse> list(Long userId, NotificationQuery query);
 
     void markAsRead(Long userId, Long notificationId);
+
+    /**
+     * 将当前用户的全部未读通知标记为已读。
+     * 前端「全部标记已读」一次调用即可，避免逐条发请求。
+     */
+    void markAllAsRead(Long userId);
 }

@@ -242,6 +242,14 @@ public class NotificationApplicationServiceImpl implements NotificationApplicati
         notificationRepository.save(notification);
     }
 
+    @Override
+    public void markAllAsRead(Long userId) {
+        if (userId == null) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "userId must not be null");
+        }
+        notificationRepository.markAllAsRead(userId);
+    }
+
     private void createNotification(Long receiverId, NotificationDraft draft) {
         if (receiverId == null || draft == null) {
             return;

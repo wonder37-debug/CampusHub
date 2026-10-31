@@ -5,6 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useCampusHubStore } from '@/stores/campusHub'
 import { handleError } from '@/utils/errorHandler'
 import { useConfirm } from '@/composables/useDialog'
+import { useModalA11y } from '@/composables/useModalA11y'
 import PrivateImage from '@/components/PrivateImage.vue'
 import { DEMAND_CATEGORY_OPTIONS, type DemandCategory } from '@/types/campushub'
 import { campusZoneOptions, formatCampusZone, formatDateTime, formatDemandCategory, formatDemandStatus, formatScore, formatUserRole, formatUserStatus, statusToneClass } from '@/utils/format'
@@ -31,6 +32,12 @@ const arbitrationOrderId = ref('')
 const arbitrationOrderTitle = ref('')
 const arbitrationOutcome = ref<'complete' | 'cancel'>('complete')
 const arbitrationReason = ref('')
+const rejectDialogRef = ref<HTMLElement | null>(null)
+const arbitrationDialogRef = ref<HTMLElement | null>(null)
+
+// 审核弹窗：Esc 关闭、焦点锁在弹窗内、关闭后归还原位
+useModalA11y(rejectDialogOpen, rejectDialogRef, { onClose: closeRejectDialog })
+useModalA11y(arbitrationDialogOpen, arbitrationDialogRef, { onClose: closeArbitrationDialog })
 
 const isAdmin = computed(() => store.currentUser?.role === 'ADMIN')
 const adminDashboard = computed(() => store.adminDashboard)
@@ -257,10 +264,10 @@ async function submitArbitrationResolution(): Promise<void> {
       </div>
 
       <div class="stats-grid four-column">
-        <div class="metric" role="button" tabindex="0" @click.prevent="gotoUsers"> <span>今日活跃用户</span><strong>{{ adminDashboard?.dailyActiveUsers ?? 0 }}</strong></div>
-        <div class="metric" role="button" tabindex="0" @click.prevent="gotoUsers"> <span>用户总数</span><strong>{{ adminDashboard?.totalUsers ?? 0 }}</strong></div>
-        <div class="metric" role="button" tabindex="0" @click.prevent="gotoPendingDemands"> <span>待审需求</span><strong>{{ adminDashboard?.pendingReviewDemands ?? 0 }}</strong></div>
-        <div class="metric" role="button" tabindex="0" @click.prevent="refreshAdminData"> <span>已完成订单</span><strong>{{ adminDashboard?.completedOrders ?? 0 }}</strong></div>
+        <div class="metric" role="button" tabindex="0" @click.prevent="gotoUsers" @keydown.enter.prevent="gotoUsers" @keydown.space.prevent="gotoUsers"> <span>今日活跃用户</span><strong>{{ adminDashboard?.dailyActiveUsers ?? 0 }}</strong></div>
+        <div class="metric" role="button" tabindex="0" @click.prevent="gotoUsers" @keydown.enter.prevent="gotoUsers" @keydown.space.prevent="gotoUsers"> <span>用户总数</span><strong>{{ adminDashboard?.totalUsers ?? 0 }}</strong></div>
+        <div class="metric" role="button" tabindex="0" @click.prevent="gotoPendingDemands" @keydown.enter.prevent="gotoPendingDemands" @keydown.space.prevent="gotoPendingDemands"> <span>待审需求</span><strong>{{ adminDashboard?.pendingReviewDemands ?? 0 }}</strong></div>
+        <div class="metric" role="button" tabindex="0" @click.prevent="refreshAdminData" @keydown.enter.prevent="refreshAdminData" @keydown.space.prevent="refreshAdminData"> <span>已完成订单</span><strong>{{ adminDashboard?.completedOrders ?? 0 }}</strong></div>
       </div>
     </section>
 
@@ -272,16 +279,16 @@ async function submitArbitrationResolution(): Promise<void> {
             <h2 class="section-title">待审核需求</h2>
           </div>
           <div class="inline-actions">
-            <input v-model="demandQuery" class="input" type="search" placeholder="搜索标题" @keyup.enter="refreshAdminData" />
-            <select v-model="demandCategory" class="input" @change="refreshAdminData">
+            <input v-model="demandQuery" class="input" type="search" aria-label="搜索需求标题" placeholder="搜索标题" @keyup.enter="refreshAdminData" />
+            <select v-model="demandCategory" class="input" aria-label="按分类筛选" @change="refreshAdminData">
               <option value="">全部分类</option>
               <option v-for="option in adminCategoryOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
             </select>
-            <select v-model="demandCampusZone" class="input" @change="refreshAdminData">
+            <select v-model="demandCampusZone" class="input" aria-label="按校区筛选" @change="refreshAdminData">
               <option value="">全部校区</option>
               <option v-for="zone in campusZoneOptions()" :key="zone.value" :value="zone.value">{{ zone.label }}</option>
             </select>
-            <button type="button" class="button secondary" @click="refreshAdminData" title="搜索">🔍</button>
+            <button type="button" class="button secondary" aria-label="搜索需求" title="搜索" @click="refreshAdminData">🔍</button>
           </div>
         </div>
 
@@ -314,19 +321,19 @@ async function submitArbitrationResolution(): Promise<void> {
             <h2 class="section-title">平台用户列表</h2>
           </div>
           <div class="inline-actions">
-            <select v-model="userSearchField" class="input" style="width:140px;">
+            <select v-model="userSearchField" class="input" aria-label="搜索字段" style="width:140px;">
               <option value="all">学号/邮箱/昵称</option>
               <option value="studentId">学号</option>
               <option value="email">邮箱</option>
               <option value="nickname">昵称</option>
             </select>
-            <input v-model="userQuery" class="input" type="search" :placeholder="userSearchField==='all'? '搜索学号/邮箱/昵称' : (userSearchField==='studentId'? '搜索学号' : userSearchField==='email'? '搜索邮箱' : '搜索昵称')" @keyup.enter="refreshAdminData" />
-            <select v-model="userRoleFilter" class="input" style="width:100px;" @change="refreshAdminData">
+            <input v-model="userQuery" class="input" type="search" aria-label="搜索用户" :placeholder="userSearchField==='all'? '搜索学号/邮箱/昵称' : (userSearchField==='studentId'? '搜索学号' : userSearchField==='email'? '搜索邮箱' : '搜索昵称')" @keyup.enter="refreshAdminData" />
+            <select v-model="userRoleFilter" class="input" aria-label="按角色筛选" style="width:100px;" @change="refreshAdminData">
               <option value="">全部角色</option>
               <option value="USER">学生</option>
               <option value="ADMIN">管理员</option>
             </select>
-            <select v-model="userStatusFilter" class="input" style="width:100px;" @change="refreshAdminData">
+            <select v-model="userStatusFilter" class="input" aria-label="按状态筛选" style="width:100px;" @change="refreshAdminData">
               <option value="">全部状态</option>
               <option value="ACTIVE">正常</option>
               <option value="BANNED">已封禁</option>
@@ -465,11 +472,17 @@ async function submitArbitrationResolution(): Promise<void> {
 
   <teleport to="body">
     <div v-if="rejectDialogOpen" class="modal-backdrop" @click.self="closeRejectDialog">
-      <div class="modal-card panel">
+      <div
+        ref="rejectDialogRef"
+        class="modal-card panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="reject-dialog-title"
+      >
         <div class="modal-head">
           <div>
             <p class="eyebrow">拒绝审核</p>
-            <h3 class="section-title">填写拒绝理由</h3>
+            <h3 id="reject-dialog-title" class="section-title">填写拒绝理由</h3>
           </div>
           <button type="button" class="modal-close" @click="closeRejectDialog" title="关闭" aria-label="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
@@ -477,11 +490,11 @@ async function submitArbitrationResolution(): Promise<void> {
         <p class="page-summary" style="margin-top: 0;">拒绝后，这段理由会通过后端自动发送给需求申请方。</p>
         <div class="field">
           <label for="reject-reason">拒绝理由</label>
-          <textarea id="reject-reason" v-model="rejectReason" rows="5" :placeholder="`请输入 ${rejectingDemandTitle || '该需求'} 的拒绝理由`"></textarea>
+          <textarea id="reject-reason" v-model="rejectReason" rows="5" data-autofocus :placeholder="`请输入 ${rejectingDemandTitle || '该需求'} 的拒绝理由`"></textarea>
           <p class="input-help">建议填写具体原因，方便申请方修改后重新提交。</p>
         </div>
 
-        <p v-if="dialogError" class="hero-badge" style="background: rgba(181, 71, 71, 0.14); color: var(--danger)">{{ dialogError }}</p>
+        <p v-if="dialogError" class="hero-badge" role="alert" style="background: rgba(181, 71, 71, 0.14); color: var(--danger)">{{ dialogError }}</p>
 
         <div class="card-actions" style="justify-content: flex-end;">
           <button type="button" class="button secondary" @click="closeRejectDialog">取消</button>
@@ -493,11 +506,17 @@ async function submitArbitrationResolution(): Promise<void> {
 
   <teleport to="body">
     <div v-if="arbitrationDialogOpen" class="modal-backdrop" @click.self="closeArbitrationDialog">
-      <div class="modal-card panel">
+      <div
+        ref="arbitrationDialogRef"
+        class="modal-card panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="arbitration-dialog-title"
+      >
         <div class="modal-head">
           <div>
             <p class="eyebrow">仲裁裁决</p>
-            <h3 class="section-title">处理订单争议</h3>
+            <h3 id="arbitration-dialog-title" class="section-title">处理订单争议</h3>
           </div>
           <button type="button" class="modal-close" @click="closeArbitrationDialog" title="关闭" aria-label="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
@@ -505,7 +524,7 @@ async function submitArbitrationResolution(): Promise<void> {
         <p class="page-summary" style="margin-top: 0;">正在处理订单「{{ arbitrationOrderTitle || '未命名订单' }}」的争议，请选择裁决结果并填写说明。</p>
         <div class="field">
           <label for="arbitration-outcome">裁决结果</label>
-          <select id="arbitration-outcome" class="input" v-model="arbitrationOutcome">
+          <select id="arbitration-outcome" class="input" v-model="arbitrationOutcome" data-autofocus>
             <option value="complete">判定完成订单</option>
             <option value="cancel">判定取消订单</option>
           </select>
@@ -515,7 +534,7 @@ async function submitArbitrationResolution(): Promise<void> {
           <textarea id="arbitration-reason" v-model="arbitrationReason" rows="5" placeholder="请填写管理员裁决依据，系统会通知订单双方"></textarea>
         </div>
 
-        <p v-if="dialogError" class="hero-badge" style="background: rgba(181, 71, 71, 0.14); color: var(--danger)">{{ dialogError }}</p>
+        <p v-if="dialogError" class="hero-badge" role="alert" style="background: rgba(181, 71, 71, 0.14); color: var(--danger)">{{ dialogError }}</p>
 
         <div class="card-actions" style="justify-content: flex-end;">
           <button type="button" class="button secondary" @click="closeArbitrationDialog">取消</button>

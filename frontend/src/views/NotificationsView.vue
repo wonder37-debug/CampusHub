@@ -15,6 +15,7 @@ const loading = ref(false)
 const loadError = ref(false)
 const refreshing = ref(false)
 const markingAllRead = ref(false)
+const actionError = ref('')
 const activeCategory = ref<'all' | NotificationCategory>('all')
 
 const allNotifications = computed(() => store.currentUserNotifications)
@@ -57,8 +58,11 @@ async function refreshNotifications(): Promise<void> {
 
 async function markAllRead(): Promise<void> {
   markingAllRead.value = true
+  actionError.value = ''
   try {
     await store.markAllNotificationsRead()
+  } catch {
+    actionError.value = '标记已读失败，请稍后重试。'
   } finally {
     markingAllRead.value = false
   }
@@ -193,6 +197,8 @@ onMounted(() => {
         </button>
       </div>
 
+      <p v-if="actionError" class="hero-badge" role="alert" style="background: rgba(181,71,71,0.14); color: var(--danger);">{{ actionError }}</p>
+
       <div v-if="store.currentUser" class="segment-row">
         <button
           v-for="tab in categoryTabs"
@@ -214,8 +220,8 @@ onMounted(() => {
       </div>
     </section>
 
-    <section v-else-if="loading" class="notification-grid">
-      <div v-for="n in 3" :key="n" class="list-card" style="opacity:0.5">
+    <section v-else-if="loading" class="notification-grid" aria-busy="true" aria-label="正在加载通知">
+      <div v-for="n in 3" :key="n" class="list-card" style="opacity:0.5" aria-hidden="true">
         <div class="status-row"><span class="badge is-neutral">🔔</span><span class="chip">加载中</span></div>
         <div class="card-head"><h3>正在加载通知...</h3></div>
       </div>
@@ -283,10 +289,10 @@ onMounted(() => {
         </div>
       </article>
 
-      <div v-if="hasMore" class="list-card load-more-panel" @click="loadMore">
-        <h3>加载更多通知</h3>
-        <p class="subtle">当前显示 {{ visibleNotifications.length }} / {{ filteredNotifications.length }} 条</p>
-      </div>
+      <button v-if="hasMore" type="button" class="list-card load-more-panel" @click="loadMore">
+        <span class="load-more-title">加载更多通知</span>
+        <span class="load-more-count">当前显示 {{ visibleNotifications.length }} / {{ filteredNotifications.length }} 条</span>
+      </button>
       <div v-if="allLoaded" class="load-more-done">📋 已展示全部 {{ filteredNotifications.length }} 条通知</div>
     </section>
   </div>

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 
+import { useModalA11y } from '@/composables/useModalA11y'
+
 const props = defineProps<{
   images: string[]
   initialIndex?: number
@@ -15,6 +17,10 @@ const emit = defineEmits<{
 const currentIndex = ref(props.initialIndex ?? 0)
 const currentImage = computed(() => props.images[currentIndex.value] ?? '')
 const currentFailure = computed(() => props.failureMessages?.[currentIndex.value] ?? '')
+const viewerRef = ref<HTMLElement | null>(null)
+
+// 预览层是模态浮层：Esc 关闭、Tab 锁定在里面、关闭后焦点归还原位置
+useModalA11y(ref(true), viewerRef, { onClose: () => emit('close') })
 
 function prev() {
   if (currentIndex.value > 0) {
@@ -28,10 +34,9 @@ function next() {
   }
 }
 
+// Esc/Tab 由 useModalA11y 处理，这里只管左右方向键翻页
 function onKeydown(e: KeyboardEvent) {
-  if (e.key === 'Escape') {
-    emit('close')
-  } else if (e.key === 'ArrowLeft') {
+  if (e.key === 'ArrowLeft') {
     prev()
   } else if (e.key === 'ArrowRight') {
     next()
@@ -40,35 +45,40 @@ function onKeydown(e: KeyboardEvent) {
 
 onMounted(() => {
   document.addEventListener('keydown', onKeydown)
-  document.body.style.overflow = 'hidden'
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', onKeydown)
-  document.body.style.overflow = ''
 })
 </script>
 
 <template>
   <Teleport to="body">
-    <div class="viewer-backdrop" @click.self="emit('close')">
+    <div
+      ref="viewerRef"
+      class="viewer-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-label="图片预览"
+      @click.self="emit('close')"
+    >
       <div class="viewer-header">
-        <span class="viewer-counter">{{ currentIndex + 1 }} / {{ images.length }}</span>
-        <button class="viewer-close" @click="emit('close')" title="关闭">×</button>
+        <span class="viewer-counter" aria-live="polite">{{ currentIndex + 1 }} / {{ images.length }}</span>
+        <button class="viewer-close" data-autofocus aria-label="关闭预览" title="关闭" @click="emit('close')">×</button>
       </div>
 
-      <button v-if="currentIndex > 0" class="viewer-nav viewer-prev" @click="prev" title="上一张">‹</button>
+      <button v-if="currentIndex > 0" class="viewer-nav viewer-prev" aria-label="上一张" title="上一张" @click="prev">‹</button>
 
       <div class="viewer-image-wrap">
-        <img v-if="currentImage" :src="currentImage" alt="预览图片" class="viewer-image" />
+        <img v-if="currentImage" :src="currentImage" :alt="`预览图片 ${currentIndex + 1}`" class="viewer-image" />
         <!-- 私密凭证鉴权失败/仍在加载时展示明确状态，绝不回退到需要鉴权的原始 URL -->
-        <div v-else class="viewer-image-error" data-testid="viewer-image-error">
+        <div v-else class="viewer-image-error" role="status" data-testid="viewer-image-error">
           <span class="viewer-image-error-icon" aria-hidden="true">⚠️</span>
           <p class="viewer-image-error-text">{{ currentFailure || '图片加载中…' }}</p>
         </div>
       </div>
 
-      <button v-if="currentIndex < images.length - 1" class="viewer-nav viewer-next" @click="next" title="下一张">›</button>
+      <button v-if="currentIndex < images.length - 1" class="viewer-nav viewer-next" aria-label="下一张" title="下一张" @click="next">›</button>
     </div>
   </Teleport>
 </template>

@@ -37,4 +37,12 @@ public interface NotificationRepository {
      * @param query 查询条件，为 null 时返回 0
      */
     long count(Long userId, NotificationQuery query);
+
+    /**
+     * 将某个用户的所有未读通知标记为已读（单条 UPDATE，避免逐条写库）。
+     *
+     * @param userId 用户 ID，为 null 时不做任何更新
+     * @return 实际更新的通知条数
+     */
+    int markAllAsRead(Long userId);
 }

@@ -53,6 +53,22 @@ class MyBatisNotificationRepositoryTest {
     }
 
     @Test
+    void markAllAsRead_updates_only_unread_rows_of_target_user() {
+        Notification mineUnread = repository.save(newNotification(10L, NotificationType.ORDER_ACCEPTED));
+        Notification mineRead = repository.save(newNotification(10L, NotificationType.STATUS_CHANGED));
+        mineRead.setRead(true);
+        repository.save(mineRead);
+        Notification others = repository.save(newNotification(11L, NotificationType.ORDER_ACCEPTED));
+
+        int updated = repository.markAllAsRead(10L);
+
+        assertThat(updated).isEqualTo(1);
+        assertThat(repository.findById(mineUnread.getId()).orElseThrow().isRead()).isTrue();
+        assertThat(repository.findById(others.getId()).orElseThrow().isRead()).isFalse();
+        assertThat(repository.markAllAsRead(null)).isZero();
+    }
+
+    @Test
     void findById_returns_empty_when_missing_or_null() {
         assertThat(repository.findById(9999L)).isEmpty();
         assertThat(repository.findById(null)).isEmpty();

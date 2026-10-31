@@ -138,6 +138,12 @@ public class DemandApplicationServiceImpl implements DemandApplicationService {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "demand query must not be null");
         }
         List<Demand> demands = demandRepository.findPage(query);
+        // 双保险：按发布者浏览时，非本人不得看到匿名需求（DAO 层已在 SQL 过滤）
+        Long viewerId = query.currentUserId();
+        Long publisherFilter = query.publisherId();
+        if (publisherFilter != null && !publisherFilter.equals(viewerId)) {
+            demands = demands.stream().filter(demand -> !demand.isAnonymous()).toList();
+        }
         List<DemandSummaryResponse> items = demands.stream()
             .map(DemandSummaryResponse::from)
             .toList();

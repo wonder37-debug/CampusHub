@@ -1328,16 +1328,23 @@ export const useCampusHubStore = defineStore('campusHub', {
     },
 
     async markAllNotificationsRead(): Promise<void> {
-      const unreadNotifications = this.currentUserNotifications.filter((notification) => !notification.isRead)
-
-      for (const notification of unreadNotifications) {
-        try {
-          await this.markNotificationRead(notification.id)
-        } catch {
-          continue
-        }
+      if (!this.token) {
+        return
       }
 
+      // 后端提供批量接口（单条 UPDATE），避免逐条发 N 个请求
+      const requestToken = this.token
+      await requestJson<void>('/notifications/read-all', {
+        method: 'POST'
+      }, requestToken)
+
+      // 请求期间可能切换账号：不要用旧请求结果污染新账号的本地状态
+      if (this.token !== requestToken) {
+        return
+      }
+      this.notifications.forEach((notification) => {
+        notification.isRead = true
+      })
       await this.fetchNotifications()
     },
 

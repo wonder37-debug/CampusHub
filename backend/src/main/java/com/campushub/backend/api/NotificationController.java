@@ -53,4 +53,14 @@ public class NotificationController {
         notificationApplicationService.markAsRead(currentUser.userId(), notificationId);
         return ApiResponse.success();
     }
+
+    /**
+     * 全部标记已读：只影响当前登录用户自己的未读通知，单条 UPDATE 完成。
+     */
+    @PostMapping("/read-all")
+    public ApiResponse<Void> markAllAsRead(HttpServletRequest request) {
+        CurrentUser currentUser = requestUserExtractor.requireCurrentUser(request);
+        notificationApplicationService.markAllAsRead(currentUser.userId());
+        return ApiResponse.success();
+    }
 }

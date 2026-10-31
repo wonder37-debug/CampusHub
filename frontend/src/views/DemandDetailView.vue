@@ -8,14 +8,20 @@ import { useCampusHubStore } from '@/stores/campusHub'
 import SkeletonCard from '@/components/SkeletonCard.vue'
 import ErrorState from '@/components/ErrorState.vue'
 import ImageViewer from '@/components/ImageViewer.vue'
-import { formatAcceptDisabledReason, formatCampusZone, formatDateTime, formatDemandCategory, formatDemandStatus, formatInteractionMode, formatOrderStatus, formatResponseStatus, formatScore, statusToneClass } from '@/utils/format'
+import { formatAcceptDisabledReason, formatCampusZone, formatDateTime, formatDemandCategory, formatDemandStatus, formatResponseStatus, formatScore, statusToneClass } from '@/utils/format'
 import { useConfirm, useAlert } from '@/composables/useDialog'
+import { useUserProfileLink } from '@/composables/useUserProfileLink'
 import { canRespondToDemand, canSelectResponse, canViewSelectedResponse, getDemandDetailMode } from '@/utils/detailRules'
 
 const route = useRoute()
 const router = useRouter()
 const store = useCampusHubStore()
 const note = ref('')
+const { openUserProfile } = useUserProfileLink()
+function openPublisherProfile(): void {
+  if (!demand.value) return
+  void openUserProfile(demand.value.publisherId, demand.value.publisher?.nickname ?? demand.value.publisherName)
+}
 const message = ref('')
 const error = ref('')
 const loadState = ref<'loading' | 'ready' | 'not-found' | 'forbidden' | 'error'>('loading')
@@ -262,14 +268,69 @@ const demandContentLabel = computed(() => {
   if (detailMode.value === 'direct-accept') return '任务说明'
   return '需求说明'
 })
-const interactionGuidance = computed(() => {
-  if (demand.value?.category === 'SECOND_HAND') return '查看物品描述后提交响应。'
-  if (demand.value?.category === 'STUDY_TUTORING') return '说明辅导内容与时间。'
-  if (detailMode.value === 'select-many') return '发布者确认成员后结算。'
-  if (detailMode.value === 'help') return '在此需求内回答与采纳。'
-  if (detailMode.value === 'direct-accept') return '接单后进入订单履约。'
+
+// 分类型布局：问答走论坛式回复；二手突出价格与物品；组队突出名额；其余为任务式
+const layoutKind = computed<'help' | 'trade' | 'team' | 'task'>(() => {
+  if (detailMode.value === 'help' || demand.value?.category === 'HELP') return 'help'
+  if (demand.value?.category === 'SECOND_HAND') return 'trade'
+  if (detailMode.value === 'select-many' || demand.value?.category === 'TEAM_UP') return 'team'
+  return 'task'
+})
+const responseSectionTitle = computed(() => {
+  if (layoutKind.value === 'help') return '全部回答'
+  if (layoutKind.value === 'team') return '报名成员'
+  if (layoutKind.value === 'trade') return '买家留言'
+  return '响应列表'
+})
+const responseComposerTitle = computed(() => {
+  if (layoutKind.value === 'help') return '写回答'
+  if (layoutKind.value === 'team') return '报名参加'
+  if (layoutKind.value === 'trade') return '留言咨询'
+  return '提交响应'
+})
+const responsePlaceholder = computed(() => {
+  if (layoutKind.value === 'help') return '写下你的回答，分享解决思路或经验'
+  if (layoutKind.value === 'team') return '介绍自己，说明报名角色与可参与的时间'
+  if (layoutKind.value === 'trade') return '询价、约看时间或提问'
+  return '说明你准备如何完成这项需求'
+})
+const responseSubmitLabel = computed(() => layoutKind.value === 'help' ? '提交回答' : layoutKind.value === 'team' ? '提交报名' : '提交')
+// 互动区是否展示输入框（HELP 允许同一用户多条回答）
+const composerVisible = computed(() => canRespond.value && (interactionMode.value === 'HELP' || !myActiveResponse.value))
+const railLabel = computed(() => layoutKind.value === 'trade' ? '价格' : layoutKind.value === 'help' ? '悬赏' : '奖励')
+const railRewardText = computed(() => (demand.value?.reward ?? 0) > 0 ? `${demand.value?.reward} 校邻币` : '无偿互助')
+// 侧栏主操作：固定位置，不随长页面滚走
+const primaryActionLabel = computed(() => {
+  if (!demand.value) return ''
+  // 接单按钮已经固定在提交卡里，侧栏不再重复一个主按钮
+  if (canAccept.value) return ''
+  if (hasOrderAccess.value && relatedOrder.value) return '查看正式订单'
+  if (composerVisible.value) {
+    if (layoutKind.value === 'help') return '写回答'
+    if (layoutKind.value === 'team') return '立即报名'
+    if (layoutKind.value === 'trade') return '留言咨询'
+    return '提交响应'
+  }
   return ''
 })
+const responseComposerRef = ref<HTMLTextAreaElement | null>(null)
+function focusResponseComposer(): void {
+  const composer = responseComposerRef.value
+  if (!composer) return
+  composer.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
+  composer.focus()
+}
+function runRailAction(): void {
+  if (hasOrderAccess.value && relatedOrder.value) {
+    void router.push({ name: 'OrderDetail', params: { id: relatedOrder.value.id } })
+    return
+  }
+  if (canAccept.value) {
+    void acceptCurrentDemand()
+    return
+  }
+  focusResponseComposer()
+}
 
 // 当前用户在该 Demand 上是否已有 active Response（PENDING 或 SELECTED）
 // SELECT_ONE/SELECT_MANY 仍保持一人一个 active Response；HELP 允许同一用户多条回答
@@ -455,7 +516,7 @@ onMounted(() => { void refreshDemand() })
     <p>该需求可能已被删除，或链接中的编号无效。</p>
   </div>
 
-  <div v-else-if="demand && loadState === 'ready'" class="page-grid demand-detail-layout">
+  <div v-else-if="demand && loadState === 'ready'" class="page-grid demand-detail-layout" :class="`detail-layout--${layoutKind}`">
     <section class="panel">
       <div class="page-head" style="margin-bottom: 12px;">
         <button type="button" class="button primary" @click="router.back()">← 返回</button>
@@ -479,14 +540,20 @@ onMounted(() => { void refreshDemand() })
       </div>
 
       <!-- 发布者信息 -->
-      <RouterLink v-if="!demand.anonymous && demand.publisherId" :to="`/users/${demand.publisherId}`" class="avatar-row avatar-row--link">
+      <button
+        v-if="!demand.anonymous && demand.publisherId"
+        type="button"
+        class="avatar-row avatar-row--link"
+        :aria-label="`查看 ${demand.publisher?.nickname ?? demand.publisherName} 的公开主页`"
+        @click="openPublisherProfile"
+      >
         <img :src="demand.publisher?.avatarUrl ?? demand.publisherAvatar" :alt="demand.publisher?.nickname ?? demand.publisherName" class="avatar large" />
         <div>
           <strong>{{ demand.publisher?.nickname ?? demand.publisherName }}</strong>
           <p class="subtle">信用分：{{ demand.publisher ? formatScore(demand.publisher.creditScore) : '未知' }}</p>
           <p class="meta">发布于 {{ formatDateTime(demand.createdAt) }}</p>
         </div>
-      </RouterLink>
+      </button>
       <div v-else class="avatar-row">
         <div class="avatar large anonymous-avatar" aria-hidden="true">匿</div>
         <div>
@@ -503,11 +570,6 @@ onMounted(() => { void refreshDemand() })
       <div v-else-if="detailMode === 'select-many'" class="participant-progress is-unavailable">当前人数信息暂不可用，请刷新后再查看。</div>
 
       <!-- 需求详情（突出显示，置于时间信息之前） -->
-      <div class="demand-mode-note">
-        <span class="mode-note-mark" aria-hidden="true">{{ detailMode === 'help' ? '?' : detailMode === 'select-many' ? '＋' : detailMode === 'direct-accept' ? '↗' : '◎' }}</span>
-        <p>{{ interactionGuidance }}</p>
-      </div>
-
       <div v-if="demand.images && demand.images.length > 0" class="demand-images demand-images-featured">
         <p class="eyebrow">需求实拍 · {{ demand.images.length }} 张</p>
         <div class="image-grid">
@@ -528,7 +590,7 @@ onMounted(() => { void refreshDemand() })
       </div>
 
 
-      <div v-if="demand.description" class="demand-description-highlight">
+      <div v-if="demand.description" class="demand-description-highlight" :class="{ 'detail-question': layoutKind === 'help' }">
         <p class="eyebrow demand-detail-label">{{ demandContentLabel }}</p>
         <div class="description-content">{{ demand.description }}</div>
       </div>
@@ -603,25 +665,34 @@ onMounted(() => { void refreshDemand() })
           >
             登录后接单
           </button>
-          <button v-if="hasOrderAccess && relatedOrder" type="button" class="button primary" @click="router.push({ name: 'OrderDetail', params: { id: relatedOrder.id } })">
-            查看正式订单
-          </button>
         </div>
       </div>
 
       <!-- Response 交互区域（非 DIRECT_ACCEPT 模式：SELECT_ONE / SELECT_MANY / HELP） -->
-      <div v-if="interactionMode !== 'DIRECT_ACCEPT'" class="list-card detail-block">
-        <div class="status-row detail-block-head">
-          <strong>{{ responseListTitle }}</strong>
-          <span class="chip">{{ formatInteractionMode(interactionMode) }}</span>
+      <section
+        v-if="interactionMode !== 'DIRECT_ACCEPT'"
+        class="detail-responses"
+        :class="{ 'detail-responses--forum': layoutKind === 'help' }"
+        aria-labelledby="responses-title"
+      >
+        <div class="responses-head">
+          <h2 id="responses-title" class="section-title">{{ responseSectionTitle }}</h2>
+          <span class="chip">{{ visibleResponses.length }} 条</span>
         </div>
 
-        <!-- 创建留言/报名/回答 -->
-        <div v-if="canRespond && (interactionMode === 'HELP' || !myActiveResponse)" class="field" style="margin-top: 4px;">
-          <textarea v-model="responseContent" :placeholder="`请填写${responseListTitle}内容`" rows="3"></textarea>
+        <!-- 写回答 / 报名 / 留言 -->
+        <div v-if="composerVisible" class="answer-composer">
+          <label class="response-composer-label" for="response-content">{{ responseComposerTitle }}</label>
+          <textarea
+            id="response-content"
+            ref="responseComposerRef"
+            v-model="responseContent"
+            :placeholder="responsePlaceholder"
+            rows="4"
+          ></textarea>
           <div class="card-actions">
             <button type="button" class="button primary" data-testid="submit-response" :disabled="!responseContent.trim() || responseSubmitting" @click="createResponse">
-              {{ responseSubmitting ? '提交中...' : '提交' }}
+              {{ responseSubmitting ? '提交中...' : responseSubmitLabel }}
             </button>
           </div>
         </div>
@@ -656,15 +727,17 @@ onMounted(() => { void refreshDemand() })
           </div>
         </div>
 
-        <!-- 列表 -->
-        <div v-if="visibleResponses.length" class="review-list detail-block-inner">
-          <div v-for="r in visibleResponses" :key="r.id" class="timeline-item">
-            <div style="flex: 1;">
-              <strong>{{ r.authorName }}</strong>
-              <div class="meta" style="margin-top: 4px; white-space: pre-wrap;">{{ r.content }}</div>
-              <div class="meta" style="margin-top: 4px;">{{ formatResponseStatus(r.status) }} · {{ formatDateTime(r.createdAt) }}</div>
-            </div>
-            <div class="card-actions" style="gap: 8px;">
+        <!-- 列表：问答以回复卡片展示，其他类型保留响应列表 -->
+        <div v-if="visibleResponses.length" class="answer-list detail-block-inner">
+          <article v-for="r in visibleResponses" :key="r.id" class="answer-card">
+            <header class="answer-card-head">
+              <strong class="answer-author">{{ r.authorName }}</strong>
+              <span v-if="r.status === 'SELECTED'" class="chip is-success">{{ layoutKind === 'help' ? '已采纳' : '已选中' }}</span>
+              <span v-else class="chip">{{ formatResponseStatus(r.status) }}</span>
+              <time class="meta answer-time" :datetime="r.createdAt">{{ formatDateTime(r.createdAt) }}</time>
+            </header>
+            <p class="answer-card-content">{{ r.content }}</p>
+            <footer class="answer-card-actions">
               <button
                 v-if="r.authorId === store.currentUser?.id && r.status === 'PENDING' && demand.status === 'PENDING'"
                 type="button"
@@ -691,7 +764,7 @@ onMounted(() => { void refreshDemand() })
                 class="button primary"
                 @click="acceptAnswer(r.id)"
               >采纳</button>
-            </div>
+            </footer>
             <!-- SELECT_MANY 评价入口：Demand COMPLETED 后，publisher 与被选中成员可双向评价 -->
             <div
               v-if="interactionMode === 'SELECT_MANY' && demand.status === 'COMPLETED' && r.status === 'SELECTED'
@@ -722,9 +795,9 @@ onMounted(() => { void refreshDemand() })
                 </div>
               </div>
             </div>
-          </div>
+          </article>
         </div>
-        <p v-else class="meta detail-block-inner">暂无{{ responseListTitle }}</p>
+        <p v-else class="meta detail-block-inner">还没有{{ responseListTitle }}</p>
 
         <!-- SELECT_MANY 底部统计与确认 -->
         <div
@@ -742,45 +815,40 @@ onMounted(() => { void refreshDemand() })
             @click="selectResponses"
           >确认选择</button>
         </div>
-      </div>
+      </section>
 
-      <p v-if="message" class="hero-badge">{{ message }}</p>
-      <p v-if="error" class="hero-badge" style="background: rgba(181, 71, 71, 0.14); color: var(--danger)">{{ error }}</p>
+      <p v-if="message" class="hero-badge" role="status">{{ message }}</p>
+      <p v-if="error" class="hero-badge" role="alert" style="background: rgba(181, 71, 71, 0.14); color: var(--danger)">{{ error }}</p>
     </section>
 
-    <section class="panel demand-sidebar">
+    <aside class="panel demand-sidebar detail-action-rail" aria-labelledby="demand-action-title">
       <div class="sidebar-head">
-        <p class="eyebrow">下一步</p>
-        <h2 class="section-title">需求处理</h2>
+        <p class="eyebrow">{{ railLabel }}</p>
+        <p class="detail-rail-reward">{{ railRewardText }}</p>
+        <h2 id="demand-action-title" class="section-title">{{ layoutKind === 'help' ? '问题状态' : layoutKind === 'team' ? '组队状态' : layoutKind === 'trade' ? '交易状态' : '任务状态' }}</h2>
       </div>
 
-      <div v-if="hasOrderAccess && relatedOrder" class="order-entry-card">
-        <span class="chip" :class="statusToneClass(relatedOrder.status)">{{ formatOrderStatus(relatedOrder.status) }}</span>
-        <h3>正式订单已建立</h3>
-        <p class="meta">订单进度、完成凭证、双方确认、仲裁和评价都在订单详情中处理。</p>
-        <button type="button" class="button primary" @click="router.push({ name: 'OrderDetail', params: { id: relatedOrder.id } })">前往订单详情</button>
-      </div>
-      <div v-else-if="detailMode === 'select-one' && myActiveResponse?.status === 'SELECTED'" class="order-entry-card">
-        <h3>你已被选中</h3>
-        <p class="meta">正式订单已建立。订单入口仅在服务端确认你的参与权限后显示。</p>
-      </div>
-      <div v-else-if="detailMode === 'select-one' && myRejectedResponse" class="order-entry-card">
-        <h3>本次未被选中</h3>
-        <p class="meta">你只能查看自己的处理结果，其他参与者的订单内容不会向你展示。</p>
-      </div>
-      <div v-else-if="detailMode === 'select-many'" class="order-entry-card">
-        <strong>{{ selectedCount ?? '—' }} / {{ targetCount ?? '—' }} 人已选</strong>
-        <p class="meta">达到目标人数后自动完成并结算。</p>
-      </div>
-      <div v-else-if="detailMode === 'help'" class="order-entry-card">
-        <strong>{{ demand.status === 'COMPLETED' ? '问题已解决' : '在需求中交流' }}</strong>
-        <p class="meta">采纳回答后自动结算。</p>
-      </div>
-      <div v-else class="order-entry-card">
-        <strong>{{ demand.status === 'PENDING' ? '需求开放中' : formatDemandStatus(demand.status) }}</strong>
-        <p class="meta">接单后进入正式订单履约。</p>
-      </div>
-    </section>
+      <dl class="detail-rail-facts">
+        <div>
+          <dt>时间</dt>
+          <dd>{{ formatDateTime(demand.startTime || '') }} — {{ formatDateTime(demand.endTime || '') }}</dd>
+        </div>
+        <div>
+          <dt>地点</dt>
+          <dd>{{ demand.location || '未填写' }}</dd>
+        </div>
+      </dl>
+
+      <p v-if="detailMode === 'select-one' && myActiveResponse?.status === 'SELECTED'" class="meta">你已被选中，订单已生成。</p>
+      <p v-else-if="detailMode === 'select-one' && myRejectedResponse" class="meta">本次未被选中。</p>
+      <p v-else-if="detailMode === 'select-many'" class="meta">达到目标人数后自动完成并结算。</p>
+      <p v-else-if="detailMode === 'help'" class="meta">采纳回答后自动结算。</p>
+      <p v-else class="meta">{{ demand.status === 'PENDING' ? '需求开放中' : formatDemandStatus(demand.status) }}，接单后进入正式订单履约。</p>
+
+      <button v-if="primaryActionLabel" type="button" class="button primary detail-rail-cta" @click="runRailAction">
+        {{ primaryActionLabel }}
+      </button>
+    </aside>
   </div>
 
   <!-- 全屏图片预览 -->

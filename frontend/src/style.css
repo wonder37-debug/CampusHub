@@ -7,11 +7,11 @@
   --panel-border: rgba(43, 72, 62, 0.13);
   --text: #46574f;
   --text-strong: #1e312b;
-  --muted: #6d7c74;
+  --muted: #616f67;
   --accent: #2b6b5d;
   --accent-soft: rgba(43, 107, 93, 0.1);
   --accent-strong: #204d43;
-  --warning: #a95c38;
+  --warning: #8f4c2b;
   --danger: #a94444;
   --success: #347552;
   --shadow: 0 20px 50px rgba(31, 56, 47, 0.11);
@@ -341,7 +341,7 @@ img {
 
 .admin-rail-label {
   margin: 0 8px 8px;
-  color: #87948d;
+  color: #5c6b63;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.12em;
@@ -436,7 +436,7 @@ img {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: #687a70;
+  color: #5c6b63;
 }
 
 .admin-content {
@@ -1065,6 +1065,18 @@ img {
 .review-item:hover {
   background: rgba(255, 255, 255, 0.65);
   border-color: var(--accent-soft);
+}
+
+/* 评价条目用 role="link" 实现点击跳转，必须给出可见的键盘焦点态 */
+.review-item:focus-visible {
+  outline: 3px solid rgba(43, 107, 93, 0.34);
+  outline-offset: 2px;
+  background: rgba(255, 255, 255, 0.65);
+}
+
+/* 评价条目相对时间：--muted 在浅底上只有 4.18:1，压深一档到 5.3:1 满足 WCAG AA */
+.review-item .meta {
+  color: #5c6b63;
 }
 
 .review-item-header {
@@ -1711,6 +1723,17 @@ button.load-more-panel:disabled {
   cursor: default;
   opacity: 0.7;
 }
+/* button 只能承载短语内容：标题与计数用 span，保留原 h3/p 的视觉层级 */
+.load-more-panel .load-more-title {
+  display: block;
+  font-size: 1.17em;
+  font-weight: 700;
+}
+.load-more-panel .load-more-count {
+  display: block;
+  color: var(--muted);
+  font-size: 0.875em;
+}
 .load-more-done {
   text-align: center;
   padding: 14px;
@@ -1898,4 +1921,193 @@ button.load-more-panel:disabled {
   margin-bottom: 10px;
   line-height: 1;
   content: var(--empty-icon, '📭');
+}
+
+/* ========== 需求详情：分类型布局与固定操作区 ========== */
+.demand-detail-layout {
+  align-items: start;
+}
+
+/* 侧栏主操作固定在视口内，长页面滚动时仍可见 */
+.detail-action-rail {
+  position: sticky;
+  top: 16px;
+  display: grid;
+  gap: 14px;
+}
+
+.detail-rail-reward {
+  margin: 0;
+  color: var(--accent-strong);
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.detail-rail-facts {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.detail-rail-facts div {
+  display: grid;
+  gap: 2px;
+}
+
+.detail-rail-facts dt {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.detail-rail-facts dd {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: 14px;
+}
+
+.detail-rail-cta {
+  width: 100%;
+  min-height: 44px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+/* 问答类：问题区用强调边框与正文区分 */
+.detail-question {
+  border-left: 4px solid var(--accent);
+  padding-left: 16px;
+}
+
+.detail-responses {
+  display: grid;
+  gap: 14px;
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid var(--panel-border);
+}
+
+.responses-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.responses-head .section-title {
+  margin: 0;
+}
+
+.answer-composer {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  background: #fff;
+}
+
+.response-composer-label {
+  color: var(--text-strong);
+  font-weight: 700;
+}
+
+.answer-list {
+  display: grid;
+  gap: 12px;
+}
+
+.answer-card {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  background: var(--bg-soft);
+}
+
+.answer-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.answer-author {
+  color: var(--text-strong);
+}
+
+.answer-time {
+  margin-left: auto;
+  font-size: 12px;
+}
+
+.answer-card-content {
+  margin: 0;
+  color: var(--text);
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.answer-card-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.answer-card-actions:empty {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .detail-action-rail {
+    position: static;
+  }
+}
+
+/* ========== 用户主页链接与紧凑列表 ========== */
+/* 头像/昵称按钮：外观等同文本，保留 hover 与键盘焦点态 */
+.link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.link-button:hover {
+  color: var(--accent-strong);
+  text-decoration: underline;
+}
+
+.link-button:focus-visible {
+  outline: 3px solid rgba(43, 107, 93, 0.34);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* 详情页发布者区块用 button 实现可点击，去掉浏览器默认按钮外观 */
+button.avatar-row--link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* 高密度列表：卡片更矮，一屏展示更多需求 */
+.home-grid--dense {
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+}
+
+.home-grid--dense .home-card__media {
+  aspect-ratio: 16 / 10;
+}
+
+.home-grid--dense .home-card__content {
+  height: 208px;
+  padding: 12px 14px;
 }

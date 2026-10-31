@@ -1,6 +1,7 @@
 package com.campushub.backend.notification.repository;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.campushub.backend.notification.domain.Notification;
 import com.campushub.backend.notification.dto.NotificationQuery;
 import com.campushub.backend.notification.repository.entity.NotificationEntity;
@@ -88,6 +89,20 @@ public class MyBatisNotificationRepository implements NotificationRepository {
             return 0L;
         }
         return notificationMapper.selectCount(buildWrapper(userId, query));
+    }
+
+    @Override
+    public int markAllAsRead(Long userId) {
+        if (userId == null) {
+            return 0;
+        }
+        // 单条 UPDATE：只碰未读行，避免把已读通知重复写一遍
+        LambdaUpdateWrapper<NotificationEntity> wrapper = new LambdaUpdateWrapper<>();
+        wrapper.eq(NotificationEntity::getUserId, userId)
+               .and(condition -> condition.eq(NotificationEntity::getIsRead, false)
+                   .or().isNull(NotificationEntity::getIsRead))
+               .set(NotificationEntity::getIsRead, true);
+        return notificationMapper.update(null, wrapper);
     }
 
     private LambdaQueryWrapper<NotificationEntity> buildWrapper(Long userId, NotificationQuery query) {
