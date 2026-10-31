@@ -89,7 +89,19 @@ public final class DemandCoverRenderer {
         "FangSong",
     };
 
-    private static final String SERIF_FAMILY = detectSerifFamily();
+    /**
+     * 衬线都缺失时的黑体兜底：字形比字形风格重要，有字总比豆腐块强。
+     * 只在 SERIF_CANDIDATES 全部不可用时才会命中。
+     */
+    private static final String[] SANS_FALLBACK_CANDIDATES = {
+        "Noto Sans CJK SC",
+        "Source Han Sans SC",
+        "Microsoft YaHei",
+        "PingFang SC",
+        "WenQuanYi Zen Hei",
+    };
+
+    private static final String SERIF_FAMILY = detectCjkFamily();
 
     private DemandCoverRenderer() {
     }
@@ -105,27 +117,33 @@ public final class DemandCoverRenderer {
      */
     public static byte[] render(DemandCategory category, CampusZone zone, String location, long seed) {
         DemandCategory safeCategory = category == null ? DemandCategory.OTHER : category;
-        String title = safeCategory.getLabel();
-        // 主机没有任何中文字形时，宁可不画文字，也不要缓存一张“豆腐块”封面（URL 带 immutable 强缓存，脏图会长期驻留）
-        if (!hasGlyphCoverage(title)) {
-            return renderFallback(safeCategory);
-        }
+        return render(safeCategory, zone, location, seed, hasGlyphCoverage(safeCategory.getLabel()));
+    }
+
+    /**
+     * 渲染入口。{@code drawText=false} 用于主机没有任何中文字形的情况：
+     * 只省略文字，**保留**与 seed/location 相关的圆环装饰——
+     * 否则不同地点的封面会退化为逐字节相同的纯色带，违背“一图一内容”的缓存语义。
+     */
+    static byte[] render(DemandCategory category, CampusZone zone, String location, long seed, boolean drawText) {
         try {
             BufferedImage image = new BufferedImage(WIDTH, HEIGHT, BufferedImage.TYPE_INT_RGB);
             Graphics2D g = image.createGraphics();
             try {
                 applyHints(g);
-                Palette palette = paletteOf(safeCategory);
+                Palette palette = paletteOf(category);
                 paintBase(g, palette);
-                paintRings(g, ringRandom(safeCategory, zone, location, seed));
-                paintTitle(g, title);
-                paintSubtitle(g, buildSubtitle(zone, location));
+                paintRings(g, ringRandom(category, zone, location, seed));
+                if (drawText) {
+                    paintTitle(g, category.getLabel());
+                    paintSubtitle(g, buildSubtitle(zone, location));
+                }
             } finally {
                 g.dispose();
             }
             return writeJpeg(image);
         } catch (RuntimeException | IOException ex) {
-            return renderFallback(safeCategory);
+            return renderFallback(category);
         }
     }
 
@@ -360,15 +378,24 @@ public final class DemandCoverRenderer {
     }
 
     /** 字体探测：必须比对 getFamily()，canDisplay() 对回退逻辑字体也会返回 true。 */
-    private static String detectSerifFamily() {
+    private static String detectCjkFamily() {
         for (String name : SERIF_CANDIDATES) {
-            Font probe = new Font(name, Font.PLAIN, 12);
-            if (probe.getFamily().toLowerCase(Locale.ROOT).equals(name.toLowerCase(Locale.ROOT))) {
+            if (familyMatches(name)) {
+                return name;
+            }
+        }
+        for (String name : SANS_FALLBACK_CANDIDATES) {
+            if (familyMatches(name)) {
                 return name;
             }
         }
         // 逻辑字体兜底：一定可用，只是可能不是衬线，不因此抛异常
         return Font.SERIF;
+    }
+
+    private static boolean familyMatches(String name) {
+        Font probe = new Font(name, Font.PLAIN, 12);
+        return probe.getFamily().toLowerCase(Locale.ROOT).equals(name.toLowerCase(Locale.ROOT));
     }
 
     private static byte[] writeJpeg(BufferedImage image) throws IOException {

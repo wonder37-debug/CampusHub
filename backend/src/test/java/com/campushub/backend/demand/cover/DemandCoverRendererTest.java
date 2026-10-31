@@ -3,6 +3,7 @@ package com.campushub.backend.demand.cover;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -10,6 +11,7 @@ import com.campushub.backend.demand.domain.CampusZone;
 import com.campushub.backend.demand.domain.DemandCategory;
 
 import java.io.ByteArrayInputStream;
+import java.util.Arrays;
 import java.util.Objects;
 
 import javax.imageio.ImageIO;
@@ -117,6 +119,16 @@ class DemandCoverRendererTest {
         byte[] second = DemandCoverRenderer.render(DemandCategory.HELP, CampusZone.GULOU, "图书馆", 42L);
 
         assertArrayEquals(first, second);
+    }
+
+    @Test
+    @DisplayName("无文字环境下不同地点仍产生不同封面（地形级回归：CI 无中文字体）")
+    void renderWithoutTextStillVariesByLocation() {
+        byte[] library = DemandCoverRenderer.render(DemandCategory.EXPRESS, CampusZone.XIANLIN, "图书馆", 11L, false);
+        byte[] gym = DemandCoverRenderer.render(DemandCategory.EXPRESS, CampusZone.XIANLIN, "体育馆", 11L, false);
+
+        assertTrue(library.length > 0);
+        assertFalse(Arrays.equals(library, gym), "无文字时地点仍必须影响圆环布局，否则不同 URL 会返回同一张图");
     }
 
     @Test
