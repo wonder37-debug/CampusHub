@@ -398,10 +398,10 @@ onMounted(() => {
         </article>
       </template>
 
-      <div v-if="hasMore" class="list-card load-more-panel" @click="loadMore">
+      <button v-if="hasMore" type="button" class="list-card load-more-panel" @click="loadMore">
         <h3>加载更多</h3>
         <p class="subtle">当前显示 {{ slicedItems.length }} / {{ totalCount }} 条</p>
-      </div>
+      </button>
       <div v-if="allLoaded" class="load-more-done">📋 已展示全部 {{ totalCount }} 条记录</div>
     </section>
   </div>

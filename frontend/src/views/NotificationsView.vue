@@ -214,8 +214,8 @@ onMounted(() => {
       </div>
     </section>
 
-    <section v-else-if="loading" class="notification-grid">
-      <div v-for="n in 3" :key="n" class="list-card" style="opacity:0.5">
+    <section v-else-if="loading" class="notification-grid" aria-busy="true" aria-label="正在加载通知">
+      <div v-for="n in 3" :key="n" class="list-card" style="opacity:0.5" aria-hidden="true">
         <div class="status-row"><span class="badge is-neutral">🔔</span><span class="chip">加载中</span></div>
         <div class="card-head"><h3>正在加载通知...</h3></div>
       </div>
@@ -283,10 +283,10 @@ onMounted(() => {
         </div>
       </article>
 
-      <div v-if="hasMore" class="list-card load-more-panel" @click="loadMore">
+      <button v-if="hasMore" type="button" class="list-card load-more-panel" @click="loadMore">
         <h3>加载更多通知</h3>
         <p class="subtle">当前显示 {{ visibleNotifications.length }} / {{ filteredNotifications.length }} 条</p>
-      </div>
+      </button>
       <div v-if="allLoaded" class="load-more-done">📋 已展示全部 {{ filteredNotifications.length }} 条通知</div>
     </section>
   </div>

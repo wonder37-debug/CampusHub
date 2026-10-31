@@ -1067,6 +1067,13 @@ img {
   border-color: var(--accent-soft);
 }
 
+/* 评价条目用 role="link" 实现点击跳转，必须给出可见的键盘焦点态 */
+.review-item:focus-visible {
+  outline: 3px solid rgba(43, 107, 93, 0.34);
+  outline-offset: 2px;
+  background: rgba(255, 255, 255, 0.65);
+}
+
 .review-item-header {
   display: flex;
   align-items: center;

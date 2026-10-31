@@ -257,10 +257,10 @@ async function submitArbitrationResolution(): Promise<void> {
       </div>
 
       <div class="stats-grid four-column">
-        <div class="metric" role="button" tabindex="0" @click.prevent="gotoUsers"> <span>今日活跃用户</span><strong>{{ adminDashboard?.dailyActiveUsers ?? 0 }}</strong></div>
-        <div class="metric" role="button" tabindex="0" @click.prevent="gotoUsers"> <span>用户总数</span><strong>{{ adminDashboard?.totalUsers ?? 0 }}</strong></div>
-        <div class="metric" role="button" tabindex="0" @click.prevent="gotoPendingDemands"> <span>待审需求</span><strong>{{ adminDashboard?.pendingReviewDemands ?? 0 }}</strong></div>
-        <div class="metric" role="button" tabindex="0" @click.prevent="refreshAdminData"> <span>已完成订单</span><strong>{{ adminDashboard?.completedOrders ?? 0 }}</strong></div>
+        <div class="metric" role="button" tabindex="0" @click.prevent="gotoUsers" @keydown.enter.prevent="gotoUsers" @keydown.space.prevent="gotoUsers"> <span>今日活跃用户</span><strong>{{ adminDashboard?.dailyActiveUsers ?? 0 }}</strong></div>
+        <div class="metric" role="button" tabindex="0" @click.prevent="gotoUsers" @keydown.enter.prevent="gotoUsers" @keydown.space.prevent="gotoUsers"> <span>用户总数</span><strong>{{ adminDashboard?.totalUsers ?? 0 }}</strong></div>
+        <div class="metric" role="button" tabindex="0" @click.prevent="gotoPendingDemands" @keydown.enter.prevent="gotoPendingDemands" @keydown.space.prevent="gotoPendingDemands"> <span>待审需求</span><strong>{{ adminDashboard?.pendingReviewDemands ?? 0 }}</strong></div>
+        <div class="metric" role="button" tabindex="0" @click.prevent="refreshAdminData" @keydown.enter.prevent="refreshAdminData" @keydown.space.prevent="refreshAdminData"> <span>已完成订单</span><strong>{{ adminDashboard?.completedOrders ?? 0 }}</strong></div>
       </div>
     </section>
 
@@ -272,16 +272,16 @@ async function submitArbitrationResolution(): Promise<void> {
             <h2 class="section-title">待审核需求</h2>
           </div>
           <div class="inline-actions">
-            <input v-model="demandQuery" class="input" type="search" placeholder="搜索标题" @keyup.enter="refreshAdminData" />
-            <select v-model="demandCategory" class="input" @change="refreshAdminData">
+            <input v-model="demandQuery" class="input" type="search" aria-label="搜索需求标题" placeholder="搜索标题" @keyup.enter="refreshAdminData" />
+            <select v-model="demandCategory" class="input" aria-label="按分类筛选" @change="refreshAdminData">
               <option value="">全部分类</option>
               <option v-for="option in adminCategoryOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
             </select>
-            <select v-model="demandCampusZone" class="input" @change="refreshAdminData">
+            <select v-model="demandCampusZone" class="input" aria-label="按校区筛选" @change="refreshAdminData">
               <option value="">全部校区</option>
               <option v-for="zone in campusZoneOptions()" :key="zone.value" :value="zone.value">{{ zone.label }}</option>
             </select>
-            <button type="button" class="button secondary" @click="refreshAdminData" title="搜索">🔍</button>
+            <button type="button" class="button secondary" aria-label="搜索需求" title="搜索" @click="refreshAdminData">🔍</button>
           </div>
         </div>
 
