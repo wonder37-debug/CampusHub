@@ -87,6 +87,30 @@ class NotificationApplicationServiceImplTest {
     }
 
     @Test
+    void shouldMarkAllNotificationsAsReadForOwnerOnly() {
+        notificationApplicationService.notifyOrderAcceptedForPublisher(1L, 100L);
+        notificationApplicationService.notifyOrderStatusChanged(1L, 100L, OrderStatus.IN_PROGRESS, true);
+        notificationApplicationService.notifyOrderAcceptedForPublisher(2L, 101L);
+
+        notificationApplicationService.markAllAsRead(1L);
+
+        assertTrue(notificationApplicationService.list(1L, new NotificationQuery(false, new PageQuery(1, 20)))
+            .items().stream().allMatch(NotificationResponse::read));
+        assertFalse(notificationApplicationService.list(2L, new NotificationQuery(false, new PageQuery(1, 20)))
+            .items().get(0).read());
+    }
+
+    @Test
+    void shouldRejectMarkAllAsReadWithoutUser() {
+        BusinessException exception = assertThrows(
+            BusinessException.class,
+            () -> notificationApplicationService.markAllAsRead(null)
+        );
+
+        assertEquals(ErrorCode.VALIDATION_FAILED, exception.getErrorCode());
+    }
+
+    @Test
     void shouldBuildStructuredContentWithFallbackWhenRelatedResourceMissing() {
         notificationApplicationService.notifyDemandRejected(1L, 999L, "信息不完整");
         NotificationResponse notification = notificationApplicationService.list(
