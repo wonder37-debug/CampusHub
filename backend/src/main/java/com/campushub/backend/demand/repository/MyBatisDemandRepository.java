@@ -155,6 +155,10 @@ public class MyBatisDemandRepository implements DemandRepository {
         // 按发布者过滤公开需求（不含 REVIEWING/CANCELLED/EXPIRED）
         if (publisherId != null) {
             wrapper.and(w -> w.eq(DemandEntity::getPublisherId, publisherId));
+            // 匿名需求只对发布者本人可见：其他访客按发布者浏览时看不到，避免身份泄露
+            if (!publisherId.equals(currentUserId)) {
+                wrapper.and(w -> w.eq(DemandEntity::getAnonymous, false).or().isNull(DemandEntity::getAnonymous));
+            }
         }
         String q = query.q();
         if (q != null && !q.isBlank()) {

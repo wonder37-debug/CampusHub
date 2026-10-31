@@ -234,6 +234,31 @@ class MyBatisDemandRepositoryTest {
     }
 
     @Test
+    void findPage_by_publisher_hides_anonymous_demands_from_non_publisher() {
+        Demand publicDemand = repository.save(newDemand("公开需求", DemandCategory.OTHER));
+        Demand anonymousDemand = repository.save(newDemand("匿名需求", DemandCategory.OTHER));
+        anonymousDemand.setAnonymous(true);
+        repository.save(anonymousDemand);
+        Long publisherId = publicDemand.getPublisherId();
+
+        DemandQuery asPublisher = new DemandQuery(null, null, null, null, null, null, DemandSort.TIME,
+            new PageQuery(1, 20), publisherId, publisherId);
+        assertThat(repository.findPage(asPublisher)).extracting(Demand::getId)
+            .contains(publicDemand.getId(), anonymousDemand.getId());
+
+        DemandQuery asOtherUser = new DemandQuery(null, null, null, null, null, null, DemandSort.TIME,
+            new PageQuery(1, 20), 999L, publisherId);
+        assertThat(repository.findPage(asOtherUser)).extracting(Demand::getId)
+            .containsExactly(publicDemand.getId());
+
+        DemandQuery asVisitor = new DemandQuery(null, null, null, null, null, null, DemandSort.TIME,
+            new PageQuery(1, 20), null, publisherId);
+        assertThat(repository.findPage(asVisitor)).extracting(Demand::getId)
+            .containsExactly(publicDemand.getId());
+        assertThat(repository.count(asVisitor)).isEqualTo(1L);
+    }
+
+    @Test
     void findPage_filters_by_location_like() {
         Demand d1 = repository.save(newDemand("d1", DemandCategory.OTHER));
         d1.setLocation("仙林菜鸟驿站");
