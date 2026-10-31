@@ -7,11 +7,11 @@
   --panel-border: rgba(43, 72, 62, 0.13);
   --text: #46574f;
   --text-strong: #1e312b;
-  --muted: #6d7c74;
+  --muted: #616f67;
   --accent: #2b6b5d;
   --accent-soft: rgba(43, 107, 93, 0.1);
   --accent-strong: #204d43;
-  --warning: #a95c38;
+  --warning: #8f4c2b;
   --danger: #a94444;
   --success: #347552;
   --shadow: 0 20px 50px rgba(31, 56, 47, 0.11);
@@ -341,7 +341,7 @@ img {
 
 .admin-rail-label {
   margin: 0 8px 8px;
-  color: #87948d;
+  color: #5c6b63;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.12em;
@@ -436,7 +436,7 @@ img {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: #687a70;
+  color: #5c6b63;
 }
 
 .admin-content {
@@ -1072,6 +1072,11 @@ img {
   outline: 3px solid rgba(43, 107, 93, 0.34);
   outline-offset: 2px;
   background: rgba(255, 255, 255, 0.65);
+}
+
+/* 评价条目相对时间：--muted 在浅底上只有 4.18:1，压深一档到 5.3:1 满足 WCAG AA */
+.review-item .meta {
+  color: #5c6b63;
 }
 
 .review-item-header {

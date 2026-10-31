@@ -321,19 +321,19 @@ async function submitArbitrationResolution(): Promise<void> {
             <h2 class="section-title">平台用户列表</h2>
           </div>
           <div class="inline-actions">
-            <select v-model="userSearchField" class="input" style="width:140px;">
+            <select v-model="userSearchField" class="input" aria-label="搜索字段" style="width:140px;">
               <option value="all">学号/邮箱/昵称</option>
               <option value="studentId">学号</option>
               <option value="email">邮箱</option>
               <option value="nickname">昵称</option>
             </select>
-            <input v-model="userQuery" class="input" type="search" :placeholder="userSearchField==='all'? '搜索学号/邮箱/昵称' : (userSearchField==='studentId'? '搜索学号' : userSearchField==='email'? '搜索邮箱' : '搜索昵称')" @keyup.enter="refreshAdminData" />
-            <select v-model="userRoleFilter" class="input" style="width:100px;" @change="refreshAdminData">
+            <input v-model="userQuery" class="input" type="search" aria-label="搜索用户" :placeholder="userSearchField==='all'? '搜索学号/邮箱/昵称' : (userSearchField==='studentId'? '搜索学号' : userSearchField==='email'? '搜索邮箱' : '搜索昵称')" @keyup.enter="refreshAdminData" />
+            <select v-model="userRoleFilter" class="input" aria-label="按角色筛选" style="width:100px;" @change="refreshAdminData">
               <option value="">全部角色</option>
               <option value="USER">学生</option>
               <option value="ADMIN">管理员</option>
             </select>
-            <select v-model="userStatusFilter" class="input" style="width:100px;" @change="refreshAdminData">
+            <select v-model="userStatusFilter" class="input" aria-label="按状态筛选" style="width:100px;" @change="refreshAdminData">
               <option value="">全部状态</option>
               <option value="ACTIVE">正常</option>
               <option value="BANNED">已封禁</option>
