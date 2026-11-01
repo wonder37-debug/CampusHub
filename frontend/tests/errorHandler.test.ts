@@ -217,3 +217,60 @@ describe('handleError', () => {
     })).toBe('网络异常，请检查网络或后端服务')
   })
 })
+
+describe('translateApiError - 字段级校验原因优先于错误码兜底', () => {
+  // 回归用例：VALIDATION_FAILED 的兜底文案是「参数校验失败，请检查输入」，
+  // 如果把错误码兜底排在字段级正则之前，下面这些具体原因会被整体吞掉，
+  // 用户看到提示也不知道该改哪个字段（issue: PR #33）。
+  it('新密码不足 8 位 → 指出具体长度要求，而不是「参数校验失败」', () => {
+    const msg = translateApiError({
+      code: 1002,
+      errorCode: 'VALIDATION_FAILED',
+      message: 'newPassword must be at least 8 characters'
+    })
+    expect(msg).toBe('新密码至少需要 8 个字符')
+    expect(msg).not.toContain('参数校验失败')
+  })
+
+  it('邮箱域名不支持 → 提示更换邮箱，而不是「参数校验失败」', () => {
+    expect(translateApiError({
+      code: 1002,
+      errorCode: 'VALIDATION_FAILED',
+      message: 'email must be a valid campus email'
+    })).toBe('邮箱格式不正确，请使用学校邮箱')
+  })
+
+  it('验证码过期 → 不能落到 code 1001 的「登录失败，请检查账号和密码」', () => {
+    const msg = translateApiError({
+      code: 1001,
+      errorCode: 'AUTH_FAILED',
+      message: 'verification code is invalid or has expired'
+    })
+    expect(msg).toBe('验证码无效或已过期，请重新获取')
+    expect(msg).not.toContain('登录失败')
+  })
+
+  it('必填字段为空 → 用中文字段名，而不是原始英文 key', () => {
+    expect(translateApiError({
+      code: 1002,
+      errorCode: 'VALIDATION_FAILED',
+      message: 'campusZone must not be blank'
+    })).toBe('校区不能为空')
+  })
+
+  it('未登记的字段名回退为原文，不抛异常', () => {
+    expect(translateApiError({
+      code: 1002,
+      errorCode: 'VALIDATION_FAILED',
+      message: 'someUnknownField must be at least 3 characters'
+    })).toBe('someUnknownField至少需要 3 个字符')
+  })
+
+  it('未命中任何字段正则时，仍回落到错误码中文兜底', () => {
+    expect(translateApiError({
+      code: 1002,
+      errorCode: 'VALIDATION_FAILED',
+      message: 'something structurally different'
+    })).toBe('参数校验失败，请检查输入')
+  })
+})
