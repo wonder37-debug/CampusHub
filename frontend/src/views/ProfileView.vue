@@ -121,8 +121,8 @@ async function submitChangePassword(): Promise<void> {
     changePasswordError.value = '请填写当前密码和新密码'
     return
   }
-  if (newPassword.value.length < 6) {
-    changePasswordError.value = '新密码至少需要 6 个字符'
+  if (newPassword.value.length < 8) {
+    changePasswordError.value = '新密码至少需要 8 位'
     return
   }
   changing.value = true
@@ -318,7 +318,8 @@ onMounted(() => {
         </div>
         <div class="field">
           <label for="profile-new-password">新密码</label>
-          <input id="profile-new-password" v-model="newPassword" type="password" placeholder="至少 6 个字符" />
+          <input id="profile-new-password" v-model="newPassword" type="password" placeholder="至少 8 位" />
+          <span class="input-help">密码至少 8 位</span>
         </div>
         <p v-if="changePasswordMessage" class="hero-badge" role="status">{{ changePasswordMessage }}</p>
         <p v-if="changePasswordError" class="hero-badge" role="alert" style="background: rgba(181,71,71,0.14);color:var(--danger)">{{ changePasswordError }}</p>
