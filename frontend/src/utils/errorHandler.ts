@@ -4,6 +4,18 @@ export function translateApiError(payload: any): string {
 
   const directMap: Record<string, string> = {
     'verification code is invalid': '验证码无效',
+    // 这条不补会落到 code===1001 的兜底，显示成“登录失败，请检查账号和密码”，
+    // 而用户其实是在重置密码，看到的提示完全不搭边。
+    'verification code is invalid or has expired': '验证码无效或已过期，请重新获取',
+    'email must be a valid campus email': '邮箱格式不正确，请使用学校邮箱',
+    'current password is incorrect': '原密码不正确',
+    'loginId and password must not be blank': '请输入账号和密码',
+    'email and verificationCode must not be blank': '请填写邮箱和验证码',
+    'newPassword must not be blank': '新密码不能为空',
+    'oldPassword must not be blank': '原密码不能为空',
+    'endTime must not be before startTime': '结束时间不能早于开始时间',
+    'proofImageUrls must contain 1 to 3 images': '请上传 1 至 3 张图片',
+    'only accepter can cancel order': '只有接单人才能取消订单',
     'verification code does not match studentId': '验证码与学号不匹配',
     'verification code sent too frequently': '验证码发送过于频繁，请稍后再试',
     'failed to send verification email': '验证码邮件发送失败，请检查邮箱配置后重试',
@@ -144,22 +156,10 @@ export function translateApiError(payload: any): string {
     return rawMessage
   }
 
-  if (errorCode && codeMap[errorCode]) {
-    return codeMap[errorCode]
-  }
-
-  if (code === 5000) {
-    return '系统发生错误，请稍后重试'
-  }
-
-  if (code === 1001) {
-    return '登录失败，请检查账号和密码'
-  }
-
-  if (code === 1004) {
-    return '没有权限执行该操作'
-  }
-
+  // 字段级校验原因必须排在错误码兜底之前。
+  // VALIDATION_FAILED 的兜底文案是「参数校验失败，请检查输入」，会把
+  // 「邮箱域名不合法」「密码不足 8 位」「某字段不能为空」这些具体原因全部盖住，
+  // 用户看到提示也不知道该改哪个字段。Bean Validation 风格的 message 信息量更大，优先返回。
   const nullMatch = rawMessage.match(/^([a-zA-Z][a-zA-Z0-9]*) must not be null$/)
   if (nullMatch) {
     return `${translateFieldName(nullMatch[1])}不能为空`
@@ -188,6 +188,22 @@ export function translateApiError(payload: any): string {
   const rangeMatch = rawMessage.match(/^([a-zA-Z][a-zA-Z0-9]*) must be between (\d+) and (\d+)$/)
   if (rangeMatch) {
     return `${translateFieldName(rangeMatch[1])}必须在 ${rangeMatch[2]} 到 ${rangeMatch[3]} 之间`
+  }
+
+  if (errorCode && codeMap[errorCode]) {
+    return codeMap[errorCode]
+  }
+
+  if (code === 5000) {
+    return '系统发生错误，请稍后重试'
+  }
+
+  if (code === 1001) {
+    return '登录失败，请检查账号和密码'
+  }
+
+  if (code === 1004) {
+    return '没有权限执行该操作'
   }
 
   const greaterThanMatch = rawMessage.match(/^([a-zA-Z][a-zA-Z0-9]*) must be greater than or equal to (\d+)$/)
@@ -264,6 +280,8 @@ export function translateApiError(payload: any): string {
       verificationCode: '验证码',
       studentId: '学号',
       password: '密码',
+      newPassword: '新密码',
+      oldPassword: '原密码',
       nickname: '昵称',
       avatarUrl: '头像链接',
       loginId: '登录标识',

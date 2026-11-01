@@ -529,6 +529,7 @@ async function submitForgotPassword(): Promise<void> {
           <div class="field">
             <label for="forgot-email">注册邮箱</label>
             <input id="forgot-email" v-model="forgotPasswordForm.email" placeholder="请输入账号绑定邮箱" data-autofocus />
+            <span class="input-help">填注册时使用的邮箱，需与账号绑定的邮箱一致</span>
           </div>
           <div class="field">
             <label for="forgot-code">邮箱验证码</label>
@@ -551,7 +552,7 @@ async function submitForgotPassword(): Promise<void> {
                 :type="showForgotPasswordValue ? 'text' : 'password'"
                 id="forgot-password"
                 v-model="forgotPasswordForm.newPassword"
-                placeholder="请输入新密码"
+                placeholder="至少 8 位"
               />
               <button
                 type="button"
@@ -566,7 +567,7 @@ async function submitForgotPassword(): Promise<void> {
           </div>
           <p v-if="forgotCodeMessage" class="hero-badge" role="status" style="margin: 0;">{{ forgotCodeMessage }}</p>
           <p v-if="forgotError" class="hero-badge" role="alert" style="margin: 0; background: rgba(181, 71, 71, 0.14); color: var(--danger);">{{ forgotError }}</p>
-          <p class="input-help">系统会向账号绑定邮箱发送验证码，验证通过后可直接设置新密码。</p>
+          <p class="input-help">系统会向账号绑定邮箱发送验证码，验证通过后可直接设置新密码；新密码至少 8 位。</p>
           <div class="card-actions" style="justify-content: flex-end;">
             <button type="button" class="button secondary" @click="showForgotPassword = false">取消</button>
             <button type="submit" class="button primary" :disabled="forgotPasswordSubmitting">
