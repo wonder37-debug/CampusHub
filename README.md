@@ -6,6 +6,7 @@
 
 - [项目简介](#项目简介)
 - [核心亮点](#核心亮点)
+- [界面展示](#界面展示)
 - [功能特性](#功能特性)
 - [技术栈](#技术栈)
 - [项目结构](#项目结构)
@@ -43,6 +44,75 @@ CampusHub 采用前后端分离的 Monorepo 架构，围绕"校园需求匹配"�
 1. **完整业务闭环与资金保障**：需求发布→审核→接单→履约→双向确认→评价全流程闭环；悬赏金冻结/转移/解冻状态机 + 48 小时超时自动完成 + 人工仲裁，解决小额互助"不敢交易、不可追责"的信任问题。
 2. **校园身份与信用治理**：邮箱域名白名单注册、BCrypt 密码存储、信用分动态演化、敏感词过滤、匿名发布、私密凭证图片"服务端授权访问 + 前端 Blob 拉取 + 所有权校验"，构建可信校园生态。
 3. **AI 自然语言需求草稿生成**：基于 Spring AI 接入 OpenAI 兼容接口，一句话描述需求即可生成结构化发布草稿，服务端二次校验确保字段合法，降低发布门槛。
+
+---
+
+## 界面展示
+
+> 以下截图来自项目真实运行环境（1440px 桌面端 + 390px 移动端）。演示数据由平台真实流程产生：邮箱注册 → 发布需求 → 管理员审核 → 接单 → 上传凭证 → 双方确认 → 双向评价 → 仲裁裁决。
+
+### 需求发现与筛选
+
+<img src="docs/screenshots/home-feed.webp" alt="CampusHub 首页需求流" width="100%" />
+
+首页聚合关键词搜索、分类、校区与状态筛选，支持最新、报酬、距离、推荐四种排序；每条需求自动生成与分类匹配的封面，卡片直接展示悬赏、地点、时间与标签。
+
+### 四种互动模式
+
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/demand-team.webp" alt="满员组队详情" width="100%" /><br /><sub><b>满员组队</b>：展示报名成员与目标人数，满员后自动完成并平分悬赏</sub></td>
+<td width="50%"><img src="docs/screenshots/demand-qa.webp" alt="互助问答详情" width="100%" /><br /><sub><b>互助问答</b>：回答按时间排列，发布者采纳后全额结算给被采纳者</sub></td>
+</tr>
+</table>
+
+> 直接接单（DIRECT_ACCEPT）与择优选择（SELECT_ONE）会生成正式订单，进入完整履约链路；组队与问答不创建订单，由响应状态直接驱动结算。
+
+### AI 辅助发布
+
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/ai-draft.webp" alt="AI 需求草稿弹窗" width="100%" /><br /><sub><b>一句话生成草稿</b>：自动提取标题、描述、分类、校区、地点、时间、报酬，并提示待补充字段</sub></td>
+<td width="50%"><img src="docs/screenshots/publish-preview.webp" alt="发布表单与实时预览" width="100%" /><br /><sub><b>逐项确认后发布</b>：AI 回填的字段标注来源，右侧实时预览卡片效果</sub></td>
+</tr>
+</table>
+
+### 履约闭环
+
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/orders.webp" alt="我的互助与正式订单" width="100%" /><br /><sub><b>我的互助</b>：待办优先，区分我发布的、我参与的与正式订单</sub></td>
+<td width="50%"><img src="docs/screenshots/order-detail.webp" alt="订单详情与双向评价" width="100%" /><br /><sub><b>订单详情</b>：状态时间线、完成凭证、联系方式与双向评价</sub></td>
+</tr>
+</table>
+
+### 账号、信用与通知
+
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/register-email-code.webp" alt="QQ 邮箱验证码注册" width="100%" /><br /><sub><b>校园邮箱注册</b>：真实 SMTP 投递 6 位验证码，支持 QQ 邮箱</sub></td>
+<td width="50%"><img src="docs/screenshots/profile.webp" alt="个人中心" width="100%" /><br /><sub><b>个人中心</b>：信用分、可用余额、冻结金额、已完成订单与双向评价</sub></td>
+</tr>
+</table>
+
+<img src="docs/screenshots/notifications.webp" alt="站内通知中心" width="100%" />
+
+通知中心覆盖接单、状态变更、收到评价、待审核、审核结果、待评价提醒、仲裁申请与处理等 10 类事件，支持未读标记、分类筛选与点击跳转关联页面。
+
+### 管理后台与仲裁
+
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/admin-dashboard.webp" alt="管理后台看板" width="100%" /><br /><sub><b>运营看板</b>：DAU、用户总数、待审需求、已完成订单、审核队列与用户管理</sub></td>
+<td width="50%"><img src="docs/screenshots/admin-arbitration.webp" alt="仲裁裁决弹窗" width="100%" /><br /><sub><b>仲裁裁决</b>：查看双方举证，判定完成或取消，结果通知订单双方</sub></td>
+</tr>
+</table>
+
+### 移动端适配
+
+<p align="center"><img src="docs/screenshots/mobile-home.webp" alt="移动端首页" width="320" /></p>
+
+移动端采用响应式布局，可完成需求浏览、筛选、发布、接单、凭证上传与确认评价等完整操作。
 
 ---
 
@@ -159,6 +229,7 @@ CampusHub 采用前后端分离的 Monorepo 架构，围绕"校园需求匹配"�
 CampusHub/
 ├── .github/workflows/          # GitHub Actions CI 配置
 ├── .gitlab-ci.yml / .gitlab/   # GitLab CI 配置
+├── docs/                       # 状态机文档与 README 界面截图
 ├── backend/                    # Spring Boot 后端
 │   ├── mvnw / mvnw.cmd         # Maven Wrapper
 │   ├── pom.xml
