@@ -15,7 +15,8 @@ const route = useRoute()
 const avatarCropperRef = ref<InstanceType<typeof AvatarCropper> | null>(null)
 const emailDomainOptions = [
   { label: '@nju.edu.cn', value: 'nju.edu.cn' },
-  { label: '@smail.nju.edu.cn', value: 'smail.nju.edu.cn' }
+  { label: '@smail.nju.edu.cn', value: 'smail.nju.edu.cn' },
+  { label: '@qq.com', value: 'qq.com' }
 ]
 
 const activeTab = ref<'login' | 'register'>('login')
