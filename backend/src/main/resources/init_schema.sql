@@ -134,7 +134,7 @@ CREATE TABLE IF NOT EXISTS `ord_order_status_log` (
   `order_id` bigint NOT NULL COMMENT '关联订单ID',
   `from_status` varchar(32) COMMENT '原状态',
   `to_status` varchar(32) NOT NULL COMMENT '新状态',
-  `operator_id` bigint NOT NULL COMMENT '操作人ID',
+  `operator_id` bigint NULL COMMENT '操作人ID，NULL 表示系统定时任务自动触发',
   `note` varchar(500) COMMENT '状态变更备注',
   `changed_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '变更时间',
   KEY `idx_order_status_log_order` (`order_id`)

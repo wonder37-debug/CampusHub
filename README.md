@@ -314,6 +314,8 @@ cd CampusHub
 
 后端启动时 Spring Boot 会自动执行 `init_schema.sql` 完成建表和默认数据初始化，**无需手动导入 SQL**。只需确保 MySQL 在运行并配置好密码。
 
+> 已存在的旧库不会被 `CREATE TABLE IF NOT EXISTS` 更新，需按 `backend/src/main/resources/migrations/` 下的脚本手动执行增量迁移（按版本号顺序，脚本均幂等）。
+
 在 `backend/src/main/resources/` 下创建 `application-local.properties`（已被 `.gitignore` 忽略）：
 
 ```properties

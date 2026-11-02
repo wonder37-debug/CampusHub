@@ -31,7 +31,7 @@ CREATE TABLE ord_order_status_log (
   order_id BIGINT NOT NULL,
   from_status VARCHAR(32),
   to_status VARCHAR(32) NOT NULL,
-  operator_id BIGINT NOT NULL,
+  operator_id BIGINT,
   note VARCHAR(500),
   changed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
